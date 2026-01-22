@@ -1,0 +1,15 @@
+# Xcode
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata
+*.xcodeproj/xcuserdata
+
+# SwiftPM
+.build/
+
+# macOS
+.DS_Store
+
+# Secrets (never commit)
+*.p12
+*.mobileprovision
