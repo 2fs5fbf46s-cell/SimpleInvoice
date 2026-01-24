@@ -13,3 +13,5 @@ DerivedData/
 # Secrets (never commit)
 *.p12
 *.mobileprovision
+
+SmallBiz Workspace/PortalSecrets.plist

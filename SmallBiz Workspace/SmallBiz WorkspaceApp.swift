@@ -3,28 +3,34 @@ import SwiftData
 
 @main
 struct SmallBizWorkspaceApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     @StateObject private var lock = AppLockManager()
     @StateObject private var activeBiz = ActiveBusinessStore()
 
-
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(lock)
-                .environmentObject(activeBiz)
-                .task {
-                    let context = Self.container.mainContext
+            AppLaunchGateView {
+                RootView()
+            }
+            .environmentObject(lock)
+            .environmentObject(activeBiz)
+            // ✅ Optional upgrade: when returning from background, re-ensure a valid active business
+            // (prevents edge cases where activeBusinessID is nil after cold/restore/CloudKit hiccups)
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                let context = Self.container.mainContext
+
+                // Only re-run restore if needed (keeps it lightweight)
+                if activeBiz.activeBusinessID == nil {
                     do {
-                        try BusinessMigration.runIfNeeded(
-                            modelContext: context,
-                            activeBiz: activeBiz
-                        )
+                        try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
                     } catch {
-                        print("❌ Business migration failed:", error)
+                        print("⚠️ Re-restore active business failed:", error)
                     }
                 }
+            }
         }
-
         .modelContainer(Self.container)
     }
 
@@ -40,15 +46,15 @@ struct SmallBizWorkspaceApp: App {
             Contract.self,
             ClientAttachment.self,
             JobAttachment.self,
+
             // ✅ audit
             AuditEvent.self,
-            
+
             // ✅ Portal groundwork
             PortalIdentity.self,
             PortalSession.self,
             PortalInvite.self,
             PortalAuditEvent.self,
-
 
             // ✅ Templates must be in schema or they won't persist
             ContractTemplate.self,
@@ -60,11 +66,10 @@ struct SmallBizWorkspaceApp: App {
             // ✅ Join models (use your actual names)
             InvoiceAttachment.self,
             ContractAttachment.self,
-            
+
             Job.self,
             Blockout.self
         ])
-
 
         let fm = FileManager.default
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
