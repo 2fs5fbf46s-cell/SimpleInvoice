@@ -8,9 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		B6068C312F1A049600FE0A15 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = B6068C302F1A049600FE0A15 /* ZIPFoundation */; };
+		B6256B7A2F2321B700BD717A /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6256B792F2321B700BD717A /* SafariView.swift */; };
+		B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B6256B792F2321B700BD717A /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
+		B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		B6FAA46E2F14423E0063A7CD /* SmallBizWorkspace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmallBizWorkspace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -37,6 +41,8 @@
 		B6FAA4652F14423E0063A7CD = {
 			isa = PBXGroup;
 			children = (
+				B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */,
+				B6256B792F2321B700BD717A /* SafariView.swift */,
 				B6FAA4702F14423E0063A7CD /* SmallBiz Workspace */,
 				B6FAA46F2F14423E0063A7CD /* Products */,
 			);
@@ -118,6 +124,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -128,6 +135,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B6256B7A2F2321B700BD717A /* SafariView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -258,6 +266,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = "SmallBiz Workspace/SmallBiz Workspace.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -269,9 +278,11 @@
 				INFOPLIST_FILE = "SmallBiz-Workspace-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SmallBiz Workspace";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_PORTAL_ADMIN_KEY = "$(PORTAL_ADMIN_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -281,6 +292,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				PORTAL_ADMIN_KEY = 423894ae41a2929815c724338bf6f5aec93fd55fbdaf824d35195d227aa61de8;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.javonfreeman.smallbizworkspace-";
 				PRODUCT_NAME = SmallBizWorkspace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -299,6 +311,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = "SmallBiz Workspace/SmallBiz Workspace.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -310,9 +323,11 @@
 				INFOPLIST_FILE = "SmallBiz-Workspace-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SmallBiz Workspace";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_PORTAL_ADMIN_KEY = "$(PORTAL_ADMIN_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -322,6 +337,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				PORTAL_ADMIN_KEY = 423894ae41a2929815c724338bf6f5aec93fd55fbdaf824d35195d227aa61de8;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.javonfreeman.smallbizworkspace-";
 				PRODUCT_NAME = SmallBizWorkspace;
 				PROVISIONING_PROFILE_SPECIFIER = "";

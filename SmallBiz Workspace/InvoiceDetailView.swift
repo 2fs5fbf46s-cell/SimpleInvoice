@@ -55,6 +55,11 @@ struct InvoiceDetailView: View {
 
     // Job picker
     @State private var showJobPicker = false
+    
+    @State private var portalURL: URL? = nil
+    @State private var portalError: String? = nil
+    @State private var openingPortal = false
+
 
     // Open job workspace folder in Files
     private struct WorkspaceDestination: Identifiable {
@@ -71,6 +76,9 @@ struct InvoiceDetailView: View {
     @State private var showInvoicePDFConflictDialog = false
     
     @State private var createdContract: Contract? = nil
+    
+    @State private var showPortal = false
+
 
 
     private struct PendingPDFSave {
@@ -113,6 +121,7 @@ struct InvoiceDetailView: View {
 
             datesSection
             paymentSection
+            portalSection
             notesSection
             thankYouSection
             termsSection
@@ -128,6 +137,16 @@ struct InvoiceDetailView: View {
         
         .navigationDestination(item: $createdContract) { c in
             ContractDetailView(contract: c)
+        }
+        
+        .sheet(isPresented: $showPortal, onDismiss: {
+            Task { await refreshInvoicePaidStatusFromPortal() }
+        }) {
+            if let portalURL {
+                SafariView(url: portalURL)
+            } else {
+                Text("Missing portal URL")
+            }
         }
 
 
@@ -167,6 +186,7 @@ struct InvoiceDetailView: View {
         .sheet(item: $previewItem) { previewSheet(url: $0.url) }
         .sheet(isPresented: $showingMail) { mailSheet }
 
+    
         // ShareSheet can share multiple items
         .sheet(isPresented: Binding(
             get: { shareItems != nil },
@@ -491,6 +511,61 @@ struct InvoiceDetailView: View {
             )
         }
         .disabled(isEstimateLocked)
+    }
+
+
+    private var portalSection: some View {
+        Section("Client Portal") {
+            Button {
+                Task {
+                    openingPortal = true
+                    portalError = nil
+
+                    do {
+                        
+                        let amountCents = Int((invoice.total * 100).rounded())
+                        guard amountCents > 0 else {
+                            portalError = "This invoice total is $0.00. Add line items / amount before requesting payment."
+                            openingPortal = false
+                            return
+                        }
+
+                        let seed = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice)
+
+                        let url = PortalBackend.shared.portalInvoiceURL(
+                            invoiceId: invoice.id.uuidString,
+                            token: seed.token
+                        )
+
+                        portalURL = url
+                        showPortal = true
+                                                          
+                            
+                    } catch {
+                        print("Portal open failed:", error)
+                        portalError = "Failed to open portal preview: \(error)"
+                    }
+
+                    openingPortal = false
+                }
+            } label: {
+                if openingPortal {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Opening portal…")
+                    }
+                } else {
+                    Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
+                }
+            }
+            .disabled(openingPortal)
+
+            if let portalError {
+                Text(portalError)
+                    .foregroundStyle(.red)
+                    .font(.caption)
+            }
+        }
     }
 
     private var notesSection: some View {
@@ -1268,6 +1343,29 @@ struct InvoiceDetailView: View {
         let filename = "\(prefix)-\(invoice.invoiceNumber)-\(suffix)-\(Date().timeIntervalSince1970)"
         return try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
     }
+    
+    @MainActor
+    private func refreshInvoicePaidStatusFromPortal() async {
+        do {
+            let businessId = invoice.businessID.uuidString
+            let invoiceId = invoice.id.uuidString
+
+            let status = try await PortalBackend.shared.fetchPaymentStatus(
+                businessId: businessId,
+                invoiceId: invoiceId
+            )
+
+            if status.paid && !invoice.isPaid {
+                invoice.isPaid = true
+                try? modelContext.save()
+            }
+        } catch {
+            // Optional: show a non-blocking error
+            // portalError = "Couldn’t refresh payment status"
+            print("Payment status refresh failed:", error)
+        }
+    }
+
 
     // MARK: - ZIP creation (PDF + attachments)
 
