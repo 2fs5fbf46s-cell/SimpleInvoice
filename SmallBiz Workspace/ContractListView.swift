@@ -8,8 +8,10 @@ import SwiftData
 
 struct ContractsListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Contract.createdAt, order: .reverse) private var contracts: [Contract]
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+
+    @Query(sort: \Contract.createdAt, order: .reverse)
+    private var contracts: [Contract]
 
     @State private var searchText: String = ""
     @State private var filter: ContractFilter = .all
@@ -23,26 +25,6 @@ struct ContractsListView: View {
         case cancelled = "Cancelled"
 
         var id: String { rawValue }
-    }
-
-    // MARK: - Status helpers
-
-    private func statusColor(for contract: Contract) -> Color {
-        switch contract.status {
-        case .draft: return .gray.opacity(0.6)
-        case .sent: return .blue
-        case .signed: return .green
-        case .cancelled: return .red
-        }
-    }
-
-    private func statusText(for contract: Contract) -> String {
-        switch contract.status {
-        case .draft: return "DRAFT"
-        case .sent: return "SENT"
-        case .signed: return "SIGNED"
-        case .cancelled: return "CANCELLED"
-        }
     }
 
     // MARK: - Scoping
@@ -101,83 +83,72 @@ struct ContractsListView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                Picker("", selection: $filter) {
-                    ForEach(ContractFilter.allCases) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
+        ZStack {
+            // Background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-            if scopedContracts.isEmpty {
-                ContentUnavailableView(
-                    "No Contracts Yet",
-                    systemImage: "doc.plaintext",
-                    description: Text("Create contracts from templates, then export to PDF.")
-                )
-            } else if filteredContracts.isEmpty {
-                ContentUnavailableView(
-                    "No Matches",
-                    systemImage: "magnifyingglass",
-                    description: Text("Try a different filter or search term.")
-                )
-            } else {
-                ForEach(filteredContracts) { contract in
-                    NavigationLink {
-                        ContractDetailView(contract: contract)
-                    } label: {
-                        HStack(spacing: 12) {
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(statusColor(for: contract))
-                                .frame(width: 6)
+            // Subtle header wash (Option A)
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(contract.title.isEmpty ? "Contract" : contract.title)
-                                        .font(.headline)
-
-                                    Spacer()
-
-                                    Text(statusText(for: contract))
-                                        .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(statusColor(for: contract).opacity(0.15))
-                                        .clipShape(Capsule())
-                                }
-
-                                Text(clientName(for: contract))
-                                    .foregroundStyle(.secondary)
-
-                                HStack {
-                                    Text(contract.createdAt, style: .date)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text(contract.templateCategory)
-                                        .foregroundStyle(.secondary)
-                                        .font(.subheadline)
-                                }
-                            }
-                            .padding(.vertical, 4)
+            List {
+                // Filter toggle (match other list screens)
+                Section {
+                    Picker("", selection: $filter) {
+                        ForEach(ContractFilter.allCases) { f in
+                            Text(f.rawValue).tag(f)
                         }
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            attemptDelete(contract)
+                    .pickerStyle(.segmented)
+                }
+
+                if scopedContracts.isEmpty {
+                    ContentUnavailableView(
+                        "No Contracts Yet",
+                        systemImage: "doc.plaintext",
+                        description: Text("Create contracts from templates, then export to PDF.")
+                    )
+                } else if filteredContracts.isEmpty {
+                    ContentUnavailableView(
+                        "No Matches",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different filter or search term.")
+                    )
+                } else {
+                    ForEach(filteredContracts) { contract in
+                        NavigationLink {
+                            ContractDetailView(contract: contract)
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            row(contract)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                attemptDelete(contract)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
+                    .onDelete(perform: deleteContracts)
                 }
-                .onDelete(perform: deleteContracts)
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Contracts")
-        .searchable(text: $searchText, prompt: "Search contracts")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search contracts"
+        )
+        .settingsGear { BusinessProfileView() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
+
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
                     CreateContractStartView()
@@ -196,11 +167,76 @@ struct ContractsListView: View {
         }
     }
 
+    // MARK: - Row UI (Option A parity)
+
+    private func row(_ contract: Contract) -> some View {
+        let statusText = statusText(for: contract)
+        let chip = SBWTheme.chip(forStatus: statusText)
+        let client = clientName(for: contract)
+
+        return HStack(alignment: .top, spacing: 12) {
+            // Leading icon chip (matches other tiles/lists)
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Contracts"))
+                Image(systemName: "doc.text")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(contract.title.isEmpty ? "Contract" : contract.title)
+                        .font(.headline)
+
+                    Spacer()
+
+                    Text(statusText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(chip.fg)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(chip.bg)
+                        .clipShape(Capsule())
+                }
+
+                Text(client)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text(contract.createdAt, style: .date)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Text(contract.templateCategory)
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func statusText(for contract: Contract) -> String {
+        switch contract.status {
+        case .draft: return "DRAFT"
+        case .sent: return "SENT"
+        case .signed: return "SIGNED"
+        case .cancelled: return "CANCELLED"
+        }
+    }
+
+    // MARK: - Deletes (draft-only)
+
     private func deleteContracts(at offsets: IndexSet) {
         var blockedCount = 0
+
         for index in offsets {
             guard index < filteredContracts.count else { continue }
             let c = filteredContracts[index]
+
             if c.status == .draft {
                 modelContext.delete(c)
             } else {
@@ -221,7 +257,9 @@ struct ContractsListView: View {
             blockedDeleteMessage = "Only Draft contracts can be deleted. Change status back to Draft if you need to remove it."
             return
         }
+
         modelContext.delete(contract)
+
         do { try modelContext.save() }
         catch { print("Failed to delete contract: \(error)") }
     }

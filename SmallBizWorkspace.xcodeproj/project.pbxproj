@@ -271,7 +271,7 @@
 				CODE_SIGN_ENTITLEMENTS = "SmallBiz Workspace/SmallBiz Workspace.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 6.1;
 				DEVELOPMENT_TEAM = 4KZN2PWJUF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -316,7 +316,7 @@
 				CODE_SIGN_ENTITLEMENTS = "SmallBiz Workspace/SmallBiz Workspace.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 6.1;
 				DEVELOPMENT_TEAM = 4KZN2PWJUF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

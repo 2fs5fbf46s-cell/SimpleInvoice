@@ -313,7 +313,9 @@ struct ClientPortalPreviewView: View {
         } catch {
             errorText = error.localizedDescription
         }
+        
     }
+    
 
     // MARK: - Actions / PDF / Audit (unchanged from your working version)
 

@@ -202,6 +202,11 @@ struct CreateContractStartView: View {
     private func saveDraft() {
         guard let template = selectedTemplate else { return }
 
+        guard let bizID = activeBiz.activeBusinessID else {
+            createError = "No active business selected."
+            return
+        }
+
         let inv = useInvoice ? selectedInvoice : nil
         let client = resolvedClient
 
@@ -209,6 +214,7 @@ struct CreateContractStartView: View {
             _ = try ContractCreation.create(
                 context: modelContext,
                 template: template,
+                businessID: bizID,          // ✅ now defined
                 business: business,
                 client: client,
                 invoice: inv,

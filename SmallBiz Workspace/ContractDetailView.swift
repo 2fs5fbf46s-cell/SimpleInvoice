@@ -22,6 +22,7 @@ struct ContractDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dismissToDashboard) private var dismissToDashboard
+
     @Bindable var contract: Contract
 
     @Query private var profiles: [BusinessProfile]
@@ -46,12 +47,21 @@ struct ContractDetailView: View {
     @State private var attachError: String? = nil
     @State private var attachmentPreviewItem: IdentifiableURL? = nil
 
-    // ✅ Job picker
+    // Job picker
     @State private var showJobPicker = false
 
-    // ✅ Open Files (deep link)
+    // Open Files (deep link)
     @State private var folderSheetItem: ContractFolderSheetItem? = nil
     @State private var workspaceError: String? = nil
+
+    // Client Portal
+    @State private var openingPortal = false
+    @State private var portalURL: URL? = nil
+    @State private var showPortal = false
+    @State private var portalError: String? = nil
+
+    // Status transition tracking (index once when it transitions TO "sent")
+    @State private var lastStatusRaw: String = ""
 
     init(contract: Contract) {
         self.contract = contract
@@ -130,6 +140,12 @@ struct ContractDetailView: View {
             ShareSheet(items: shareItems ?? [])
         }
 
+        .sheet(isPresented: $showPortal) {
+            if let url = portalURL {
+                SafariView(url: url, onDone: {})
+            }
+        }
+
         .sheet(isPresented: $showExistingFilePicker) {
             ContractAttachmentPickerView { file in
                 attachExisting(file)
@@ -182,15 +198,63 @@ struct ContractDetailView: View {
             Text(attachError ?? "Unknown error.")
         }
 
+        .alert("Client Portal", isPresented: .constant(portalError != nil)) {
+            Button("OK") { portalError = nil }
+        } message: {
+            Text(portalError ?? "")
+        }
+
         .alert("Workspace", isPresented: .constant(workspaceError != nil)) {
             Button("OK") { workspaceError = nil }
         } message: {
             Text(workspaceError ?? "")
         }
 
+        .onAppear {
+            lastStatusRaw = contract.statusRaw
+        }
+
         .onChange(of: contract.title) { _, _ in scheduleSave() }
         .onChange(of: contract.renderedBody) { _, _ in scheduleSave() }
-        .onChange(of: contract.statusRaw) { _, _ in scheduleSave() }
+
+        // ✅ Single, clean status watcher (autosave + index-once when transitioning to "sent")
+        .onChange(of: contract.statusRaw) { _, newValue in
+            let old = lastStatusRaw
+            lastStatusRaw = newValue
+
+            scheduleSave()
+
+            guard old != "sent", newValue == "sent" else { return }
+
+            Task {
+                do {
+                    // 1) Upload PDF -> Blob (writes contractPdfUrl + contractPdfFileName into KV)
+                    guard let client = contract.client else { return }
+
+                    let fileName: String = {
+                        let t = contract.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return (t.isEmpty ? "Contract" : t).replacingOccurrences(of: "/", with: "-") + ".pdf"
+                    }()
+
+                    // Generate PDF (on-device)
+                    let pdfData = ContractPDFGenerator.makePDFData(contract: contract, business: profiles.first)
+
+                    // Upload to backend -> Blob -> KV
+                    _ = try await PortalBackend.shared.uploadContractPDFToBlob(
+                        businessId: client.businessID.uuidString,
+                        contractId: contract.id.uuidString,
+                        fileName: fileName,
+                        pdfData: pdfData
+                    )
+
+                    // 2) Index contract into directory (so directory token passes NOT_IN_DIRECTORY)
+                    try await PortalBackend.shared.indexContractForPortalDirectory(contract: contract)
+
+                } catch {
+                    print("Portal contract upload/index failed:", error.localizedDescription)
+                }
+            }
+        }
 
         .onDisappear { forceSaveNow() }
     }
@@ -203,12 +267,10 @@ struct ContractDetailView: View {
 
 // MARK: - Toolbar
 
-// MARK: - Toolbar
-
 private extension ContractDetailView {
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
-        // Home → Dashboard
+
         ToolbarItem(placement: .topBarLeading) {
             Button {
                 dismissToDashboard?()
@@ -218,7 +280,6 @@ private extension ContractDetailView {
             .accessibilityLabel("Home")
         }
 
-        // Done (save + back)
         ToolbarItem(placement: .topBarTrailing) {
             Button {
                 forceSaveNow()
@@ -229,18 +290,25 @@ private extension ContractDetailView {
             .accessibilityLabel("Done")
         }
 
-        // Files shortcut (keeps your existing behavior)
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                openContractFolder()
-            } label: {
+            let portalDisabled = (openingPortal || contract.client?.portalEnabled == false)
+
+            Button(action: openContractPortalTapped) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+            }
+            .disabled(portalDisabled)
+            .opacity(portalDisabled ? 0.6 : 1)
+            .accessibilityLabel("Open in Client Portal")
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { openContractFolder() } label: {
                 Image(systemName: "folder")
             }
             .accessibilityLabel("Open Files")
         }
     }
 }
-
 
 // MARK: - Sections
 
@@ -363,6 +431,28 @@ private extension ContractDetailView {
 // MARK: - Actions
 
 private extension ContractDetailView {
+
+    @MainActor
+    func openContractInClientPortal() async {
+        openingPortal = true
+        portalError = nil
+
+        do {
+            let token = try await PortalBackend.shared.createContractPortalToken(contract: contract)
+            let url = PortalBackend.shared.portalContractURL(contractId: contract.id.uuidString, token: token)
+            portalURL = url
+            showPortal = true
+        } catch {
+            portalError = error.localizedDescription
+        }
+
+        openingPortal = false
+    }
+
+    @MainActor
+    private func openContractPortalTapped() {
+        Task { await openContractInClientPortal() }
+    }
 
     func scheduleSave() {
         saveWorkItem?.cancel()

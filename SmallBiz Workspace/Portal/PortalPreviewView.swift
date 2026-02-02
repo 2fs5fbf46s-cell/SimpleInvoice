@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 
+/// Internal developer tool to test the end-to-end client portal flow:
+/// Enable portal → Create invite → Mark sent → Accept invite → Get *web* session token (payload.signature).
 struct PortalPreviewView: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -8,6 +10,13 @@ struct PortalPreviewView: View {
     @Query(sort: \PortalAuditEvent.createdAt, order: .reverse) private var audit: [PortalAuditEvent]
 
     @State private var selectedClientID: UUID? = nil
+
+    // Backend settings for preview tools (stored in UserDefaults via AppStorage)
+    @AppStorage("PortalBackendBaseURL") private var portalBackendBaseURL: String = "https://smallbizworkspace-portal-backend.vercel.app"
+    @AppStorage("PortalAdminKey") private var portalAdminKey: String = ""
+
+    // Most recent invite code created in this view (needed for "Mark Sent" + "Accept")
+    @State private var lastInviteCode: String? = nil
 
     // Shows invite code OR session token
     @State private var codeOrTokenShown: String? = nil
@@ -21,7 +30,8 @@ struct PortalPreviewView: View {
             List {
                 clientSection
                 portalControlsSection
-                
+                backendSettingsSection
+
                 outputSection
                 statusSection
                 errorSection
@@ -46,105 +56,90 @@ struct PortalPreviewView: View {
 
     private var portalControlsSection: some View {
         Section("Portal Controls") {
+
             Button("Enable Portal for Selected Client") {
                 run("Enabled portal") { service, clientID in
                     try service.setEnabled(true, clientID: clientID)
-                    
-                    
                 }
             }
 
             Button("Disable Portal for Selected Client") {
                 run("Disabled portal") { service, clientID in
                     try service.setEnabled(false, clientID: clientID)
-
-                                        
                 }
             }
-            .foregroundStyle(.red)
-
-            
-            Button("Debug: Count Portal Identities") {
-                run("Checked identities") { _, clientID in
-                    let id = clientID
-                    let fd = FetchDescriptor<PortalIdentity>(predicate: #Predicate { $0.clientID == id })
-                    let matches = try modelContext.fetch(fd)
-                    infoText = "PortalIdentity rows: \(matches.count) • enabled: \(matches.filter{$0.isEnabled}.count)"
-                }
-            }
-
-            
-            
 
             Button("Create Invite (Preview)") {
                 run("Created invite") { service, clientID in
                     let result = try service.createInvite(clientID: clientID)
-
-                    // 🔴 ADD THIS LINE
-                    try modelContext.save()
-
+                    lastInviteCode = result.rawCode
                     codeOrTokenShown = result.rawCode
-
-                    service.log(
-                        clientID: clientID,
-                        sessionID: nil,
-                        origin: PortalActionOrigin.internalApp,
-                        eventType: "portal.invite.created"
-                    )
                 }
             }
 
-
             Button("Mark Invite as Sent") {
-                run("Marked invite as sent") { service, clientID in
-                    // Fetch newest invites, then filter in-memory by clientID
-                    var fd = FetchDescriptor<PortalInvite>(
-                        sortBy: [SortDescriptor(\PortalInvite.createdAt, order: .reverse)]
-                    )
-                    fd.fetchLimit = 50
-
-                    let recent = try modelContext.fetch(fd)
-                    guard let invite = recent.first(where: { $0.clientID == clientID }) else {
-                        throw simple("No invite found. Tap “Create Invite (Preview)” first.")
+                run("Marked invite as sent") { service, _ in
+                    guard let code = lastInviteCode else {
+                        throw simple("No invite code yet. Tap “Create Invite (Preview)” first.")
                     }
-
+                    guard let invite = try service.validateInvite(rawCode: code) else {
+                        throw simple("Invite not found/expired. Create a new invite.")
+                    }
                     try service.markInviteSent(invite)
                 }
             }
 
-
-            Button("Accept Invite → Create Session") {
-                run("Accepted invite + created session") { service, clientID in
-                    guard let rawInviteCode = codeOrTokenShown, !rawInviteCode.isEmpty else {
-                        throw simple("No invite code shown. Tap “Create Invite (Preview)” first.")
+            Button("Accept Invite → Create Web Session") {
+                runAsync("Accepted invite + created web session") { service, _ in
+                    guard let code = lastInviteCode else {
+                        throw simple("No invite code yet. Tap “Create Invite (Preview)” first.")
                     }
 
-                    guard let result = try service.acceptInviteAndCreateSession(rawInviteCode: rawInviteCode) else {
-                        throw simple("Invite is invalid, expired, revoked, or already accepted.")
+                    // Returns a real web token (payload.signature) from your Vercel backend seed endpoint.
+                    guard let result = try await service.acceptInviteAndCreateRemoteSession(
+                        rawInviteCode: code,
+                        backendBaseURL: portalBackendBaseURL,
+                        adminKey: portalAdminKey,
+                        scope: "directory"
+                    ) else {
+                        throw simple("Invite invalid/expired. Create a new invite.")
                     }
 
-                    // Show the session token
-                    codeOrTokenShown = result.rawToken
-
-                    // Optional log marker
-                    service.log(
-                        clientID: clientID,
-                        sessionID: result.session.id,
-                        origin: PortalActionOrigin.portal,
-                        eventType: "portal.session.created"
-                    )
+                    await MainActor.run {
+                        codeOrTokenShown = result.token
+                    }
                 }
             }
         }
     }
-    
-    
 
+    private var backendSettingsSection: some View {
+        Section("Backend Settings (Preview)") {
+            TextField("Portal Backend Base URL", text: $portalBackendBaseURL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.footnote)
+
+            SecureField("Portal Admin Key", text: $portalAdminKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.footnote)
+
+            Text("Used only for Portal Preview tooling. Must match your Vercel env vars (PORTAL_ADMIN_KEY).")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
 
     private var outputSection: some View {
         Group {
             if let codeOrTokenShown {
                 Section("Output (shown once)") {
+                    let isToken = codeOrTokenShown.contains(".")
+                    Text(isToken ? "Session Token (web portal)" : "Invite Code (not a token)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
                     Text(codeOrTokenShown)
                         .font(.footnote)
                         .textSelection(.enabled)
@@ -215,6 +210,26 @@ struct PortalPreviewView: View {
             infoText = successMessage
         } catch {
             errorText = error.localizedDescription
+        }
+    }
+
+    private func runAsync(_ successMessage: String, _ work: @escaping (PortalService, UUID) async throws -> Void) {
+        errorText = nil
+        infoText = nil
+
+        Task {
+            do {
+                guard let clientID = selectedClientID else {
+                    throw simple("Pick a client first.")
+                }
+
+                let service = PortalService(modelContext: modelContext)
+                try await work(service, clientID)
+
+                await MainActor.run { infoText = successMessage }
+            } catch {
+                await MainActor.run { errorText = error.localizedDescription }
+            }
         }
     }
 
