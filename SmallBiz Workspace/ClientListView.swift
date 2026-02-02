@@ -10,16 +10,23 @@ import SwiftData
 
 struct ClientListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Client.name) private var clients: [Client]
-    @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
+    @Query(sort: \Client.name) private var clients: [Client]
+    @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
 
     @State private var searchText: String = ""
 
     // New client sheet
     @State private var showingNewClient = false
     @State private var newClientDraft: Client? = nil
+
+    // MARK: - Scoping
+
+    private var scopedClients: [Client] {
+        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        return clients.filter { $0.businessID == bizID }
+    }
 
     private var filtered: [Client] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -32,87 +39,71 @@ struct ClientListView: View {
     }
 
     var body: some View {
-        List {
-            if filtered.isEmpty {
-                ContentUnavailableView(
-                    scopedClients.isEmpty ? "No Clients Yet" : "No Results",
-                    systemImage: "person.2",
-                    description: Text(scopedClients.isEmpty
-                                      ? "Tap + to add your first client."
-                                      : "Try a different search.")
-                )
-            } else {
-                ForEach(filtered) { client in
-                    NavigationLink {
-                        ClientEditView(client: client)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(client.name.isEmpty ? "Client" : client.name)
-                                    .font(.headline)
+        ZStack {
+            // Background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                                Spacer(minLength: 8)
+            // Subtle header wash (Option A)
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
 
-                                let count = jobsCount(for: client)
-                                if count > 0 {
-                                    Text("\(count)")
-                                        .font(.caption2)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(.thinMaterial, in: Capsule())
-                                        .foregroundStyle(.secondary)
-                                        .accessibilityLabel("\(count) jobs")
-                                }
-                            }
-
-                            if !client.email.isEmpty {
-                                Text(client.email)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            } else if !client.phone.isEmpty {
-                                Text(client.phone)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            } else {
-                                Text(" ")
-                                    .foregroundStyle(.secondary)
-                            }
+            List {
+                if filtered.isEmpty {
+                    ContentUnavailableView(
+                        scopedClients.isEmpty ? "No Clients Yet" : "No Results",
+                        systemImage: "person.2",
+                        description: Text(scopedClients.isEmpty
+                                          ? "Tap + to add your first client."
+                                          : "Try a different search.")
+                    )
+                } else {
+                    ForEach(filtered) { client in
+                        NavigationLink {
+                            ClientEditView(client: client)
+                        } label: {
+                            row(client)
                         }
-                        .padding(.vertical, 4)
                     }
+                    .onDelete(perform: deleteFiltered)
                 }
-                .onDelete(perform: deleteFiltered)
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Clients")
-        .searchable(text: $searchText, prompt: "Search clients")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search clients"
+        )
+        .settingsGear { BusinessProfileView() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    addClientAndOpenSheet()
-                } label: {
+                Button { addClientAndOpenSheet() } label: {
                     Image(systemName: "plus")
                 }
             }
         }
         .sheet(isPresented: $showingNewClient, onDismiss: {
-            // Clear draft reference after closing
             newClientDraft = nil
         }) {
             NavigationStack {
                 if let newClientDraft {
                     ClientEditView(client: newClientDraft)
+                        .navigationTitle("New Client")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button("Cancel") {
-                                    // If user cancels and it’s still empty, remove it
                                     deleteIfEmptyAndClose()
                                 }
                             }
                             ToolbarItem(placement: .confirmationAction) {
                                 Button("Done") {
-                                    // If they never entered a name, treat it like cancel
                                     if newClientDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                         deleteIfEmptyAndClose()
                                         return
@@ -120,7 +111,7 @@ struct ClientListView: View {
 
                                     do {
                                         try modelContext.save()
-                                        searchText = ""     // show immediately
+                                        searchText = ""
                                         showingNewClient = false
                                     } catch {
                                         print("Failed to save new client: \(error)")
@@ -135,6 +126,58 @@ struct ClientListView: View {
             }
             .presentationDetents([.medium, .large])
         }
+    }
+
+    // MARK: - Row UI (Option A parity)
+
+    private func row(_ client: Client) -> some View {
+        let count = jobsCount(for: client)
+
+        return HStack(alignment: .top, spacing: 12) {
+            // Leading icon chip
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Customers"))
+                Image(systemName: "person.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(client.name.isEmpty ? "Client" : client.name)
+                        .font(.headline)
+
+                    Spacer(minLength: 8)
+
+                    if count > 0 {
+                        Text("\(count)")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.thinMaterial, in: Capsule())
+                            .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("\(count) jobs")
+                    }
+                }
+
+                if !client.email.isEmpty {
+                    Text(client.email)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if !client.phone.isEmpty {
+                    Text(client.phone)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(" ")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 6)
     }
 
     // MARK: - Add / Delete
@@ -153,13 +196,6 @@ struct ClientListView: View {
         do { try modelContext.save() }
         catch { print("Failed to save new client draft: \(error)") }
     }
-    
-    private var scopedClients: [Client] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return clients.filter { $0.businessID == bizID }
-    }
-
-
 
     private func deleteIfEmptyAndClose() {
         guard let c = newClientDraft else {
@@ -167,7 +203,6 @@ struct ClientListView: View {
             return
         }
 
-        // If user never entered a name, delete the draft
         if c.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             modelContext.delete(c)
         }
@@ -181,6 +216,7 @@ struct ClientListView: View {
     private func deleteFiltered(at offsets: IndexSet) {
         let toDelete = offsets.map { filtered[$0] }
         for c in toDelete { modelContext.delete(c) }
+
         do { try modelContext.save() }
         catch { print("Failed to save deletes: \(error)") }
     }

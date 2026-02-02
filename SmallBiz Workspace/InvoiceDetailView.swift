@@ -58,6 +58,7 @@ struct InvoiceDetailView: View {
     
     @State private var portalURL: URL? = nil
     @State private var portalError: String? = nil
+    @State private var portalNotice: String? = nil
     @State private var openingPortal = false
 
 
@@ -79,6 +80,7 @@ struct InvoiceDetailView: View {
     
     @State private var showPortal = false
 
+    @ObservedObject private var portalReturn = PortalReturnRouter.shared
 
 
     private struct PendingPDFSave {
@@ -103,6 +105,12 @@ struct InvoiceDetailView: View {
     }
 
     var body: some View {
+        mainView
+    }
+
+    private var mainView: AnyView {
+        AnyView(
+
         Form {
             clientSection
             jobSection
@@ -143,12 +151,20 @@ struct InvoiceDetailView: View {
             Task { await refreshInvoicePaidStatusFromPortal() }
         }) {
             if let portalURL {
-                SafariView(url: portalURL)
+                SafariView(url: portalURL) {
+                    showPortal = false
+                }
             } else {
                 Text("Missing portal URL")
             }
         }
-
+        .onChange(of: portalReturn.didReturnFromPortal) { _, newValue in
+            guard newValue else { return }
+            showPortal = false
+            portalReturn.consumeReturnFlag()
+            Task { await refreshInvoicePaidStatusFromPortal() }
+        }
+        
 
         // ✅ Open Job Workspace Folder directly
         .sheet(item: $workspaceDestination) { dest in
@@ -321,7 +337,10 @@ struct InvoiceDetailView: View {
                 try? modelContext.save()
             }
         }
+    
+        )
     }
+
 
     // MARK: - Title
 
@@ -489,11 +508,55 @@ struct InvoiceDetailView: View {
         case .cancelled: return "Cancelled"
         }
     }
+    @MainActor
+    private func buildPortalLink(mode: String? = nil) async throws -> URL {
+        portalError = nil
+        portalNotice = nil
 
+        if isClientPortalEnabled == false {
+            throw NSError(
+                domain: "Portal",
+                code: 403,
+                userInfo: [NSLocalizedDescriptionKey: "Client portal is disabled for this client."]
+            )
+        }
 
+        let amountCents = Int((invoice.total * 100).rounded())
+        guard amountCents > 0 else {
+            throw NSError(
+                domain: "Portal",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "This invoice total is $0.00. Add line items / amount before requesting payment."
+                ]
+            )
+        }
 
+        let businessName = profiles.first?.name  // or your active business profile name
+        let token = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice, businessName: businessName)
 
+        let modeValue = (mode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? mode!
+            : "live"
+
+        let url = PortalBackend.shared.portalInvoiceURL(
+            invoiceId: invoice.id.uuidString,
+            token: token,
+            mode: modeValue
+        )
+        return url
+
+    }
     
+
+    @MainActor
+    private func showNotice(_ text: String) {
+        portalNotice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if portalNotice == text { portalNotice = nil }
+        }
+    }
+
 
     private var datesSection: some View {
         Section("Dates") {
@@ -512,62 +575,205 @@ struct InvoiceDetailView: View {
         }
         .disabled(isEstimateLocked)
     }
+    
+        private var isClientPortalEnabled: Bool {
+        invoice.client?.portalEnabled ?? true
+    }
 
+private var isPortalExpiredForThisInvoice: Bool {
+        portalReturn.expiredInvoiceID == invoice.id
+    }
 
     private var portalSection: some View {
         Section("Client Portal") {
-            Button {
-                Task {
-                    openingPortal = true
-                    portalError = nil
+            if !isClientPortalEnabled {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "nosign")
+                        .foregroundStyle(.orange)
 
-                    do {
-                        
-                        let amountCents = Int((invoice.total * 100).rounded())
-                        guard amountCents > 0 else {
-                            portalError = "This invoice total is $0.00. Add line items / amount before requesting payment."
-                            openingPortal = false
-                            return
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Client portal is disabled for this client.")
+                            .font(.caption)
+
+                        Text("Enable it in the client’s settings to generate a new portal link.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(10)
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            if isPortalExpiredForThisInvoice {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(.orange)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("This client link has expired.")
+                            .font(.caption)
+
+                        Button("Regenerate link") {
+                            guard isClientPortalEnabled else { return }
+
+                            Task {
+                                openingPortal = true
+                                portalError = nil
+                                portalNotice = nil
+
+                                do {
+                                    let url = try await buildPortalLink(mode: nil)
+                                    portalURL = url
+                                    showPortal = true
+                                    portalReturn.expiredInvoiceID = nil
+                                } catch {
+                                    portalError = error.localizedDescription
+                                }
+
+                                openingPortal = false
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+
+                    Spacer()
+                }
+                .padding(10)
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+
+            HStack(spacing: 12) {
+                Button {
+                    Task {
+                        openingPortal = true
+                        portalError = nil
+                        portalNotice = nil
+
+                        do {
+                            let url = try await buildPortalLink(mode: nil)
+                            portalURL = url
+                            showPortal = true
+                        } catch {
+                            portalURL = nil
+                            print("Portal open failed:", error)
+                            portalError = error.localizedDescription
                         }
 
-                        let seed = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice)
+                        openingPortal = false
+                    }
+                } label: {
+                    if openingPortal {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Opening secure portal…")
+                        }
+                    } else {
+                        // Small polish: if already paid, label it as such
+                        if invoice.isPaid {
+                            Label("View Client Portal (Paid)", systemImage: "checkmark.seal")
+                        } else {
+                            Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
+                        }
+                    }
+                }
+                .disabled(openingPortal || !isClientPortalEnabled)
+                .opacity((openingPortal || !isClientPortalEnabled) ? 0.6 : 1)
 
-                        let url = PortalBackend.shared.portalInvoiceURL(
-                            invoiceId: invoice.id.uuidString,
-                            token: seed.token
-                        )
+                Spacer()
 
-                        portalURL = url
-                        showPortal = true
-                                                          
-                            
-                    } catch {
-                        print("Portal open failed:", error)
-                        portalError = "Failed to open portal preview: \(error)"
+                Menu {
+                    Button {
+                        Task {
+                            openingPortal = true
+                            portalError = nil
+                            portalNotice = nil
+
+                            do {
+                                let url = try await buildPortalLink(mode: nil)
+                                UIPasteboard.general.string = url.absoluteString
+                                showNotice("Client link copied")
+                            } catch {
+                                print("Copy link failed:", error)
+                                portalError = error.localizedDescription
+                            }
+
+                            openingPortal = false
+                        }
+                    } label: {
+                        Label("Copy Client Link", systemImage: "doc.on.doc")
                     }
 
-                    openingPortal = false
-                }
-            } label: {
-                if openingPortal {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Opening portal…")
+                    Button {
+                        Task {
+                            openingPortal = true
+                            portalError = nil
+                            portalNotice = nil
+
+                            do {
+                                let url = try await buildPortalLink(mode: nil)
+                                // Reuse your existing ShareSheet plumbing
+                                shareItems = [url]
+                                showNotice("Sharing link…")
+                            } catch {
+                                print("Share link failed:", error)
+                                portalError = error.localizedDescription
+                            }
+
+                            openingPortal = false
+                        }
+                    } label: {
+                        Label("Share Client Link", systemImage: "square.and.arrow.up")
                     }
-                } else {
-                    Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
+
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .imageScale(.large)
+                        .padding(.vertical, 6)
                 }
+                .disabled(openingPortal || !isClientPortalEnabled)
+                .opacity((openingPortal || !isClientPortalEnabled) ? 0.6 : 1)
             }
-            .disabled(openingPortal)
 
-            if let portalError {
-                Text(portalError)
-                    .foregroundStyle(.red)
+            if let portalNotice {
+                Text(portalNotice)
+                    .foregroundStyle(.secondary)
                     .font(.caption)
             }
+
+            if let portalErrorMessage = portalError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(portalErrorMessage)
+                            .font(.caption)
+
+                        Button("Retry") {
+                            self.portalError = nil
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+
+                    Spacer()
+                }
+                .padding(10)
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            // Optional microcopy (nice polish)
+            Text("Client links expire after 30 days.")
+                .foregroundStyle(.secondary)
+                .font(.caption2)
         }
     }
-
+    
     private var notesSection: some View {
         Section("Notes") {
             Toggle("Add Notes", isOn: $includeNotes)
@@ -882,6 +1088,15 @@ struct InvoiceDetailView: View {
             try modelContext.save()
         } catch {
             exportError = error.localizedDescription
+            
+            Task {
+                do {
+                    try modelContext.save()
+                    Task { await indexInvoiceIfPossible() }   // ✅ success path
+                } catch {
+                    exportError = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -903,6 +1118,7 @@ struct InvoiceDetailView: View {
 
             Button {
                 forceSaveNow()
+                Task { await indexInvoiceIfPossible() }
                 dismiss()
             } label: {
                 Image(systemName: "checkmark")
@@ -1085,6 +1301,24 @@ struct InvoiceDetailView: View {
                 .font(isEmphasis ? .headline : .body)
         }
     }
+    
+    @MainActor
+    private func indexInvoiceIfPossible() async {
+        guard invoice.documentType == "invoice" else { return }
+        guard let client = invoice.client else { return }
+        guard client.portalEnabled else { return }
+
+        // Require a “real” invoice number as the finalize signal
+        let num = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !num.isEmpty else { return }
+
+        do {
+            try await PortalBackend.shared.indexInvoiceForDirectory(invoice: invoice, client: client)
+        } catch {
+            print("Index invoice failed:", error)
+        }
+    }
+
 
     private func addItem() {
         let newItem = LineItem(itemDescription: "", quantity: 1, unitPrice: 0)

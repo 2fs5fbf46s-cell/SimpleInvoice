@@ -34,38 +34,57 @@ struct InvoiceListView: View {
     @State private var searchText: String = ""
 
     var body: some View {
-        List {
-            // MARK: - Filter Toggle
-            Section {
-                Picker("Filter", selection: $filter) {
-                    ForEach(Filter.allCases) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
+        ZStack {
+            // Background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-            // MARK: - Content
-            if filteredInvoices.isEmpty {
-                ContentUnavailableView(
-                    "No Invoices",
-                    systemImage: "doc.text",
-                    description: Text("Try changing the filter or create a new invoice.")
-                )
-            } else {
-                ForEach(filteredInvoices) { invoice in
-                    NavigationLink {
-                        InvoiceDetailView(invoice: invoice)
-                    } label: {
-                        row(invoice)
+            // Subtle header wash (Option A)
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
+
+            List {
+                // MARK: - Filter Toggle
+                Section {
+                    Picker("Filter", selection: $filter) {
+                        ForEach(Filter.allCases) { f in
+                            Text(f.rawValue).tag(f)
+                        }
                     }
+                    .pickerStyle(.segmented)
                 }
-                .onDelete(perform: deleteInvoices)
+
+                // MARK: - Content
+                if filteredInvoices.isEmpty {
+                    ContentUnavailableView(
+                        "No Invoices",
+                        systemImage: "doc.text",
+                        description: Text("Try changing the filter or create a new invoice.")
+                    )
+                } else {
+                    ForEach(filteredInvoices) { invoice in
+                        NavigationLink {
+                            InvoiceDetailView(invoice: invoice)
+                        } label: {
+                            row(invoice)
+                        }
+                    }
+                    .onDelete(perform: deleteInvoices)
+                }
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Invoices")
-        .searchable(text: $searchText, prompt: "Search invoices")
-        
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search invoices"
+        )
+        .settingsGear { BusinessProfileView() }
 
         // MARK: - Toolbar
         .toolbar {
@@ -83,21 +102,16 @@ struct InvoiceListView: View {
                         Label("Saved Items", systemImage: "tray")
                     }
 
-                    Button {
-                        showingTemplates = true
-                    } label: {
+                    Button { showingTemplates = true } label: {
                         Label("Templates", systemImage: "square.grid.2x2")
                     }
-
                 } label: {
                     Image(systemName: "gearshape")
                 }
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingNewInvoice = true
-                } label: {
+                Button { showingNewInvoice = true } label: {
                     Image(systemName: "plus")
                 }
             }
@@ -107,7 +121,6 @@ struct InvoiceListView: View {
         .sheet(isPresented: $showingNewInvoice) {
             NewInvoiceView()
         }
-
         .sheet(isPresented: $showingTemplates) {
             NavigationStack {
                 InvoiceTemplatePickerView(
@@ -132,10 +145,10 @@ struct InvoiceListView: View {
         }
     }
 
+
     // MARK: - Filtered data (✅ excludes estimates)
 
     private var filteredInvoices: [Invoice] {
-        // 🚫 Exclude estimates from invoices list
         let nonEstimates = scopedInvoices.filter { $0.documentType != "estimate" }
 
         let base: [Invoice]
@@ -155,47 +168,64 @@ struct InvoiceListView: View {
             ($0.client?.name ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
-    
+
     private var scopedInvoices: [Invoice] {
         guard let bizID = activeBiz.activeBusinessID else { return [] }
         return invoices.filter { $0.businessID == bizID }
     }
 
+    // MARK: - Row UI (Option A polish: icon chip + content)
 
-    // MARK: - Row UI
-
-    @ViewBuilder
     private func row(_ invoice: Invoice) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Invoice \(invoice.invoiceNumber)")
-                    .font(.headline)
+        let statusText = invoice.isPaid ? "PAID" : "UNPAID"
+        let chip = SBWTheme.chip(forStatus: statusText)
 
-                Spacer()
+        return HStack(alignment: .top, spacing: 12) {
 
-                Text(invoice.isPaid ? "PAID" : "UNPAID")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(invoice.isPaid ? .green.opacity(0.15) : .orange.opacity(0.15))
-                    .clipShape(Capsule())
+            // Leading icon chip (matches Dashboard/Jobs/Estimates)
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Invoices"))
+                Image(systemName: "doc.plaintext")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
             }
+            .frame(width: 36, height: 36)
 
-            Text(invoice.client?.name ?? "No Client")
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(invoice.invoiceNumber.isEmpty ? "Invoice" : "Invoice \(invoice.invoiceNumber)")
+                        .font(.headline)
 
-            HStack {
-                Text(invoice.issueDate, style: .date)
+                    Spacer()
+
+                    Text(statusText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(chip.fg)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(chip.bg)
+                        .clipShape(Capsule())
+                }
+
+                Text(invoice.client?.name ?? "No Client")
                     .foregroundStyle(.secondary)
-                Spacer()
-                Text(
-                    invoice.total,
-                    format: .currency(code: Locale.current.currency?.identifier ?? "USD")
-                )
-                .font(.subheadline.weight(.semibold))
+
+                HStack {
+                    Text(invoice.issueDate, style: .date)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Text(
+                        invoice.total,
+                        format: .currency(code: Locale.current.currency?.identifier ?? "USD")
+                    )
+                    .font(.subheadline.weight(.semibold))
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     // MARK: - Deletes
@@ -269,7 +299,6 @@ private extension InvoiceListView {
                 client: nil,
                 items: []
             )
-
 
             if invoice.items == nil { invoice.items = [] }
 

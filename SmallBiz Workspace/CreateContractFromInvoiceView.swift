@@ -4,6 +4,7 @@ import SwiftData
 struct CreateContractFromInvoiceView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     @Bindable var invoice: Invoice
 
@@ -83,16 +84,20 @@ struct CreateContractFromInvoiceView: View {
                 }
             }
         }
-        .alert("Error", isPresented: .constant(errorText != nil), actions: {
-            Button("OK") { errorText = nil }
-        }, message: {
+        .alert("Error", isPresented: Binding(
+            get: { errorText != nil },
+            set: { if !$0 { errorText = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorText = nil }
+        } message: {
             Text(errorText ?? "Unknown error.")
-        })
+        }
         .onAppear {
             if selectedTemplate == nil { selectedTemplate = templates.first }
         }
     }
 
+    // If you want this scoped later, we can fetch by businessID.
     private var business: BusinessProfile? { profiles.first }
 
     private func generatePreview() {
@@ -104,17 +109,25 @@ struct CreateContractFromInvoiceView: View {
 
     private func saveDraft() {
         guard let template = selectedTemplate else { return }
+
+        guard let bizID = activeBiz.activeBusinessID else {
+            errorText = "No active business selected."
+            return
+        }
+
         do {
             _ = try ContractCreation.create(
                 context: modelContext,
                 template: template,
+                businessID: bizID,
                 business: business,
                 client: invoice.client,
                 invoice: invoice
             )
+
             dismiss()
         } catch {
-            errorText = error.localizedDescription
+            errorText = "Failed to create contract: \(error.localizedDescription)"
         }
     }
 }

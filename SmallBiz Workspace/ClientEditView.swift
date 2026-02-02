@@ -32,6 +32,13 @@ struct ClientEditView: View {
     @State private var zipURL: URL? = nil
     @State private var zipError: String? = nil
 
+    // ✅ Client Portal Directory
+    @State private var openingClientPortal = false
+    @State private var clientPortalURL: URL? = nil
+    @State private var showClientPortal = false
+    @State private var clientPortalError: String? = nil
+
+
     // ✅ Flow A: Client → auto-create Job + workspace
     @Query private var clientJobs: [Job]
     @State private var didAutoCreateInitialJob = false
@@ -60,22 +67,21 @@ struct ClientEditView: View {
         )
     }
 
-    var body: some View {
+    var body: some View { bodyContent }
+
+
+
+    @ViewBuilder private var bodyContent: some View {
         Form {
             clientSection
             addressSection
             jobsSection
             attachmentsSection
             
-            Section("Client Portal") {
-                NavigationLink {
-                    ClientPortalPreviewView()
-                } label: {
-                    Label("Open Portal Preview", systemImage: "rectangle.portrait.and.arrow.right")
-                }
-            }
+            portalSection
 
             Section {
+
                 Text("Changes auto-save.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -109,6 +115,14 @@ struct ClientEditView: View {
         .navigationDestination(item: $navigateToJob) { job in
             JobDetailView(job: job)
         }
+
+        // ✅ Client Portal Directory Safari
+        .sheet(isPresented: $showClientPortal) {
+            if let url = clientPortalURL {
+                SafariView(url: url, onDone: {})
+            }
+        }
+
 
         // ✅ Import directly to client attachments
         .fileImporter(
@@ -155,6 +169,18 @@ struct ClientEditView: View {
         }
 
         // Errors
+        
+
+        .alert("Client Portal", isPresented: Binding(
+            get: { clientPortalError != nil },
+            set: { if !$0 { clientPortalError = nil } }
+        )) {
+            Button("OK", role: .cancel) { clientPortalError = nil }
+        } message: {
+            Text(clientPortalError ?? "")
+        }
+
+
         .alert("Save Failed", isPresented: Binding(
             get: { saveError != nil },
             set: { if !$0 { saveError = nil } }
@@ -338,7 +364,31 @@ struct ClientEditView: View {
         navigateToJob = job
     }
 
-    private var attachmentsSection: some View {
+    
+    private var portalSection: some View {
+        Section("Client Portal") {
+            Toggle("Enable Client Portal", isOn: $client.portalEnabled)
+
+            let portalHelpText = client.portalEnabled
+                ? "This client can view invoices, contracts, and shared files online."
+                : "Client portal is disabled for this client."
+
+            Text(portalHelpText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button(action: openClientPortalDirectory) {
+                Label(openingClientPortal ? "Opening…" : "Open Client Portal Directory",
+                      systemImage: "person.2.badge.gearshape")
+            }
+            .disabled(openingClientPortal || !client.portalEnabled)
+            .opacity((openingClientPortal || !client.portalEnabled) ? 0.6 : 1)
+
+            // Keep your existing portal preview navigation if present elsewhere
+        }
+    }
+
+private var attachmentsSection: some View {
         Section("Attachments") {
             if attachments.isEmpty {
                 Text("No attachments yet")
@@ -423,8 +473,33 @@ struct ClientEditView: View {
             saveError = error.localizedDescription
         }
     }
-    
-    
+    // MARK: - Client Portal Directory
+
+    @MainActor
+    private func openClientPortalDirectory() {
+        guard client.portalEnabled else { return }
+
+        openingClientPortal = true
+        clientPortalError = nil
+
+        Task {
+            do {
+                let token = try await PortalBackend.shared.createClientDirectoryPortalToken(
+                    client: client,
+                    mode: "live"
+                )
+                let url = PortalBackend.shared.buildClientDirectoryPortalURL(
+                    client: client,
+                    token: token
+                )
+                clientPortalURL = url
+                showClientPortal = true
+            } catch {
+                clientPortalError = error.localizedDescription
+            }
+            openingClientPortal = false
+        }
+    }
 
     // MARK: - Attachments helpers
 
@@ -580,6 +655,7 @@ struct ClientEditView: View {
     }
 
 }
+
 // MARK: - Small UI helpers
 
 private struct StatusBadge: View {

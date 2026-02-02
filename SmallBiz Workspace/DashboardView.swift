@@ -10,8 +10,6 @@ struct DashboardView: View {
     @Query(sort: \Booking.startDate, order: .forward)
     private var bookings: [Booking]
 
-
-
     // MARK: - Computed: Profile
     private var profileName: String {
         let name = profiles.first?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -38,12 +36,10 @@ struct DashboardView: View {
             .reduce(0) { $0 + $1.total }
     }
 
-    // Placeholder until Bookings is implemented
     private var upcomingBookingsCount: Int {
         let now = Date()
         return bookings.filter { $0.endDate >= now && $0.status != "canceled" }.count
     }
-
 
     // MARK: - Layout
     private let columns: [GridItem] = [
@@ -52,146 +48,179 @@ struct DashboardView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        ZStack {
+            // Base background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                // Header
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(profileName)
-                            .font(.system(size: 28, weight: .bold))
+            // ✅ Option A: subtle header wash
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
 
-                        Text("Dashboard")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
 
-                    Spacer()
+                    // Header
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(profileName)
+                                .font(.system(size: 28, weight: .bold))
 
-                    // Logo in top-right
-                    Group {
-                        if let logoImage {
-                            Image(uiImage: logoImage)
-                                .resizable()
-                                .scaledToFit()
-                        } else {
-                            Image(systemName: "briefcase.fill")
-                                .imageScale(.large)
+                            Text("Dashboard")
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }
+
+                        Spacer()
+
+                        // Logo in top-right
+                        Group {
+                            if let logoImage {
+                                Image(uiImage: logoImage)
+                                    .resizable()
+                                    .scaledToFit()
+                            } else {
+                                Image(systemName: "briefcase.fill")
+                                    .imageScale(.large)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(.secondarySystemGroupedBackground))
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                        )
                     }
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.top, 6)
+
+                    // Stats strip
+                    HStack(spacing: 12) {
+                        StatCard(
+                            title: "Weekly",
+                            value: currency(weekPaidTotal),
+                            subtitle: "Paid"
+                        )
+
+                        StatCard(
+                            title: "Monthly",
+                            value: currency(monthPaidTotal),
+                            subtitle: "Paid"
+                        )
+
+                        StatCard(
+                            title: "Schedule",
+                            value: "\(upcomingBookingsCount)",
+                            subtitle: "Upcoming"
+                        )
+                    }
+
+                    // Date row
+                    HStack {
+                        Text(formattedDate(Date()))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text(formattedTime(Date()))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 2)
+
+                    // Main tiles grid
+                    LazyVGrid(columns: columns, spacing: 12) {
+
+                        NavigationLink { InvoiceListView() } label: {
+                            TileCard(
+                                title: "Invoices",
+                                subtitle: "View & send",
+                                systemImage: "doc.plaintext",
+                                tint: .blue
+                            )
+                        }
+
+                        NavigationLink { BookingsListView() } label: {
+                            TileCard(
+                                title: "Bookings",
+                                subtitle: "Schedule",
+                                systemImage: "calendar.badge.clock",
+                                tint: .blue
+                            )
+                        }
+
+                        NavigationLink { EstimateListView() } label: {
+                            TileCard(
+                                title: "Estimates",
+                                subtitle: "Quotes",
+                                systemImage: "doc.text.magnifyingglass",
+                                tint: .green
+                            )
+                        }
+
+                        NavigationLink { ClientListView() } label: {
+                            TileCard(
+                                title: "Customers",
+                                subtitle: "Clients",
+                                systemImage: "person.2",
+                                tint: .green
+                            )
+                        }
+
+                        NavigationLink { PortalDirectoryLauncherView() } label: {
+                            TileCard(
+                                title: "Client Portal",
+                                subtitle: "Directory",
+                                systemImage: "rectangle.portrait.and.arrow.right",
+                                tint: .gradient
+                            )
+                        }
+
+                        NavigationLink { JobsListView() } label: {
+                            TileCard(
+                                title: "Requests",
+                                subtitle: "Jobs",
+                                systemImage: "tray.full",
+                                tint: .gradient
+                            )
+                        }
+
+                        NavigationLink { ContractsHomeView() } label: {
+                            TileCard(
+                                title: "Contracts",
+                                subtitle: "View & send",
+                                systemImage: "doc.text",
+                                tint: .mint
+                            )
+                        }
+
+                        NavigationLink { SavedItemsView() } label: {
+                            TileCard(
+                                title: "Inventory",
+                                subtitle: "Saved items",
+                                systemImage: "tag",
+                                tint: .mint
+                            )
+                        }
+                    }
+                    .padding(.top, 4)
+
+                    Spacer(minLength: 18)
                 }
-                .padding(.top, 6)
-
-                // Stats strip
-                HStack(spacing: 12) {
-                    StatCard(
-                        title: "Weekly",
-                        value: currency(weekPaidTotal),
-                        subtitle: "Paid"
-                    )
-
-                    StatCard(
-                        title: "Monthly",
-                        value: currency(monthPaidTotal),
-                        subtitle: "Paid"
-                    )
-
-                    StatCard(
-                        title: "Schedule",
-                        value: "\(upcomingBookingsCount)",
-                        subtitle: "Upcoming"
-                    )
-                }
-
-                // Date row
-                HStack {
-                    Text(formattedDate(Date()))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Text(formattedTime(Date()))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 2)
-
-                // Main tiles grid (2x3)
-                LazyVGrid(columns: columns, spacing: 12) {
-
-                    NavigationLink {
-                        InvoiceListView()
-                    } label: {
-                        TileCard(
-                            title: "Invoices",
-                            subtitle: "View & send",
-                            systemImage: "doc.plaintext"
-                        )
-                    }
-
-                    NavigationLink {
-                        BookingsListView()
-                    } label: {
-                        TileCard(
-                            title: "Bookings",
-                            subtitle: "Schedule",
-                            systemImage: "calendar.badge.clock"
-                        )
-                    }
-
-                    NavigationLink {
-                        EstimateListView()
-                    } label: {
-                        TileCard(
-                            title: "Estimates",
-                            subtitle: "Quotes",
-                            systemImage: "doc.text.magnifyingglass"
-                        )
-                    }
-
-                    NavigationLink {
-                        ClientListView()
-                    } label: {
-                        TileCard(
-                            title: "Customers",
-                            subtitle: "Clients",
-                            systemImage: "person.2"
-                        )
-                    }
-
-                    NavigationLink {
-                        JobsListView()
-                    } label: {
-                        TileCard(
-                            title: "Requests",
-                            subtitle: "Jobs",
-                            systemImage: "tray.full"
-                        )
-                    }
-
-                    NavigationLink {
-                        SavedItemsView()
-                    } label: {
-                        TileCard(
-                            title: "Inventory",
-                            subtitle: "Saved items",
-                            systemImage: "tag"
-                        )
-                    }
-                }
-                .padding(.top, 4)
-
-                Spacer(minLength: 18)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
         }
-        .background(Color(.systemGroupedBackground))
         .navigationTitle("") // Keep header custom
+        .settingsGear { BusinessProfileView() }
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -219,16 +248,106 @@ struct DashboardView: View {
 // MARK: - Tile Card
 
 private struct TileCard: View {
+    enum Tint {
+        case blue, green, gradient
+        case teal, indigo, orange, purple, mint
+        case neutral
+    }
+
+    
+
     let title: String
     let subtitle: String
     let systemImage: String
+    let tint: Tint
+
+    private var wash: LinearGradient {
+        switch tint {
+        case .blue:
+            return LinearGradient(
+                colors: [SBWTheme.brandBlue.opacity(0.14), SBWTheme.brandBlue.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .green:
+            return LinearGradient(
+                colors: [SBWTheme.brandGreen.opacity(0.14), SBWTheme.brandGreen.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .gradient:
+            return LinearGradient(
+                colors: [SBWTheme.brandBlue.opacity(0.12), SBWTheme.brandGreen.opacity(0.12)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+        case .teal:
+            return LinearGradient(
+                colors: [Color.teal.opacity(0.14), Color.teal.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .indigo:
+            return LinearGradient(
+                colors: [Color.indigo.opacity(0.14), Color.indigo.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .orange:
+            return LinearGradient(
+                colors: [Color.orange.opacity(0.14), Color.orange.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .purple:
+            return LinearGradient(
+                colors: [Color.purple.opacity(0.14), Color.purple.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .mint:
+            return LinearGradient(
+                colors: [Color.mint.opacity(0.14), Color.mint.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+        case .neutral:
+            return LinearGradient(
+                colors: [Color.black.opacity(0.05), Color.black.opacity(0.02)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+    private var iconChip: AnyShapeStyle {
+        switch tint {
+        case .blue:     return AnyShapeStyle(SBWTheme.blueTint)
+        case .green:    return AnyShapeStyle(SBWTheme.greenTint)
+        case .gradient: return AnyShapeStyle(SBWTheme.brandGradient.opacity(0.20))
+
+        case .teal:     return AnyShapeStyle(Color.teal.opacity(0.18))
+        case .indigo:   return AnyShapeStyle(Color.indigo.opacity(0.18))
+        case .orange:   return AnyShapeStyle(Color.orange.opacity(0.18))
+        case .purple:   return AnyShapeStyle(Color.purple.opacity(0.18))
+        case .mint:     return AnyShapeStyle(Color.mint.opacity(0.18))
+
+        case .neutral:  return AnyShapeStyle(Color.black.opacity(0.06))
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: systemImage)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.primary)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(iconChip)
+                    Image(systemName: systemImage)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+                .frame(width: 34, height: 34)
 
                 Spacer()
             }
@@ -244,14 +363,21 @@ private struct TileCard: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .frame(height: 110)
+        .frame(height: 112)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+
+                // ✅ subtle gradient wash inside the tile
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(wash)
+                    .blendMode(.normal)
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                .stroke(SBWTheme.cardStroke, lineWidth: 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
@@ -265,7 +391,14 @@ private struct StatCard: View {
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+
+            // ✅ Accent strip
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(SBWTheme.statAccent(for: title))
+                .frame(width: 28, height: 4)
+                .padding(.top, 2)
+
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -274,21 +407,21 @@ private struct StatCard: View {
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.85)
 
             Text(subtitle)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                .stroke(SBWTheme.cardStroke, lineWidth: 1)
         )
     }
 }

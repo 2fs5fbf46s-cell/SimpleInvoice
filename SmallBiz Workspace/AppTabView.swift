@@ -48,6 +48,9 @@ struct AppTabView: View {
             .tag(AppTab.more)
             .tabItem { Label("More", systemImage: "ellipsis") }
         }
+        
+        .tint(SBWTheme.brandBlue)
+        
         .onChange(of: tab) { _, newValue in
             if newValue == .create {
                 tab = .dashboard

@@ -12,6 +12,9 @@ final class BusinessProfile {
     var phone: String = ""
     var address: String = ""
 
+
+    // Client Portal
+    var portalEnabled: Bool = true
     var defaultThankYou: String = "Thank you for your business!"
     var defaultTerms: String = "Payment is due by the due date listed on this invoice."
 
@@ -75,9 +78,7 @@ Other
 final class Client {
     var id: UUID = Foundation.UUID()
     var businessID: UUID = UUID()
-
-    
-
+    var portalEnabled: Bool = true
     var name: String = ""
     var email: String = ""
     var phone: String = ""
@@ -236,6 +237,7 @@ final class LineItem {
 @Model
 final class CatalogItem {
     var id: UUID = Foundation.UUID()
+    var businessID: UUID = UUID()
 
     var name: String = ""
     var details: String = ""

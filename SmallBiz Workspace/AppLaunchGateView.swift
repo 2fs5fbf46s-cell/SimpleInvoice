@@ -56,13 +56,7 @@ struct AppLaunchGateView<Content: View>: View {
 
         do {
             
-            let keys = Bundle.main.infoDictionary?.keys.sorted() ?? []
-            print("🔎 Info.plist key count:", keys.count)
-            print("🔎 Has PORTAL_ADMIN_KEY:", Bundle.main.infoDictionary?.keys.contains("PORTAL_ADMIN_KEY") == true)
-            print("🔎 PORTAL_ADMIN_KEY raw:", Bundle.main.object(forInfoDictionaryKey: "PORTAL_ADMIN_KEY") as Any)
-            print("🔎 PORTAL_ADMIN_KEY length:", PortalAdminKey.value.count)
-
-
+            
             // 1) Warm the container/store (forces SwiftData store init early)
             try warmContainer()
 
