@@ -192,11 +192,13 @@ struct EstimateListView: View {
 
         // MARK: - New Estimate Detail Sheet (supports Cancel-delete behavior)
         .sheet(isPresented: $showingNewEstimate, onDismiss: {
-            cancelAndDeleteIfDraftIsEmpty()
+            newEstimate = nil
         }) {
+
             NavigationStack {
                 if let inv = newEstimate {
                     InvoiceDetailView(invoice: inv)
+                        .interactiveDismissDisabled()
                         .navigationTitle("New Estimate")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {

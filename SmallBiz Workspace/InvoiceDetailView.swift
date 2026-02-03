@@ -60,6 +60,8 @@ struct InvoiceDetailView: View {
     @State private var portalError: String? = nil
     @State private var portalNotice: String? = nil
     @State private var openingPortal = false
+    @State private var uploadingPortalPDF = false
+    @State private var portalPDFNotice: String? = nil
 
 
     // Open job workspace folder in Files
@@ -533,6 +535,35 @@ struct InvoiceDetailView: View {
         }
 
         let businessName = profiles.first?.name  // or your active business profile name
+
+        // Best-effort: upload the latest invoice PDF so the portal can offer a Download PDF button.
+        // If upload fails, we still allow the portal link to be generated.
+        do {
+            uploadingPortalPDF = true
+            portalPDFNotice = nil
+
+            let business = profiles.first
+            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+            let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
+            let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackID = String(describing: invoice.id)
+            let namePart = safeNumber.isEmpty ? String(fallbackID.suffix(8)) : safeNumber
+            let pdfFileName = "\(prefix)-\(namePart).pdf"
+
+            _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
+                businessId: invoice.businessID.uuidString,
+                invoiceId: String(describing: invoice.id),
+                fileName: pdfFileName,
+                pdfData: pdfData
+            )
+
+            portalPDFNotice = "Portal PDF uploaded"
+        } catch {
+            // Non-blocking
+            print("Portal PDF upload failed:", error)
+        }
+        uploadingPortalPDF = false
+
         let token = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice, businessName: businessName)
 
         let modeValue = (mode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
@@ -545,7 +576,6 @@ struct InvoiceDetailView: View {
             mode: modeValue
         )
         return url
-
     }
     
 
@@ -741,6 +771,11 @@ private var isPortalExpiredForThisInvoice: Bool {
 
             if let portalNotice {
                 Text(portalNotice)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+            if let portalPDFNotice {
+                Text(portalPDFNotice)
                     .foregroundStyle(.secondary)
                     .font(.caption)
             }
@@ -1131,6 +1166,40 @@ private var isPortalExpiredForThisInvoice: Bool {
             Button { previewPDF() } label: { Image(systemName: "doc.richtext") }
 
             Menu {
+                Button {
+                    Task {
+                        uploadingPortalPDF = true
+                        portalPDFNotice = nil
+                        do {
+                            let business = profiles.first
+                            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+                            let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
+                            let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let fallbackID = String(describing: invoice.id)
+                            let namePart = safeNumber.isEmpty ? String(fallbackID.suffix(8)) : safeNumber
+                            let pdfFileName = "\(prefix)-\(namePart).pdf"
+
+                            _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
+                                businessId: invoice.businessID.uuidString,
+                                invoiceId: String(describing: invoice.id),
+                                fileName: pdfFileName,
+                                pdfData: pdfData
+                            )
+                            portalPDFNotice = "Portal PDF uploaded"
+                        } catch {
+                            exportError = error.localizedDescription
+                        }
+                        uploadingPortalPDF = false
+                    }
+                } label: {
+                    if uploadingPortalPDF {
+                        Label("Uploading Portal PDF…", systemImage: "arrow.up.doc")
+                    } else {
+                        Label("Upload PDF to Client Portal", systemImage: "arrow.up.doc")
+                    }
+                }
+
+                Divider()
                 Button("Share PDF Only") { sharePDFOnly() }
                 Button("Share PDF + Attachments") { sharePDFWithAttachments() }
                 Button("Share ZIP Package (PDF + Attachments)") { shareZIPPackage() }
@@ -1651,7 +1720,7 @@ private var isPortalExpiredForThisInvoice: Bool {
     // MARK: - Attachments helpers
 
     private var invoiceFolderKey: String {
-        "invoice:\(invoice.id.uuidString)"
+        "invoice:\(String(describing: invoice.id))"
     }
 
     private func attach(_ file: FileItem) {
