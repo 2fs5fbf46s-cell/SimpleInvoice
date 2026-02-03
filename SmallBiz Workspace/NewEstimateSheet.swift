@@ -2,20 +2,13 @@
 //  NewEstimateSheet.swift
 //  SmallBiz Workspace
 //
-//  Created by Javon Freeman on 2/1/26.
-//
 
-import Foundation
 import SwiftUI
 import SwiftData
 
 struct NewEstimateSheet: View {
-    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Environment(\.dismiss) private var dismiss
-
-    @Query(sort: \Client.name, order: .forward)
-    private var clients: [Client]
 
     @Binding var name: String
     @Binding var client: Client?
@@ -23,78 +16,49 @@ struct NewEstimateSheet: View {
     let onCancel: () -> Void
     let onCreate: () -> Void
 
+    // Pull all clients; filter after based on active business.
+    @Query(sort: \Client.name, order: .forward)
+    private var allClients: [Client]
+
     private var scopedClients: [Client] {
         guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return clients.filter { $0.businessID == bizID }
+        return allClients.filter { $0.businessID == bizID }
     }
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("New Estimate")
-                    .font(.largeTitle.bold())
-                    .padding(.top, 8)
-
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Estimate")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.bottom, 8)
-
+            Form {
+                Section("Estimate") {
                     TextField("Name (e.g., Jamie Testerson 1)", text: $name)
                         .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled(false)
+                }
 
-                    Divider().padding(.vertical, 10)
+                Section("Client") {
+                    Picker("Client", selection: $client) {
+                        Text("None").tag(Client?.none)
 
-                    HStack {
-                        Text("Client")
-                        Spacer()
-
-                        Picker("Client", selection: Binding(
-                            get: { client?.id },
-                            set: { id in
-                                if let id {
-                                    client = scopedClients.first(where: { $0.id == id })
-                                } else {
-                                    client = nil
-                                }
-                            }
-                        )) {
-                            Text("None").tag(Optional<UUID>.none)
-                            ForEach(scopedClients, id: \.id) { c in
-                                Text(c.name).tag(Optional(c.id))
-                            }
+                        ForEach(scopedClients) { c in
+                            Text(c.name).tag(Optional(c))
                         }
                     }
-                }
-                .padding(16)
-                .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color(.systemGray5), lineWidth: 1)
-                )
 
-                Spacer()
-            }
-            .padding(.horizontal)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        onCancel()
-                        dismiss()
+                    if activeBiz.activeBusinessID == nil {
+                        Text("No active business selected.")
+                            .foregroundStyle(.secondary)
+                    } else if scopedClients.isEmpty {
+                        Text("No clients found for this business.")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Create") {
-                        onCreate()
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
+            }
+            .navigationTitle("New Estimate")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onCancel() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") { onCreate() }
+                        .fontWeight(.semibold)
                 }
             }
         }
