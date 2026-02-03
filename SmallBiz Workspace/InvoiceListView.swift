@@ -84,7 +84,7 @@ struct InvoiceListView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search invoices"
         )
-        .settingsGear { BusinessProfileView() }
+        
 
         // MARK: - Toolbar
         .toolbar {

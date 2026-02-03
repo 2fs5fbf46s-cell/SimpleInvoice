@@ -126,6 +126,77 @@ final class PortalBackend {
     private let baseURL = PortalConfig.shared.baseURL
     private init() {}
 
+    // MARK: - ID helpers (SwiftData PersistentIdentifier safe)
+
+    private func invoiceIdString(_ invoice: Invoice) -> String {
+        // Invoice.id is SwiftData PersistentIdentifier in this project.
+        // String(describing:) provides a stable identifier string for backend routing.
+        String(describing: invoice.id)
+    }
+
+    private func contractIdString(_ contract: Contract) -> String {
+        // Contract.id is SwiftData PersistentIdentifier in this project.
+        String(describing: contract.id)
+    }
+    // MARK: - Invoice line items -> portal payload
+
+    /// Builds the `lineItems` array that the portal backend stores in KV.
+    ///
+    /// Uses Invoice.items: [LineItem]? with fields:
+    /// - id (String), name (String), description (String), quantity (Double), unitAmountCents (Int), amountCents (Int)
+    private func buildPortalLineItems(invoice: Invoice) -> [[String: Any]] {
+        var out: [[String: Any]] = []
+
+        for li in (invoice.items ?? []) {
+            let qty = li.quantity // Double (supports fractional)
+            let unitCents = toCents(li.unitPrice)
+            let amountCents = toCents(li.lineTotal)
+
+            out.append([
+                "id": li.id.uuidString,
+                "name": li.itemDescription.isEmpty ? "Item" : li.itemDescription,
+                "description": "",
+                "quantity": qty,
+                "unitAmountCents": unitCents,
+                "amountCents": amountCents
+            ])
+        }
+
+        // Represent discount as its own negative line item so the subtotal matches the visible list.
+        if invoice.discountAmount > 0 {
+            let discountCents = toCents(invoice.discountAmount)
+            out.append([
+                "id": "discount",
+                "name": "Discount",
+                "description": "",
+                "quantity": 1,
+                "unitAmountCents": -discountCents,
+                "amountCents": -discountCents
+            ])
+        }
+
+        return out
+    }
+    // MARK: - Invoice totals (cents)
+
+    private func toCents(_ dollars: Double) -> Int {
+        Int((dollars * 100).rounded())
+    }
+
+    private func portalSubtotalCents(from lineItems: [[String: Any]]) -> Int {
+        lineItems.reduce(0) { partial, dict in
+            partial + (dict["amountCents"] as? Int ?? 0)
+        }
+    }
+
+    private func portalTaxCents(invoice: Invoice) -> Int {
+        toCents(invoice.taxAmount)
+    }
+
+    private func portalTotalCents(invoice: Invoice) -> Int {
+        toCents(invoice.total)
+    }
+
     // MARK: - Shared
 
     fileprivate func requireAdminKey() throws -> String {
@@ -170,16 +241,24 @@ final class PortalBackend {
         guard let clientId = invoice.client?.id else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice must be linked to a client to create a portal link."])
         }
+        
+        let lineItems = buildPortalLineItems(invoice: invoice)
+        let subtotalCents = portalSubtotalCents(from: lineItems)
+        let taxCents = portalTaxCents(invoice: invoice)
+        let totalCents = portalTotalCents(invoice: invoice)
 
         let body: [String: Any] = [
             "businessId": invoice.businessID.uuidString,
             "clientId": clientId.uuidString,
             "scope": "invoice",
             "mode": mode,
-            "invoiceId": invoice.id.uuidString,
+            "invoiceId": invoiceIdString(invoice),
             "invoiceNumber": invoice.invoiceNumber,
-            "amountCents": Int((invoice.total * 100).rounded()),
+            "amountCents": totalCents,
             "currency": "usd",
+            "subtotalCents": subtotalCents,
+            "taxCents": taxCents,
+            "lineItems": lineItems,
             "status": invoice.isPaid ? "paid" : "unpaid",
             "title": "Invoice \(invoice.invoiceNumber)",
             "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
@@ -200,7 +279,7 @@ final class PortalBackend {
             "clientId": client.id.uuidString,
             "scope": "contract",
             "mode": mode,
-            "contractId": contract.id.uuidString,
+            "contractId": contractIdString(contract),
             "contractTitle": contract.title,
             "status": contract.statusRaw,
             "title": contract.title,
@@ -276,7 +355,7 @@ final class PortalBackend {
     }
 
     func buildContractPortalURL(contract: Contract, token: String, mode: String = "live") -> URL {
-        portalContractURL(contractId: contract.id.uuidString, token: token, mode: mode)
+        portalContractURL(contractId: contractIdString(contract), token: token, mode: mode)
     }
 
     // MARK: - Index helpers (used by other files)
@@ -295,15 +374,23 @@ final class PortalBackend {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice is not linked to a client."])
         }
         guard client.portalEnabled else { return }
+        
+        let lineItems = buildPortalLineItems(invoice: invoice)
+        let subtotalCents = portalSubtotalCents(from: lineItems)
+        let taxCents = portalTaxCents(invoice: invoice)
+        let totalCents = portalTotalCents(invoice: invoice)
 
         let body: [String: Any] = [
             "businessId": invoice.businessID.uuidString,
             "clientId": client.id.uuidString,
             "scope": "invoice",
             "mode": "live",
-            "invoiceId": invoice.id.uuidString,
+            "invoiceId": invoiceIdString(invoice),
             "invoiceNumber": invoice.invoiceNumber,
-            "amountCents": Int((invoice.total * 100).rounded()),
+            "amountCents": totalCents,
+            "subtotalCents": subtotalCents,
+            "taxCents": taxCents,
+            "lineItems": lineItems,
             "currency": "usd",
             "status": invoice.isPaid ? "paid" : "unpaid",
             "title": "Invoice \(invoice.invoiceNumber)",
@@ -329,7 +416,7 @@ final class PortalBackend {
             "clientId": client.id.uuidString,
             "scope": "directory",
             "mode": "live",
-            "contractId": contract.id.uuidString,
+            "contractId": contractIdString(contract),
             "contractTitle": contract.title,
             "status": contract.statusRaw,
             "title": contract.title,
@@ -340,7 +427,7 @@ final class PortalBackend {
 
         _ = try await seedToken(payload: body)
     }
-
+    
     // MARK: - PDF Upload -> Blob + KV
 
     private struct PDFUploadResponseDTO: Decodable {
@@ -349,6 +436,77 @@ final class PortalBackend {
         let fileName: String?
         let error: String?
     }
+
+    private struct SendLinkResponseDTO: Decodable {
+        let ok: Bool?
+        let link: String?
+        let error: String?
+    }
+
+    // MARK: - Invoice PDF Upload
+
+    @MainActor
+    func uploadInvoicePDFToBlob(
+        businessId: String,
+        invoiceId: String,
+        fileName: String,
+        pdfData: Data
+    ) async throws -> (url: String, fileName: String) {
+
+        let adminKey = try requireAdminKey()
+
+        print("⬆️ Uploading invoice PDF",
+              "businessId:", businessId,
+              "invoiceId:", invoiceId,
+              "fileName:", fileName,
+              "bytes:", pdfData.count)
+
+        let endpoint = baseURL.appendingPathComponent("/api/portal/invoice/pdf-upload")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "invoiceId": invoiceId,
+            "fileName": fileName,
+            "pdfBase64": pdfData.base64EncodedString()
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        let decoded = try decoder().decode(PDFUploadResponseDTO.self, from: data)
+        if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
+        guard let url = decoded.url, !url.isEmpty else { throw PortalBackendError.decode(body: raw) }
+
+        print("✅ Uploaded invoice PDF:", url)
+
+        return (url: url, fileName: decoded.fileName ?? fileName)
+    }
+
+    // Back-compat convenience (mirrors uploadContractPDF naming)
+    @MainActor
+    func uploadInvoicePDF(
+        businessId: String,
+        invoiceId: String,
+        fileName: String,
+        pdfData: Data
+    ) async throws -> (url: String, fileName: String) {
+        try await uploadInvoicePDFToBlob(
+            businessId: businessId,
+            invoiceId: invoiceId,
+            fileName: fileName,
+            pdfData: pdfData
+        )
+    }
+
+    // MARK: - Contract PDF Upload
 
     @MainActor
     func uploadContractPDFToBlob(
@@ -359,13 +517,12 @@ final class PortalBackend {
     ) async throws -> (url: String, fileName: String) {
 
         let adminKey = try requireAdminKey()
-        
+
         print("⬆️ Uploading contract PDF",
               "businessId:", businessId,
               "contractId:", contractId,
               "fileName:", fileName,
               "bytes:", pdfData.count)
-        
 
         let endpoint = baseURL.appendingPathComponent("/api/portal/contract/pdf-upload")
         var req = URLRequest(url: endpoint)
@@ -390,7 +547,7 @@ final class PortalBackend {
         let decoded = try decoder().decode(PDFUploadResponseDTO.self, from: data)
         if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
         guard let url = decoded.url, !url.isEmpty else { throw PortalBackendError.decode(body: raw) }
-        
+
         print("✅ Uploaded contract PDF:", decoded.url ?? "nil")
 
         return (url: url, fileName: decoded.fileName ?? fileName)
@@ -410,6 +567,71 @@ final class PortalBackend {
             fileName: fileName,
             pdfData: pdfData
         )
+    }
+    
+    @MainActor
+    func sendPortalLink(
+        businessId: String,
+        clientId: String,
+        clientEmail: String?,
+        clientPhone: String?,
+        businessName: String?,
+        sendEmail: Bool,
+        sendSms: Bool,
+        ttlDays: Int = 7,
+        message: String? = nil
+    ) async throws -> String {
+
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/portal/send-link")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        var payload: [String: Any] = [
+            "businessId": businessId,
+            "clientId": clientId,
+            "sendEmail": sendEmail,
+            "sendSms": sendSms,
+            "ttlDays": ttlDays
+        ]
+
+        if let businessName, !businessName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["businessName"] = businessName
+        }
+        if let clientEmail, !clientEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["clientEmail"] = clientEmail
+        }
+        if let clientPhone, !clientPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["clientPhone"] = clientPhone
+        }
+        if let message, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["message"] = message
+        }
+
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+
+        let decoded = try decoder().decode(SendLinkResponseDTO.self, from: data)
+        if let err = decoded.error, !err.isEmpty {
+            throw PortalBackendError.http(http.statusCode, body: err)
+        }
+        guard let link = decoded.link, !link.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+
+        return link
     }
 
     // MARK: - Payment status

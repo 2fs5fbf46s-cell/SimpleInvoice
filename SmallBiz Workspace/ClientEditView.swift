@@ -9,6 +9,7 @@ import SwiftData
 import UniformTypeIdentifiers
 import PhotosUI
 import ZIPFoundation
+import UIKit
 
 struct ClientEditView: View {
     @Environment(\.modelContext) private var modelContext
@@ -37,6 +38,17 @@ struct ClientEditView: View {
     @State private var clientPortalURL: URL? = nil
     @State private var showClientPortal = false
     @State private var clientPortalError: String? = nil
+    
+    // ✅ Send Portal Link UI
+    @State private var showSendPortalSheet = false
+    @State private var sendingPortalLink = false
+    @State private var sendPortalError: String? = nil
+    @State private var lastSentPortalLink: String? = nil
+
+    @State private var sendByEmail = true
+    @State private var sendBySms = true
+    @State private var ttlDays: Int = 7
+    @State private var customMessage: String = ""
 
 
     // ✅ Flow A: Client → auto-create Job + workspace
@@ -167,6 +179,88 @@ struct ClientEditView: View {
         .sheet(item: $attachmentPreviewItem) { item in
             QuickLookPreview(url: item.url)
         }
+        
+        .sheet(isPresented: $showSendPortalSheet) {
+            NavigationStack {
+                Form {
+                    Section("Send via") {
+                        Toggle("Email", isOn: $sendByEmail)
+                        Toggle("SMS", isOn: $sendBySms)
+                    }
+
+                    Section("Recipient") {
+                        HStack {
+                            Text("Email")
+                            Spacer()
+                            Text(client.email.isEmpty ? "Missing" : client.email)
+                                .foregroundStyle(client.email.isEmpty ? .red : .secondary)
+                                .lineLimit(1)
+                        }
+
+                        HStack {
+                            Text("Phone")
+                            Spacer()
+                            Text(client.phone.isEmpty ? "Missing" : client.phone)
+                                .foregroundStyle(client.phone.isEmpty ? .red : .secondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Section("Link Settings") {
+                        Stepper("Expires in \(ttlDays) day(s)", value: $ttlDays, in: 1...30)
+                    }
+
+                    Section("Optional Message") {
+                        TextField("Custom message (optional)", text: $customMessage, axis: .vertical)
+                            .lineLimit(2...6)
+                    }
+
+                    Section {
+                        Button {
+                            sendPortalLinkNow()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if sendingPortalLink {
+                                    ProgressView()
+                                } else {
+                                    Text("Send Portal Link")
+                                        .fontWeight(.semibold)
+                                }
+                                Spacer()
+                            }
+                        }
+                        .disabled(sendingPortalLink || (!sendByEmail && !sendBySms))
+                    }
+
+                    if let link = lastSentPortalLink, !link.isEmpty {
+                        Section("Last Link") {
+                            Text(link)
+                                .font(.footnote)
+                                .textSelection(.enabled)
+
+                            Button {
+                                UIPasteboard.general.string = link
+                            } label: {
+                                Label("Copy Link", systemImage: "doc.on.doc")
+                            }
+
+                            if let url = URL(string: link) {
+                                ShareLink(item: url) {
+                                    Label("Share…", systemImage: "square.and.arrow.up")
+                                }
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Send Portal Link")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { showSendPortalSheet = false }
+                    }
+                }
+            }
+        }
 
         // Errors
         
@@ -206,6 +300,15 @@ struct ClientEditView: View {
             Button("OK", role: .cancel) { zipError = nil }
         } message: {
             Text(zipError ?? "")
+        }
+        
+        .alert("Send Portal Link", isPresented: Binding(
+            get: { sendPortalError != nil },
+            set: { if !$0 { sendPortalError = nil } }
+        )) {
+            Button("OK", role: .cancel) { sendPortalError = nil }
+        } message: {
+            Text(sendPortalError ?? "")
         }
 
         .task {
@@ -384,7 +487,19 @@ struct ClientEditView: View {
             .disabled(openingClientPortal || !client.portalEnabled)
             .opacity((openingClientPortal || !client.portalEnabled) ? 0.6 : 1)
 
-            // Keep your existing portal preview navigation if present elsewhere
+            Button {
+                // Reset defaults each time
+                sendByEmail = !client.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                sendBySms = !client.phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ttlDays = 7
+                customMessage = ""
+                lastSentPortalLink = nil
+                showSendPortalSheet = true
+            } label: {
+                Label("Send Portal Link", systemImage: "paperplane")
+            }
+            .disabled(!client.portalEnabled)
+            .opacity(!client.portalEnabled ? 0.6 : 1)
         }
     }
 
@@ -498,6 +613,53 @@ private var attachmentsSection: some View {
                 clientPortalError = error.localizedDescription
             }
             openingClientPortal = false
+        }
+    }
+    
+    @MainActor
+    private func sendPortalLinkNow() {
+        guard client.portalEnabled else {
+            sendPortalError = "Client portal is disabled for this client."
+            return
+        }
+
+        // Validate chosen channels
+        let email = client.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phone = client.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if sendByEmail && email.isEmpty {
+            sendPortalError = "Client email is missing."
+            return
+        }
+        if sendBySms && phone.isEmpty {
+            sendPortalError = "Client phone is missing."
+            return
+        }
+
+        sendingPortalLink = true
+        sendPortalError = nil
+
+        Task {
+            do {
+                let message = customMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                let link = try await PortalBackend.shared.sendPortalLink(
+                    businessId: client.businessID.uuidString,
+                    clientId: client.id.uuidString,
+                    clientEmail: sendByEmail ? email : nil,
+                    clientPhone: sendBySms ? phone : nil,
+                    businessName: "SmallBiz Workspace",
+                    sendEmail: sendByEmail,
+                    sendSms: sendBySms,
+                    ttlDays: ttlDays,
+                    message: message.isEmpty ? nil : message
+                )
+
+                lastSentPortalLink = link
+            } catch {
+                sendPortalError = error.localizedDescription
+            }
+
+            sendingPortalLink = false
         }
     }
 
