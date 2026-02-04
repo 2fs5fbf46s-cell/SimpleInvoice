@@ -3,7 +3,7 @@ import UIKit
 
 enum InvoicePDFGenerator {
 
-    static func makePDFData(invoice: Invoice, business: BusinessProfile?) -> Data {
+    static func makePDFData(invoice: Invoice, business: BusinessSnapshot) -> Data {
 
         let pageWidth: CGFloat = 612
         let pageHeight: CGFloat = 792
@@ -123,9 +123,9 @@ enum InvoicePDFGenerator {
             drawWatermarkIfNeeded()
 
             // Header
-            let hasLogo = (business?.logoData != nil)
+            let hasLogo = (business.logoData != nil)
 
-            if let logoData = business?.logoData,
+            if let logoData = business.logoData,
                let logoImage = UIImage(data: logoData) {
 
                 let maxLogoHeight: CGFloat = 60
@@ -148,16 +148,16 @@ enum InvoicePDFGenerator {
                      color: primaryText,
                      alignment: .right)
 
-            let bizName = trimmed(business?.name ?? "")
-            let bizEmail = trimmed(business?.email ?? "")
-            let bizPhone = trimmed(business?.phone ?? "")
-            let bizAddress = trimmed(business?.address ?? "")
+            let bizName = trimmed(business.name)
+            let bizEmail = trimmed(business.email)
+            let bizPhone = trimmed(business.phone)
+            let bizAddress = trimmed(business.address)
 
             let businessLines = [
-                bizName.isEmpty ? "Your Business Name" : bizName,
-                bizAddress.isEmpty ? "Business Address" : bizAddress,
-                bizPhone.isEmpty ? "Phone" : bizPhone,
-                bizEmail.isEmpty ? "Email" : bizEmail
+                bizName,
+                bizAddress,
+                bizPhone,
+                bizEmail
             ]
             .filter { !trimmed($0).isEmpty }
             .joined(separator: "\n")

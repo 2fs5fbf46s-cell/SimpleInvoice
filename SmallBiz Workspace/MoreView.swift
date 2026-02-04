@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MoreView: View {
+    @Binding var path: NavigationPath
     @State private var searchText = ""
 
     private struct MoreItem: Identifiable {
@@ -14,10 +15,46 @@ struct MoreView: View {
     private var items: [MoreItem] {
         [
             MoreItem(
+                title: "Business Profile",
+                systemImage: "building.2",
+                keyword: "Business Profile",
+                destination: AnyView(BusinessProfileView())
+            ),
+            MoreItem(
                 title: "Client Portal",
                 systemImage: "person.2.badge.gearshape",
                 keyword: "Client Portal",
                 destination: AnyView(PortalDirectoryLauncherView())
+            ),
+            MoreItem(
+                title: "Clients",
+                systemImage: "person.2",
+                keyword: "Customers",
+                destination: AnyView(ClientListView())
+            ),
+            MoreItem(
+                title: "Contracts",
+                systemImage: "doc.text",
+                keyword: "Contracts",
+                destination: AnyView(ContractsHomeView())
+            ),
+            MoreItem(
+                title: "Estimates",
+                systemImage: "doc.text.fill",
+                keyword: "Estimates",
+                destination: AnyView(EstimateListView())
+            ),
+            MoreItem(
+                title: "Files",
+                systemImage: "folder",
+                keyword: "Files",
+                destination: AnyView(FilesHomeView())
+            ),
+            MoreItem(
+                title: "Invoices",
+                systemImage: "doc.text.fill",
+                keyword: "Invoices",
+                destination: AnyView(InvoiceListView())
             ),
             MoreItem(
                 title: "Portal Preview",
@@ -30,36 +67,6 @@ struct MoreView: View {
                 systemImage: "tray.full",
                 keyword: "Requests",
                 destination: AnyView(JobsListView())
-            ),
-            MoreItem(
-                title: "Files",
-                systemImage: "folder",
-                keyword: "Files",
-                destination: AnyView(FilesHomeView())
-            ),
-            MoreItem(
-                title: "Contracts",
-                systemImage: "doc.text",
-                keyword: "Contracts",
-                destination: AnyView(ContractsHomeView())
-            ),
-            MoreItem(
-                title: "Clients",
-                systemImage: "person.2",
-                keyword: "Customers",
-                destination: AnyView(ClientListView())
-            ),
-            MoreItem(
-                title: "Estimates",
-                systemImage: "doc.text.fill",
-                keyword: "Estimates",
-                destination: AnyView(EstimateListView())
-            ),
-            MoreItem(
-                title: "Invoices",
-                systemImage: "doc.text.fill",
-                keyword: "Invoices",
-                destination: AnyView(InvoiceListView())
             )
         ]
     }
@@ -71,47 +78,45 @@ struct MoreView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Background
-            Color(.systemGroupedBackground).ignoresSafeArea()
+        NavigationStack(path: $path) {
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
 
-            // Subtle header wash (Option A)
-            SBWTheme.brandGradient
-                .opacity(SBWTheme.headerWashOpacity)
-                .blur(radius: SBWTheme.headerWashBlur)
-                .frame(height: SBWTheme.headerWashHeight)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea()
+                SBWTheme.brandGradient
+                    .opacity(SBWTheme.headerWashOpacity)
+                    .blur(radius: SBWTheme.headerWashBlur)
+                    .frame(height: SBWTheme.headerWashHeight)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .ignoresSafeArea()
 
-            List {
-                if filtered.isEmpty {
-                    ContentUnavailableView(
-                        "No Results",
-                        systemImage: "magnifyingglass",
-                        description: Text("Try a different search.")
-                    )
-                } else {
-                    ForEach(filtered) { item in
-                        NavigationLink {
-                            item.destination
-                        } label: {
-                            row(item)
+                List {
+                    if filtered.isEmpty {
+                        ContentUnavailableView(
+                            "No Results",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try a different search.")
+                        )
+                    } else {
+                        ForEach(filtered) { item in
+                            NavigationLink {
+                                item.destination
+                            } label: {
+                                row(item)
+                            }
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
+            .navigationTitle("More")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search"
+            )
         }
-        .navigationTitle("More")
-        .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search"
-        )
     }
-
-    // MARK: - Row UI
 
     private func row(_ item: MoreItem) -> some View {
         HStack(spacing: 12) {
@@ -129,10 +134,6 @@ struct MoreView: View {
                 .foregroundStyle(.primary)
 
             Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 6)
     }

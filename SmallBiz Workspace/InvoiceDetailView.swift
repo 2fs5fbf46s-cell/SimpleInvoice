@@ -360,10 +360,15 @@ struct InvoiceDetailView: View {
     private func trimmed(_ s: String) -> String {
         s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    // MARK: - Active Business (single source of truth)
+    private func resolvedBusinessProfile() -> BusinessProfile? {
+        InvoicePDFService.resolvedBusinessProfile(for: invoice, profiles: profiles)
+    }
 
     private func normalizeInvoiceDefaultsIfNeeded() {
-        let defaultThankYou = trimmed(profiles.first?.defaultThankYou ?? "")
-        let defaultTerms = trimmed(profiles.first?.defaultTerms ?? "")
+        let profile = resolvedBusinessProfile()
+        let defaultThankYou = trimmed(profile?.defaultThankYou ?? "")
+        let defaultTerms = trimmed(profile?.defaultTerms ?? "")
 
         // Clear legacy defaults (Net 14 + default thank-you/terms)
         if trimmed(invoice.paymentTerms).lowercased() == "net 14" {
@@ -534,7 +539,7 @@ struct InvoiceDetailView: View {
             )
         }
 
-        let businessName = profiles.first?.name  // or your active business profile name
+        let businessName = resolvedBusinessProfile()?.name
 
         // Best-effort: upload the latest invoice PDF so the portal can offer a Download PDF button.
         // If upload fails, we still allow the portal link to be generated.
@@ -542,8 +547,12 @@ struct InvoiceDetailView: View {
             uploadingPortalPDF = true
             portalPDFNotice = nil
 
-            let business = profiles.first
-            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+            let pdfData = InvoicePDFService.makePDFData(
+                invoice: invoice,
+                profiles: profiles,
+                lockSnapshot: true,
+                context: modelContext
+            )
             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
             let fallbackID = String(describing: invoice.id)
@@ -1098,7 +1107,8 @@ private var isPortalExpiredForThisInvoice: Bool {
     // MARK: - STEP 4 helper
 
     private func convertEstimateToInvoice() {
-        guard let profile = profiles.first else {
+        let profile = resolvedBusinessProfile()
+        guard let profile else {
             exportError = "Business Profile is missing. Create one first."
             return
         }
@@ -1171,8 +1181,12 @@ private var isPortalExpiredForThisInvoice: Bool {
                         uploadingPortalPDF = true
                         portalPDFNotice = nil
                         do {
-                            let business = profiles.first
-                            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+                            let pdfData = InvoicePDFService.makePDFData(
+                                invoice: invoice,
+                                profiles: profiles,
+                                lockSnapshot: true,
+                                context: modelContext
+                            )
                             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
                             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
                             let fallbackID = String(describing: invoice.id)
@@ -1371,6 +1385,8 @@ private var isPortalExpiredForThisInvoice: Bool {
         }
     }
     
+    
+    
     @MainActor
     private func indexInvoiceIfPossible() async {
         guard invoice.documentType == "invoice" else { return }
@@ -1459,8 +1475,12 @@ private var isPortalExpiredForThisInvoice: Bool {
 
     private func emailPDF() {
         do {
-            let business = profiles.first
-            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+            let pdfData = InvoicePDFService.makePDFData(
+                invoice: invoice,
+                profiles: profiles,
+                lockSnapshot: true,
+                context: modelContext
+            )
 
             mailAttachment = pdfData
             mailFilename = "\(invoice.invoiceNumber).pdf"
@@ -1477,8 +1497,8 @@ private var isPortalExpiredForThisInvoice: Bool {
     }
 
     private func duplicateInvoice() {
-        let profile: BusinessProfile = profiles.first ?? {
-            let created = BusinessProfile()
+        let profile: BusinessProfile = resolvedBusinessProfile() ?? {
+            let created = BusinessProfile(businessID: invoice.businessID)
             modelContext.insert(created)
             return created
         }()
@@ -1527,8 +1547,12 @@ private var isPortalExpiredForThisInvoice: Bool {
         }
 
         do {
-            let business = profiles.first
-            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+            let pdfData = InvoicePDFService.makePDFData(
+                invoice: invoice,
+                profiles: profiles,
+                lockSnapshot: true,
+                context: modelContext
+            )
 
             let invoicesFolder = try JobExportToFilesService.resolveJobSubfolder(
                 job: job,
@@ -1640,8 +1664,12 @@ private var isPortalExpiredForThisInvoice: Bool {
     }
 
     private func makeInvoicePDFTempURL(suffix: String) throws -> URL {
-        let business = profiles.first
-        let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: business)
+        let pdfData = InvoicePDFService.makePDFData(
+            invoice: invoice,
+            profiles: profiles,
+            lockSnapshot: true,
+            context: modelContext
+        )
         let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
         let filename = "\(prefix)-\(invoice.invoiceNumber)-\(suffix)-\(Date().timeIntervalSince1970)"
         return try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)

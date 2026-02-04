@@ -341,8 +341,19 @@ struct ClientPortalPreviewView: View {
 
     private func previewInvoicePDF(_ inv: Invoice, session: PortalSession) {
         do {
-            let biz = businessProfile(for: session.businessID)
-            let url = try PortalPDFBuilder.buildInvoicePDF(invoice: inv, business: biz)
+            let profiles = fetchProfiles()
+            let pdfData = InvoicePDFService.makePDFData(
+                invoice: inv,
+                profiles: profiles,
+                lockSnapshot: true,
+                context: modelContext
+            )
+            let prefix = (inv.documentType == "estimate") ? "Estimate" : "Invoice"
+            let safeNumber = inv.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackID = String(describing: inv.id)
+            let namePart = safeNumber.isEmpty ? String(fallbackID.suffix(8)) : safeNumber
+            let filename = "\(prefix)-\(namePart)"
+            let url = try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
             pdfPreview = IdentifiableURL(url: url)
         } catch {
             errorText = error.localizedDescription
@@ -390,6 +401,15 @@ struct ClientPortalPreviewView: View {
         } catch {
             print("businessProfile fetch error: \(error)")
             return nil
+        }
+    }
+
+    private func fetchProfiles() -> [BusinessProfile] {
+        do {
+            return try modelContext.fetch(FetchDescriptor<BusinessProfile>())
+        } catch {
+            print("profiles fetch error: \(error)")
+            return []
         }
     }
 
