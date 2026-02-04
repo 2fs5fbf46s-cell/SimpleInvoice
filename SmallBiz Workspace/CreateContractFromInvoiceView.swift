@@ -98,7 +98,9 @@ struct CreateContractFromInvoiceView: View {
     }
 
     // If you want this scoped later, we can fetch by businessID.
-    private var business: BusinessProfile? { profiles.first }
+    private var business: BusinessProfile? {
+        InvoicePDFService.resolvedBusinessProfile(for: invoice, profiles: profiles)
+    }
 
     private func generatePreview() {
         guard let template = selectedTemplate else { return }

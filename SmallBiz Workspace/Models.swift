@@ -72,6 +72,38 @@ Other
     }
 }
 
+// MARK: - Business Snapshot
+
+struct BusinessSnapshot: Codable {
+    var name: String
+    var address: String
+    var phone: String
+    var email: String
+    var logoData: Data?
+
+    init(
+        name: String = "",
+        address: String = "",
+        phone: String = "",
+        email: String = "",
+        logoData: Data? = nil
+    ) {
+        self.name = name
+        self.address = address
+        self.phone = phone
+        self.email = email
+        self.logoData = logoData
+    }
+
+    init(profile: BusinessProfile?) {
+        self.name = profile?.name ?? ""
+        self.address = profile?.address ?? ""
+        self.phone = profile?.phone ?? ""
+        self.email = profile?.email ?? ""
+        self.logoData = profile?.logoData
+    }
+}
+
 // MARK: - Client
 
 @Model
@@ -119,6 +151,7 @@ final class Invoice {
     var id: UUID = Foundation.UUID()
     var businessID: UUID = UUID()
 
+    var businessSnapshotData: Data? = nil
 
     var invoiceNumber: String = ""
     var issueDate: Date = Foundation.Date()
@@ -165,6 +198,7 @@ final class Invoice {
 
     init(
         businessID: UUID = UUID(),
+        businessSnapshotData: Data? = nil,
         invoiceNumber: String,
         issueDate: Date = Foundation.Date(),
         dueDate: Date = Calendar.current.date(byAdding: .day, value: 14, to: Foundation.Date()) ?? Foundation.Date(),
@@ -181,6 +215,7 @@ final class Invoice {
         items: [LineItem] = []
     ) {
         self.businessID = businessID
+        self.businessSnapshotData = businessSnapshotData
         self.invoiceNumber = invoiceNumber
         self.issueDate = issueDate
         self.dueDate = dueDate
@@ -197,6 +232,21 @@ final class Invoice {
 
         self.items = items
         for item in items { item.invoice = self }
+    }
+
+    @MainActor
+    var businessSnapshot: BusinessSnapshot? {
+        get {
+            guard let data = businessSnapshotData else { return nil }
+            return try? JSONDecoder().decode(BusinessSnapshot.self, from: data)
+        }
+        set {
+            guard let newValue else {
+                businessSnapshotData = nil
+                return
+            }
+            businessSnapshotData = try? JSONEncoder().encode(newValue)
+        }
     }
 
 
@@ -296,4 +346,3 @@ final class Booking {
         self.client = client
     }
 }
-
