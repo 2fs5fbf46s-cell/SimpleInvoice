@@ -13,8 +13,25 @@ struct BusinessSwitcherView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Query private var businesses: [Business]
+    @Query private var profiles: [BusinessProfile]
+    @Query private var clients: [Client]
+    @Query private var invoices: [Invoice]
+    @Query private var jobs: [Job]
+    @Query private var contracts: [Contract]
+    @Query private var contractSignatures: [ContractSignature]
+    @Query private var catalogItems: [CatalogItem]
+    @Query private var attachments: [Attachment]
+    @Query private var folders: [Folder]
+    @Query private var blockouts: [Blockout]
+    @Query private var auditEvents: [AuditEvent]
+    @Query private var portalIdentities: [PortalIdentity]
+    @Query private var portalInvites: [PortalInvite]
+    @Query private var portalSessions: [PortalSession]
+    @Query private var portalAuditEvents: [PortalAuditEvent]
 
     @State private var newBusinessName: String = ""
+    @State private var pendingDelete: Business? = nil
+    @State private var showCannotDeleteAlert = false
 
     var body: some View {
         Form {
@@ -43,6 +60,13 @@ struct BusinessSwitcherView: View {
                                 }
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                requestDelete(b)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
@@ -66,5 +90,72 @@ struct BusinessSwitcherView: View {
         .onAppear {
             try? activeBiz.loadOrCreateDefaultBusiness(modelContext: modelContext)
         }
+        .alert("You must keep at least one business.", isPresented: $showCannotDeleteAlert) {
+            Button("OK", role: .cancel) {}
+        }
+        .alert("Delete Business?", isPresented: Binding(
+            get: { pendingDelete != nil },
+            set: { if !$0 { pendingDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let pendingDelete {
+                    deleteBusiness(pendingDelete)
+                }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("This will delete all data for this business.")
+        }
+    }
+
+    // MARK: - Deletion
+
+    private func requestDelete(_ business: Business) {
+        guard businesses.count > 1 else {
+            showCannotDeleteAlert = true
+            return
+        }
+        pendingDelete = business
+    }
+
+    private func deleteBusiness(_ business: Business) {
+        let businessID = business.id
+
+        if activeBiz.activeBusinessID == businessID {
+            if let replacement = businesses.first(where: { $0.id != businessID }) {
+                activeBiz.setActiveBusiness(replacement.id)
+            } else {
+                activeBiz.clearActiveBusiness()
+            }
+        }
+
+        deleteItems(profiles.filter { $0.businessID == businessID })
+        deleteItems(clients.filter { $0.businessID == businessID })
+        deleteItems(invoices.filter { $0.businessID == businessID })
+        deleteItems(jobs.filter { $0.businessID == businessID })
+        deleteItems(contracts.filter { $0.businessID == businessID })
+        deleteItems(contractSignatures.filter { $0.businessID == businessID })
+        deleteItems(catalogItems.filter { $0.businessID == businessID })
+        deleteItems(attachments.filter { $0.businessID == businessID })
+        deleteItems(folders.filter { $0.businessID == businessID })
+        deleteItems(blockouts.filter { $0.businessID == businessID })
+        deleteItems(auditEvents.filter { $0.businessID == businessID })
+        deleteItems(portalIdentities.filter { $0.businessID == businessID })
+        deleteItems(portalInvites.filter { $0.businessID == businessID })
+        deleteItems(portalSessions.filter { $0.businessID == businessID })
+        deleteItems(portalAuditEvents.filter { $0.businessID == businessID })
+
+        modelContext.delete(business)
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to delete business: \(error)")
+        }
+    }
+
+    private func deleteItems<T: PersistentModel>(_ items: [T]) {
+        for item in items { modelContext.delete(item) }
     }
 }

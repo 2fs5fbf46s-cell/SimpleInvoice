@@ -138,6 +138,7 @@ struct InvoiceDetailView: View {
             chargesSection
             lineItemsSection
             totalsSection
+            auditSnapshotSection
             statusSection
             attachmentsSection
         }
@@ -165,6 +166,18 @@ struct InvoiceDetailView: View {
             showPortal = false
             portalReturn.consumeReturnFlag()
             Task { await refreshInvoicePaidStatusFromPortal() }
+        }
+        .task {
+            await ensureSnapshotForFinalizedInvoiceIfNeeded()
+        }
+        .onChange(of: invoice.estimateStatus) { _, _ in
+            Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+        }
+        .onChange(of: invoice.invoiceNumber) { _, _ in
+            Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+        }
+        .onChange(of: invoice.documentType) { _, _ in
+            Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
         }
         
 
@@ -365,6 +378,18 @@ struct InvoiceDetailView: View {
         InvoicePDFService.resolvedBusinessProfile(for: invoice, profiles: profiles)
     }
 
+    private func resolvedPortalBusinessName() -> String? {
+        let snapshotName = trimmed(invoice.businessSnapshot?.name ?? "")
+        if !snapshotName.isEmpty { return snapshotName }
+
+        let profileName = trimmed(resolvedBusinessProfile()?.name ?? "")
+        return profileName.isEmpty ? nil : profileName
+    }
+
+    private var isSnapshotLockedForInvoice: Bool {
+        invoice.businessSnapshotData != nil
+    }
+
     private func normalizeInvoiceDefaultsIfNeeded() {
         let profile = resolvedBusinessProfile()
         let defaultThankYou = trimmed(profile?.defaultThankYou ?? "")
@@ -539,7 +564,7 @@ struct InvoiceDetailView: View {
             )
         }
 
-        let businessName = resolvedBusinessProfile()?.name
+        let businessName = resolvedPortalBusinessName()
 
         // Best-effort: upload the latest invoice PDF so the portal can offer a Download PDF button.
         // If upload fails, we still allow the portal link to be generated.
@@ -547,12 +572,12 @@ struct InvoiceDetailView: View {
             uploadingPortalPDF = true
             portalPDFNotice = nil
 
-            let pdfData = InvoicePDFService.makePDFData(
+            let snapshot = InvoicePDFService.lockBusinessSnapshotIfNeeded(
                 invoice: invoice,
                 profiles: profiles,
-                lockSnapshot: true,
                 context: modelContext
             )
+            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)
             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
             let fallbackID = String(describing: invoice.id)
@@ -572,6 +597,13 @@ struct InvoiceDetailView: View {
             print("Portal PDF upload failed:", error)
         }
         uploadingPortalPDF = false
+
+        if invoice.documentType == "estimate",
+           invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "draft" {
+            invoice.estimateStatus = "sent"
+            try? modelContext.save()
+            await ensureSnapshotForFinalizedInvoiceIfNeeded()
+        }
 
         let token = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice, businessName: businessName)
 
@@ -788,6 +820,16 @@ private var isPortalExpiredForThisInvoice: Bool {
                     .foregroundStyle(.secondary)
                     .font(.caption)
             }
+            if let issuerName = resolvedPortalBusinessName() {
+                Text("Issued by: \(issuerName)")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+            if isSnapshotLockedForInvoice {
+                Text("PDF matches portal copy")
+                    .foregroundStyle(.secondary)
+                    .font(.caption2)
+            }
 
             if let portalErrorMessage = portalError {
                 HStack(alignment: .top, spacing: 8) {
@@ -945,6 +987,24 @@ private var isPortalExpiredForThisInvoice: Bool {
             totalRow("Total", invoice.total, isEmphasis: true)
         }
         .disabled(isEstimateLocked)
+    }
+
+    private var auditSnapshotSection: some View {
+        Section("Audit / Snapshot") {
+            if invoice.businessSnapshotData != nil {
+                Text("Business Snapshot: Locked")
+                    .font(.subheadline.weight(.semibold))
+            } else {
+                Text("Business Snapshot: Not Locked")
+                    .foregroundStyle(.secondary)
+            }
+
+            if invoice.isDraftForSnapshotRefresh {
+                Button("Refresh Snapshot") {
+                    Task { await refreshBusinessSnapshotIfAllowed() }
+                }
+            }
+        }
     }
     private var estimateWorkflowSection: some View {
         Group {
@@ -1130,6 +1190,11 @@ private var isPortalExpiredForThisInvoice: Bool {
         invoice.issueDate = .now
 
         do {
+            _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                invoice: invoice,
+                profiles: profiles,
+                context: modelContext
+            )
             try modelContext.save()
         } catch {
             exportError = error.localizedDescription
@@ -1177,16 +1242,16 @@ private var isPortalExpiredForThisInvoice: Bool {
 
             Menu {
                 Button {
-                    Task {
+                    Task { @MainActor in
                         uploadingPortalPDF = true
                         portalPDFNotice = nil
                         do {
-                            let pdfData = InvoicePDFService.makePDFData(
+                            let snapshot = InvoicePDFService.lockBusinessSnapshotIfNeeded(
                                 invoice: invoice,
                                 profiles: profiles,
-                                lockSnapshot: true,
                                 context: modelContext
                             )
+                            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)
                             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
                             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
                             let fallbackID = String(describing: invoice.id)
@@ -1376,6 +1441,27 @@ private var isPortalExpiredForThisInvoice: Bool {
 
     // MARK: - Helpers
 
+    @MainActor
+    private func ensureSnapshotForFinalizedInvoiceIfNeeded() async {
+        guard invoice.isFinalized else { return }
+        guard invoice.businessSnapshotData == nil else { return }
+        _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+            invoice: invoice,
+            profiles: profiles,
+            context: modelContext
+        )
+    }
+
+    @MainActor
+    private func refreshBusinessSnapshotIfAllowed() async {
+        guard invoice.isDraftForSnapshotRefresh else { return }
+        _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+            invoice: invoice,
+            profiles: profiles,
+            context: modelContext
+        )
+    }
+
     private func totalRow(_ label: String, _ amount: Double, isEmphasis: Bool = false) -> some View {
         HStack {
             Text(label)
@@ -1478,7 +1564,6 @@ private var isPortalExpiredForThisInvoice: Bool {
             let pdfData = InvoicePDFService.makePDFData(
                 invoice: invoice,
                 profiles: profiles,
-                lockSnapshot: true,
                 context: modelContext
             )
 
@@ -1550,7 +1635,6 @@ private var isPortalExpiredForThisInvoice: Bool {
             let pdfData = InvoicePDFService.makePDFData(
                 invoice: invoice,
                 profiles: profiles,
-                lockSnapshot: true,
                 context: modelContext
             )
 
@@ -1667,7 +1751,6 @@ private var isPortalExpiredForThisInvoice: Bool {
         let pdfData = InvoicePDFService.makePDFData(
             invoice: invoice,
             profiles: profiles,
-            lockSnapshot: true,
             context: modelContext
         )
         let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"

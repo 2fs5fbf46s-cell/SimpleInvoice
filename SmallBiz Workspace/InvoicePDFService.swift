@@ -10,10 +10,10 @@ enum InvoicePDFService {
         return profiles.first
     }
 
-    static func resolvedSnapshot(
-        for invoice: Invoice,
+    @MainActor
+    static func lockBusinessSnapshotIfNeeded(
+        invoice: Invoice,
         profiles: [BusinessProfile],
-        lockIfMissing: Bool,
         context: ModelContext?
     ) -> BusinessSnapshot {
         if let snapshot = invoice.businessSnapshot {
@@ -23,24 +23,21 @@ enum InvoicePDFService {
         let profile = resolvedBusinessProfile(for: invoice, profiles: profiles)
         let snapshot = BusinessSnapshot(profile: profile)
 
-        if lockIfMissing, profile != nil {
-            invoice.businessSnapshot = snapshot
-            try? context?.save()
-        }
+        invoice.businessSnapshot = snapshot
+        try? context?.save()
 
         return snapshot
     }
 
+    @MainActor
     static func makePDFData(
         invoice: Invoice,
         profiles: [BusinessProfile],
-        lockSnapshot: Bool,
         context: ModelContext?
     ) -> Data {
-        let snapshot = resolvedSnapshot(
-            for: invoice,
+        let snapshot = lockBusinessSnapshotIfNeeded(
+            invoice: invoice,
             profiles: profiles,
-            lockIfMissing: lockSnapshot,
             context: context
         )
         return InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)

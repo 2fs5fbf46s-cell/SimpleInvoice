@@ -10,12 +10,27 @@
 		B6068C312F1A049600FE0A15 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = B6068C302F1A049600FE0A15 /* ZIPFoundation */; };
 		B6256B7A2F2321B700BD717A /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6256B792F2321B700BD717A /* SafariView.swift */; };
 		B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */; };
+		B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */; };
+		B7A00000000000000000000E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000000F /* XCTest.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B7A00000000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B6FAA4662F14423E0063A7CD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B6FAA46D2F14423E0063A7CD;
+			remoteInfo = "SmallBiz Workspace";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		B6256B792F2321B700BD717A /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
 		B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		B6FAA46E2F14423E0063A7CD /* SmallBizWorkspace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmallBizWorkspace.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallBizWorkspaceTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000004 /* SmallBizWorkspaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmallBizWorkspaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B7A00000000000000000000F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -35,6 +50,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B7A000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B7A00000000000000000000E /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -44,6 +67,8 @@
 				B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */,
 				B6256B792F2321B700BD717A /* SafariView.swift */,
 				B6FAA4702F14423E0063A7CD /* SmallBiz Workspace */,
+				B7A000000000000000000003 /* SmallBizWorkspaceTests */,
+				B7A000000000000000000010 /* Frameworks */,
 				B6FAA46F2F14423E0063A7CD /* Products */,
 			);
 			sourceTree = "<group>";
@@ -52,8 +77,25 @@
 			isa = PBXGroup;
 			children = (
 				B6FAA46E2F14423E0063A7CD /* SmallBizWorkspace.app */,
+				B7A000000000000000000004 /* SmallBizWorkspaceTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B7A000000000000000000003 /* SmallBizWorkspaceTests */ = {
+			isa = PBXGroup;
+			children = (
+				B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */,
+			);
+			path = SmallBizWorkspaceTests;
+			sourceTree = "<group>";
+		};
+		B7A000000000000000000010 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B7A00000000000000000000F /* XCTest.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -82,6 +124,24 @@
 			productReference = B6FAA46E2F14423E0063A7CD /* SmallBizWorkspace.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B7A000000000000000000008 /* SmallBizWorkspaceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B7A000000000000000000009 /* Build configuration list for PBXNativeTarget "SmallBizWorkspaceTests" */;
+			buildPhases = (
+				B7A000000000000000000006 /* Sources */,
+				B7A000000000000000000007 /* Frameworks */,
+				B7A000000000000000000011 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B7A00000000000000000000C /* PBXTargetDependency */,
+			);
+			name = SmallBizWorkspaceTests;
+			productName = SmallBizWorkspaceTests;
+			productReference = B7A000000000000000000004 /* SmallBizWorkspaceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -94,6 +154,10 @@
 				TargetAttributes = {
 					B6FAA46D2F14423E0063A7CD = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					B7A000000000000000000008 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = B6FAA46D2F14423E0063A7CD;
 					};
 				};
 			};
@@ -115,6 +179,7 @@
 			projectRoot = "";
 			targets = (
 				B6FAA46D2F14423E0063A7CD /* SmallBiz Workspace */,
+				B7A000000000000000000008 /* SmallBizWorkspaceTests */,
 			);
 		};
 /* End PBXProject section */
@@ -125,6 +190,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B7A000000000000000000011 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,7 +211,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B7A000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B7A00000000000000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B6FAA46D2F14423E0063A7CD /* SmallBiz Workspace */;
+			targetProxy = B7A00000000000000000000D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B6FAA4792F14423F0063A7CD /* Debug */ = {
@@ -351,6 +439,41 @@
 			};
 			name = Release;
 		};
+		B7A00000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SmallBizWorkspaceTests;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.javonfreeman.smallbizworkspace.tests;
+				PRODUCT_NAME = SmallBizWorkspaceTests;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SmallBizWorkspace.app/SmallBizWorkspace";
+			};
+			name = Debug;
+		};
+		B7A00000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SmallBizWorkspaceTests;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.javonfreeman.smallbizworkspace.tests;
+				PRODUCT_NAME = SmallBizWorkspaceTests;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SmallBizWorkspace.app/SmallBizWorkspace";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -368,6 +491,15 @@
 			buildConfigurations = (
 				B6FAA47C2F14423F0063A7CD /* Debug */,
 				B6FAA47D2F14423F0063A7CD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B7A000000000000000000009 /* Build configuration list for PBXNativeTarget "SmallBizWorkspaceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B7A00000000000000000000A /* Debug */,
+				B7A00000000000000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

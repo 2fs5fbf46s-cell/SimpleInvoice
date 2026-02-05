@@ -9,9 +9,11 @@ import Foundation
 
 enum PortalPDFBuilder {
 
+    @MainActor
     static func buildInvoicePDF(invoice: Invoice, snapshot: BusinessSnapshot) throws -> URL {
         let fileName = "\(invoice.documentType.uppercased())-\(invoice.invoiceNumber)"
-        let data = InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)
+        let resolvedSnapshot = invoice.businessSnapshot ?? snapshot
+        let data = InvoicePDFGenerator.makePDFData(invoice: invoice, business: resolvedSnapshot)
         return try InvoicePDFGenerator.writePDFToTemporaryFile(data: data, filename: fileName)
     }
 }

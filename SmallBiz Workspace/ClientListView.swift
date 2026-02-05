@@ -12,7 +12,7 @@ struct ClientListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
-    @Query(sort: \Client.name) private var clients: [Client]
+    @Query(sort: \Client.name, order: .forward) private var allClients: [Client]
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
 
     @State private var searchText: String = ""
@@ -25,7 +25,7 @@ struct ClientListView: View {
 
     private var scopedClients: [Client] {
         guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return clients.filter { $0.businessID == bizID }
+        return allClients.filter { $0.businessID == bizID }
     }
 
     private var filtered: [Client] {
@@ -44,15 +44,16 @@ struct ClientListView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
             // Subtle header wash (Option A)
-            SBWTheme.brandGradient
-                .opacity(SBWTheme.headerWashOpacity)
-                .blur(radius: SBWTheme.headerWashBlur)
-                .frame(height: SBWTheme.headerWashHeight)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea()
+            SBWTheme.headerWash()
 
             List {
-                if filtered.isEmpty {
+                if activeBiz.activeBusinessID == nil {
+                    ContentUnavailableView(
+                        "No Business Selected",
+                        systemImage: "building.2",
+                        description: Text("Select a business to view clients.")
+                    )
+                } else if filtered.isEmpty {
                     ContentUnavailableView(
                         scopedClients.isEmpty ? "No Clients Yet" : "No Results",
                         systemImage: "person.2",
@@ -87,6 +88,9 @@ struct ClientListView: View {
                     Image(systemName: "plus")
                 }
             }
+        }
+        .onAppear {
+            try? activeBiz.loadOrCreateDefaultBusiness(modelContext: modelContext)
         }
         .sheet(isPresented: $showingNewClient, onDismiss: {
             newClientDraft = nil

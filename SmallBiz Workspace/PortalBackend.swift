@@ -118,6 +118,149 @@ struct PaymentStatusResponse: Decodable {
     }
 }
 
+// MARK: - Booking Admin DTOs
+
+struct BookingRequestDTO: Decodable, Identifiable, Equatable {
+    let requestId: String
+    let businessId: String
+    let slug: String?
+
+    let clientName: String?
+    let clientEmail: String?
+    let clientPhone: String?
+
+    let requestedStart: String?
+    let requestedEnd: String?
+
+    let serviceType: String?
+    let notes: String?
+    var status: String
+
+    let createdAtMs: Int?
+    let approvedAtMs: Int?
+    let declinedAtMs: Int?
+
+    // Local-only for future workflow; not encoded/decoded.
+    var isHandled: Bool = false
+
+    var id: String { requestId }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId
+        case id
+        case bookingRequestId
+
+        case businessId
+        case businessID
+
+        case slug
+        case clientName
+        case clientEmail
+        case clientPhone
+        case customerName
+        case customerEmail
+        case customerPhone
+
+        case requestedStart
+        case requestedEnd
+        case requestedStartAt
+        case requestedEndAt
+        case startAt
+        case endAt
+
+        case serviceType
+        case serviceName
+        case notes
+        case message
+        case status
+
+        case createdAtMs
+        case approvedAtMs
+        case declinedAtMs
+        case createdAt
+        case approvedAt
+        case declinedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        func decodeString(_ key: CodingKeys) -> String? {
+            if let val = try? c.decodeIfPresent(String.self, forKey: key) { return val }
+            if let val = try? c.decodeIfPresent(Int.self, forKey: key) { return String(val) }
+            if let val = try? c.decodeIfPresent(Double.self, forKey: key) { return String(val) }
+            return nil
+        }
+
+        func decodeInt(_ key: CodingKeys) -> Int? {
+            if let val = try? c.decodeIfPresent(Int.self, forKey: key) { return val }
+            if let val = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(val) }
+            if let val = (try? c.decodeIfPresent(String.self, forKey: key)) ?? nil {
+                let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let intVal = Int(trimmed) { return intVal }
+                if let dblVal = Double(trimmed) { return Int(dblVal) }
+            }
+            return nil
+        }
+
+        func decodeFirst(_ keys: [CodingKeys]) -> String? {
+            for key in keys {
+                if let val = decodeString(key), !val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return val
+                }
+            }
+            return nil
+        }
+
+        func decodeFirstInt(_ keys: [CodingKeys]) -> Int? {
+            for key in keys {
+                if let val = decodeInt(key) {
+                    return val
+                }
+            }
+            return nil
+        }
+
+        guard let requestId = decodeFirst([.requestId, .id, .bookingRequestId]) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.requestId,
+                .init(codingPath: decoder.codingPath, debugDescription: "Missing requestId/id")
+            )
+        }
+        guard let businessId = decodeFirst([.businessId, .businessID]) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.businessId,
+                .init(codingPath: decoder.codingPath, debugDescription: "Missing businessId")
+            )
+        }
+
+        self.requestId = requestId
+        self.businessId = businessId
+        self.slug = decodeFirst([.slug])
+
+        self.clientName = decodeFirst([.clientName, .customerName])
+        self.clientEmail = decodeFirst([.clientEmail, .customerEmail])
+        self.clientPhone = decodeFirst([.clientPhone, .customerPhone])
+
+        self.requestedStart = decodeFirst([.requestedStart, .requestedStartAt, .startAt])
+        self.requestedEnd = decodeFirst([.requestedEnd, .requestedEndAt, .endAt])
+
+        self.serviceType = decodeFirst([.serviceType, .serviceName])
+        self.notes = decodeFirst([.notes, .message])
+        self.status = decodeFirst([.status]) ?? "pending"
+
+        self.createdAtMs = decodeFirstInt([.createdAtMs, .createdAt])
+        self.approvedAtMs = decodeFirstInt([.approvedAtMs, .approvedAt])
+        self.declinedAtMs = decodeFirstInt([.declinedAtMs, .declinedAt])
+
+        self.isHandled = false
+    }
+}
+
+struct BookingRequestsResponseDTO: Decodable {
+    let requests: [BookingRequestDTO]
+}
+
 // MARK: - Backend client
 
 final class PortalBackend {
@@ -656,5 +799,173 @@ final class PortalBackend {
 
         do { return try decoder().decode(PaymentStatusResponse.self, from: data) }
         catch { throw PortalBackendError.decode(body: raw) }
+    }
+
+    // MARK: - Booking Admin
+
+    func registerBookingSlug(businessId: UUID, slug: String, brandName: String, businessEmail: String?) async throws {
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent("/api/booking/admin/slug")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        var payload: [String: Any] = [
+            "businessId": businessId.uuidString,
+            "slug": slug,
+            "brandName": brandName
+        ]
+        if let businessEmail,
+           !businessEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["businessEmail"] = businessEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+    }
+
+    func fetchBookingRequests(businessId: UUID) async throws -> [BookingRequestDTO] {
+        let adminKey = try requireAdminKey()
+
+        print("📥 Fetch booking requests", "businessId:", businessId.uuidString)
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/booking/admin/requests"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "businessId", value: businessId.uuidString)
+        ]
+
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        do {
+            return try decoder().decode([BookingRequestDTO].self, from: data)
+        } catch {
+            do {
+                let wrapped = try decoder().decode(BookingRequestsResponseDTO.self, from: data)
+                return wrapped.requests
+            } catch {
+                throw PortalBackendError.decode(body: raw)
+            }
+        }
+    }
+
+    func fetchBookingRequests(
+        businessId: String,
+        status: String
+    ) async throws -> [BookingRequestDTO] {
+        let adminKey = try requireAdminKey()
+
+        print("📥 Fetch booking requests",
+              "businessId:", businessId,
+              "status:", status)
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/booking/admin/requests"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "businessId", value: businessId),
+            URLQueryItem(name: "status", value: status)
+        ]
+
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        do {
+            return try decoder().decode([BookingRequestDTO].self, from: data)
+        } catch {
+            do {
+                let wrapped = try decoder().decode(BookingRequestsResponseDTO.self, from: data)
+                return wrapped.requests
+            } catch {
+                throw PortalBackendError.decode(body: raw)
+            }
+        }
+    }
+
+    // MARK: - Booking Admin (scaffold)
+
+    func approveBookingRequest(businessId: UUID, requestId: String) async throws {
+        try await sendBookingAdminDecision(
+            endpoint: "/api/booking/admin/approve",
+            businessId: businessId.uuidString,
+            requestId: requestId
+        )
+    }
+
+    func declineBookingRequest(businessId: UUID, requestId: String) async throws {
+        try await sendBookingAdminDecision(
+            endpoint: "/api/booking/admin/decline",
+            businessId: businessId.uuidString,
+            requestId: requestId
+        )
+    }
+
+    func approveBookingRequest(businessId: String, requestId: String) async throws {
+        try await sendBookingAdminDecision(
+            endpoint: "/api/booking/admin/approve",
+            businessId: businessId,
+            requestId: requestId
+        )
+    }
+
+    func declineBookingRequest(businessId: String, requestId: String) async throws {
+        try await sendBookingAdminDecision(
+            endpoint: "/api/booking/admin/decline",
+            businessId: businessId,
+            requestId: requestId
+        )
+    }
+
+    private func sendBookingAdminDecision(
+        endpoint: String,
+        businessId: String,
+        requestId: String
+    ) async throws {
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent(endpoint)
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "requestId": requestId
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
     }
 }
