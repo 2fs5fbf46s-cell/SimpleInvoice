@@ -10,7 +10,7 @@ struct ToolbarCircleButton: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
-                .background(Color.white)
+                .background(Color(.secondarySystemBackground))
                 .clipShape(Circle())
                 .shadow(
                     color: Color.black.opacity(0.08),

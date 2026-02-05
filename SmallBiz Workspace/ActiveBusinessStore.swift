@@ -44,4 +44,9 @@ final class ActiveBusinessStore: ObservableObject {
         activeBusinessID = id
         activeBusinessIDString = id.uuidString
     }
+
+    func clearActiveBusiness() {
+        activeBusinessID = nil
+        activeBusinessIDString = ""
+    }
 }

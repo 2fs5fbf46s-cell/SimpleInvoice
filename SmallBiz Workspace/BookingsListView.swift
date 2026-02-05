@@ -1,33 +1,32 @@
 import SwiftUI
+import Foundation
 import SwiftData
 
 struct BookingsListView: View {
-    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Booking.startDate, order: .forward)
-    private var bookings: [Booking]
-
-    @State private var showNew = false
     @State private var searchText = ""
+    @State private var requests: [BookingRequestItem] = []
+    @State private var selectedStatus: BookingAdminStatus = .pending
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    @State private var refreshTask: Task<Void, Never>? = nil
 
-    // MARK: - Scoped bookings (active business)
-    // Booking currently has no businessID in your models.swift — so we scope by client.businessID when possible.
-    private var scopedBookings: [Booking] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return bookings.filter { b in
-            guard let c = b.client else { return true } // keep unassigned bookings visible
-            return c.businessID == bizID
-        }
+    private var taskKey: String {
+        "\(activeBiz.activeBusinessID?.uuidString ?? "none")-\(selectedStatus.rawValue)"
     }
 
-    private var filtered: [Booking] {
+    private var filteredRequests: [BookingRequestItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return scopedBookings }
+        let statusFiltered = requests.filter { matchesStatus($0.status, selected: selectedStatus) }
+        guard !q.isEmpty else { return statusFiltered }
 
-        return scopedBookings.filter {
-            $0.title.lowercased().contains(q) ||
-            ($0.client?.name ?? "").lowercased().contains(q)
+        return statusFiltered.filter {
+            bookingClient($0).lowercased().contains(q) ||
+            ($0.serviceType ?? "").lowercased().contains(q) ||
+            ($0.clientEmail ?? "").lowercased().contains(q) ||
+            ($0.clientPhone ?? "").lowercased().contains(q)
         }
     }
 
@@ -45,23 +44,47 @@ struct BookingsListView: View {
                 .ignoresSafeArea()
 
             List {
-                if filtered.isEmpty {
-                    ContentUnavailableView(
-                        scopedBookings.isEmpty ? "No Bookings" : "No Results",
-                        systemImage: "calendar.badge.clock",
-                        description: Text(scopedBookings.isEmpty
-                                          ? "Tap + to create your first booking."
-                                          : "Try a different search.")
-                    )
-                } else {
-                    ForEach(filtered) { b in
-                        NavigationLink {
-                            BookingDetailView(booking: b)
-                        } label: {
-                            bookingRow(b)
+                Section {
+                    Picker("Status", selection: $selectedStatus) {
+                        ForEach(BookingAdminStatus.allCases) { status in
+                            Text(status.label).tag(status)
                         }
                     }
-                    .onDelete(perform: deleteBookings)
+                    .pickerStyle(.segmented)
+                }
+
+                if isLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView("Loading bookings…")
+                        Spacer()
+                    }
+                } else if filteredRequests.isEmpty {
+                    ContentUnavailableView(
+                        selectedStatus == .all ? "No Requests" : "No \(selectedStatus.label) Requests",
+                        systemImage: "calendar.badge.clock",
+                        description: Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                          ? "New booking requests will appear here."
+                                          : "Try a different search.")
+                    )
+                    .overlay(alignment: .center) {
+                        if errorMessage != nil {
+                            Button("Retry") {
+                                Task { await loadRequests() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                } else {
+                    ForEach(filteredRequests) { request in
+                        NavigationLink {
+                            BookingDetailView(request: request) { newStatus in
+                                updateStatus(for: request.requestId, newStatus: newStatus)
+                            }
+                        } label: {
+                            bookingRow(request)
+                        }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -76,19 +99,35 @@ struct BookingsListView: View {
         .settingsGear { BusinessProfileView() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showNew = true } label: { Image(systemName: "plus") }
+                Button {
+                    Task { await loadRequests() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
             }
         }
-        .sheet(isPresented: $showNew) {
-            NavigationStack { NewBookingView() }
+        .task(id: taskKey) {
+            await loadRequests()
+        }
+        .refreshable {
+            await loadRequests()
+        }
+        .alert("Booking Error", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Something went wrong.")
         }
     }
 
     // MARK: - Row UI (Option A polish)
 
-    private func bookingRow(_ b: Booking) -> some View {
-        let statusText = normalizedBookingStatusLabel(b.status)
-        let chip = SBWTheme.chip(forStatus: statusText)
+    private func bookingRow(_ request: BookingRequestItem) -> some View {
+        let statusText = normalizedStatusLabel(request.status)
+        let chip = statusChip(for: statusText)
+        let startDate = parseDate(request.requestedStart)
 
         return HStack(alignment: .top, spacing: 12) {
             // Leading icon chip (bookings)
@@ -103,7 +142,7 @@ struct BookingsListView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(b.title.isEmpty ? "Booking" : b.title)
+                    Text(bookingClient(request))
                         .font(.headline)
 
                     Spacer()
@@ -117,16 +156,16 @@ struct BookingsListView: View {
                         .clipShape(Capsule())
                 }
 
-                Text(b.client?.name ?? "No customer")
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Text(b.startDate, style: .date)
+                if let service = request.serviceType, !service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(service)
                         .foregroundStyle(.secondary)
+                }
 
-                    Spacer()
-
-                    Text("\(b.startDate, style: .time) – \(b.endDate, style: .time)")
+                if let startDate {
+                    Text(startDate, style: .date)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Requested time pending")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -135,22 +174,165 @@ struct BookingsListView: View {
         .padding(.vertical, 2)
     }
 
-    private func normalizedBookingStatusLabel(_ raw: String) -> String {
+    private func normalizedStatusLabel(_ raw: String) -> String {
         let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-        if key == "completed" { return "COMPLETED" }
-        if key == "canceled" || key == "cancelled" { return "CANCELED" }
-        return "SCHEDULED" // your default
+        if key == "approved" { return "APPROVED" }
+        if key == "declined" { return "DECLINED" }
+        if key == "pending" { return "PENDING" }
+        return key.isEmpty ? "PENDING" : key.uppercased()
     }
 
-    // MARK: - Deletes
-
-    private func deleteBookings(at offsets: IndexSet) {
-        for idx in offsets {
-            guard idx < filtered.count else { continue }
-            modelContext.delete(filtered[idx])
+    private func statusChip(for statusText: String) -> (fg: Color, bg: Color) {
+        let key = statusText.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch key {
+        case "APPROVED":
+            return (SBWTheme.brandGreen, SBWTheme.brandGreen.opacity(0.12))
+        case "DECLINED":
+            return (Color.red, Color.red.opacity(0.12))
+        case "PENDING":
+            return (Color.orange, Color.orange.opacity(0.12))
+        default:
+            return (.secondary, Color.primary.opacity(0.06))
         }
-        do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
     }
+
+    private func bookingClient(_ request: BookingRequestItem) -> String {
+        if let name = request.clientName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        if let email = request.clientEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            return email
+        }
+        if let phone = request.clientPhone?.trimmingCharacters(in: .whitespacesAndNewlines), !phone.isEmpty {
+            return phone
+        }
+        return "No customer"
+    }
+
+    private func parseDate(_ raw: String?) -> Date? {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        if let date = Self.isoWithFractional.date(from: raw) { return date }
+        if let date = Self.isoPlain.date(from: raw) { return date }
+        if let seconds = Double(raw) {
+            let normalized = seconds > 10_000_000_000 ? seconds / 1000.0 : seconds
+            return Date(timeIntervalSince1970: normalized)
+        }
+        return nil
+    }
+
+    @MainActor
+    private func loadRequests() async {
+        guard !isLoading else { return }
+        do {
+            try activeBiz.loadOrCreateDefaultBusiness(modelContext: modelContext)
+        } catch {
+            // ignore: we'll show empty state below
+        }
+
+        guard let bizId = activeBiz.activeBusinessID else {
+            requests = []
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            let response = try await PortalBackend.shared.fetchBookingRequests(businessId: bizId)
+            let mapped = response.map { dto in
+                BookingRequestItem(
+                    requestId: dto.requestId,
+                    businessId: dto.businessId,
+                    slug: dto.slug,
+                    clientName: dto.clientName,
+                    clientEmail: dto.clientEmail,
+                    clientPhone: dto.clientPhone,
+                    requestedStart: dto.requestedStart,
+                    requestedEnd: dto.requestedEnd,
+                    serviceType: dto.serviceType,
+                    notes: dto.notes,
+                    status: dto.status,
+                    createdAtMs: dto.createdAtMs
+                )
+            }
+            requests = mapped.sorted { lhs, rhs in
+                let l = lhs.createdAtMs ?? 0
+                let r = rhs.createdAtMs ?? 0
+                return l > r
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func matchesStatus(_ raw: String, selected: BookingAdminStatus) -> Bool {
+        if selected == .all { return true }
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return key == selected.rawValue
+    }
+
+    private func updateStatus(for requestId: String, newStatus: String) {
+        let normalized = newStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return }
+        requests = requests.map { item in
+            guard item.requestId == requestId else { return item }
+            return BookingRequestItem(
+                requestId: item.requestId,
+                businessId: item.businessId,
+                slug: item.slug,
+                clientName: item.clientName,
+                clientEmail: item.clientEmail,
+                clientPhone: item.clientPhone,
+                requestedStart: item.requestedStart,
+                requestedEnd: item.requestedEnd,
+                serviceType: item.serviceType,
+                notes: item.notes,
+                status: normalized,
+                createdAtMs: item.createdAtMs
+            )
+        }
+        scheduleRefreshAfterStatusChange()
+    }
+
+    @MainActor
+    private func scheduleRefreshAfterStatusChange() {
+        guard selectedStatus != .all else { return }
+        refreshTask?.cancel()
+        refreshTask = Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            await loadRequests()
+        }
+    }
+
+    private static let isoWithFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+}
+
+struct BookingRequestItem: Identifiable, Hashable {
+    let requestId: String
+    let businessId: String
+    let slug: String?
+    let clientName: String?
+    let clientEmail: String?
+    let clientPhone: String?
+    let requestedStart: String?
+    let requestedEnd: String?
+    let serviceType: String?
+    let notes: String?
+    let status: String
+    let createdAtMs: Int?
+
+    var id: String { requestId }
 }

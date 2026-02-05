@@ -70,12 +70,7 @@ struct JobsListView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
             // Subtle header wash (Option A)
-            SBWTheme.brandGradient
-                .opacity(SBWTheme.headerWashOpacity)
-                .blur(radius: SBWTheme.headerWashBlur)
-                .frame(height: SBWTheme.headerWashHeight)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea()
+            SBWTheme.headerWash()
 
             List {
                 // Filter toggle (match other list screens)

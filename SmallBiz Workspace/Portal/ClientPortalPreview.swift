@@ -345,7 +345,6 @@ struct ClientPortalPreviewView: View {
             let pdfData = InvoicePDFService.makePDFData(
                 invoice: inv,
                 profiles: profiles,
-                lockSnapshot: true,
                 context: modelContext
             )
             let prefix = (inv.documentType == "estimate") ? "Estimate" : "Invoice"

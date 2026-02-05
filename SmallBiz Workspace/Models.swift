@@ -18,6 +18,12 @@ final class BusinessProfile {
     var defaultThankYou: String = "Thank you for your business!"
     var defaultTerms: String = "Payment is due by the due date listed on this invoice."
 
+    // Booking Portal
+    var bookingSlug: String = ""
+    var bookingEnabled: Bool = true
+    var bookingHoursText: String = ""
+    var bookingInstructions: String = ""
+
     var logoData: Data? = nil
    
 
@@ -44,6 +50,10 @@ Other
         address: String = "",
         defaultThankYou: String = "Thank you for your business!",
         defaultTerms: String = "Payment is due by the due date listed on this invoice.",
+        bookingSlug: String = "",
+        bookingEnabled: Bool = true,
+        bookingHoursText: String = "",
+        bookingInstructions: String = "",
         logoData: Data? = nil,
         invoicePrefix: String = "SI",
         nextInvoiceNumber: Int = 1,
@@ -64,6 +74,10 @@ Other
         self.address = address
         self.defaultThankYou = defaultThankYou
         self.defaultTerms = defaultTerms
+        self.bookingSlug = bookingSlug
+        self.bookingEnabled = bookingEnabled
+        self.bookingHoursText = bookingHoursText
+        self.bookingInstructions = bookingInstructions
         self.logoData = logoData
         self.invoicePrefix = invoicePrefix
         self.nextInvoiceNumber = nextInvoiceNumber
@@ -254,6 +268,32 @@ final class Invoice {
     var discountedSubtotal: Double { max(0, subtotal - discountAmount) }
     var taxAmount: Double { discountedSubtotal * taxRate }
     var total: Double { discountedSubtotal + taxAmount }
+}
+
+// MARK: - Invoice Snapshot / Finalization Helpers
+
+extension Invoice {
+    var trimmedInvoiceNumber: String {
+        invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var isFinalized: Bool {
+        if documentType == "invoice" {
+            return !trimmedInvoiceNumber.isEmpty
+        }
+
+        let status = estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return status == "sent" || status == "accepted"
+    }
+
+    var isDraftForSnapshotRefresh: Bool {
+        if documentType == "invoice" {
+            return trimmedInvoiceNumber.isEmpty && businessSnapshotData == nil
+        }
+
+        let status = estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return status == "draft" && businessSnapshotData == nil
+    }
 }
 
 // MARK: - Line Item
