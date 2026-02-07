@@ -7,17 +7,23 @@
 
 import Foundation
 import SwiftUI
+import SwiftData
 
 enum AppTab: Hashable {
     case dashboard, invoices, create, clients, more
 }
 
 struct AppTabView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var invoices: [Invoice]
+
     @State private var tab: AppTab = .dashboard
     @State private var showCreateSheet = false
+    @State private var deepLinkedEstimate: Invoice? = nil
 
     // MUST be @State so NavigationStack(path:) can push.
     @State private var morePath = NavigationPath()
+    @ObservedObject private var portalReturn = PortalReturnRouter.shared
 
     var body: some View {
         TabView(selection: $tab) {
@@ -76,6 +82,35 @@ struct AppTabView: View {
         .sheet(isPresented: $showCreateSheet) {
             CreateMenuSheet()
         }
+        .sheet(item: $deepLinkedEstimate, onDismiss: {
+            portalReturn.consumeEstimateRequest()
+        }) { estimate in
+            NavigationStack {
+                InvoiceDetailView(invoice: estimate)
+            }
+        }
+        .onChange(of: portalReturn.requestedEstimateID) { _, id in
+            routeToEstimate(id: id)
+        }
+        .onChange(of: invoices.count) { _, _ in
+            if let requested = portalReturn.requestedEstimateID {
+                EstimateDecisionSync.applyPendingDecisions(in: modelContext)
+                routeToEstimate(id: requested)
+            }
+        }
+        .task {
+            EstimateDecisionSync.applyPendingDecisions(in: modelContext)
+            if let requested = portalReturn.requestedEstimateID {
+                routeToEstimate(id: requested)
+            }
+        }
+    }
+
+    private func routeToEstimate(id: UUID?) {
+        guard let id else { return }
+        guard let invoice = invoices.first(where: { $0.id == id }) else { return }
+        tab = .invoices
+        deepLinkedEstimate = invoice
     }
 }
 

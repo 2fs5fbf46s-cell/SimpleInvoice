@@ -1,10 +1,13 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import Contacts
+import ContactsUI
 
 struct ClientPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     @Query(sort: \Client.name) private var clients: [Client]
     @Binding var selectedClient: Client?
@@ -18,6 +21,12 @@ struct ClientPickerView: View {
     @State private var draftEmail: String = ""
     @State private var draftPhone: String = ""
     @State private var draftAddress: String = ""
+    @State private var showingContactPicker = false
+    @State private var pendingContact: CNContact? = nil
+    @State private var duplicateCandidate: Client? = nil
+    @State private var showDuplicateDialog = false
+    @State private var openExistingClient: Client? = nil
+    @State private var showOpenExistingBanner = false
 
     var body: some View {
         List {
@@ -110,6 +119,16 @@ struct ClientPickerView: View {
         .sheet(isPresented: $showingNewClient) {
             NavigationStack {
                 Form {
+                    Section {
+                        Button {
+                            showingContactPicker = true
+                        } label: {
+                            Label("Import from Contacts", systemImage: "person.crop.circle.badge.plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SBWTheme.brandBlue)
+                    }
+
                     Section("Client") {
                         TextField("Name", text: $draftName)
                         TextField("Email", text: $draftEmail)
@@ -137,6 +156,52 @@ struct ClientPickerView: View {
                 }
             }
             .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showingContactPicker) {
+            ContactPicker(isPresented: $showingContactPicker) { contact in
+                handleContactSelection(contact)
+            } onCancel: {
+            }
+        }
+        .navigationDestination(item: $openExistingClient) { client in
+            ClientEditView(client: client)
+        }
+        .overlay(alignment: .top) {
+            if showOpenExistingBanner {
+                OpenExistingClientBanner()
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .confirmationDialog(
+            "Existing Client Found",
+            isPresented: $showDuplicateDialog,
+            presenting: duplicateCandidate
+        ) { match in
+            Button("Open Existing") {
+                showingNewClient = false
+                editingClient = nil
+                openExistingClient = match
+                showOpenExistingBanner = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    showOpenExistingBanner = false
+                }
+                pendingContact = nil
+                duplicateCandidate = nil
+            }
+            Button("Create New Anyway") {
+                if let contact = pendingContact {
+                    applyContactToDraft(contact)
+                }
+                pendingContact = nil
+                duplicateCandidate = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingContact = nil
+                duplicateCandidate = nil
+            }
+        } message: { match in
+            Text("A client with the same email or phone already exists: \(match.name.isEmpty ? "Client" : match.name).")
         }
     }
 
@@ -171,5 +236,59 @@ struct ClientPickerView: View {
         } catch {
             print("Failed to save deletes: \(error)")
         }
+    }
+
+    private func applyContactToDraft(_ contact: CNContact) {
+        let f = ContactImportMapper.fields(from: contact)
+        applyContactFieldsToDraft(f)
+    }
+
+    private func applyContactFieldsToDraft(_ fields: ContactImportFields) {
+        draftName = fields.name
+        draftEmail = fields.email
+        draftPhone = fields.phone
+        draftAddress = fields.address
+    }
+
+    private func handleContactSelection(_ contact: CNContact) {
+        let fields = ContactImportMapper.fields(from: contact)
+        let scopedClients = scopedDuplicateClients()
+        if let match = ContactImportMapper.findDuplicateClient(
+            in: scopedClients,
+            fields: fields,
+            businessID: activeBiz.activeBusinessID
+        ) {
+            pendingContact = contact
+            duplicateCandidate = match
+            showDuplicateDialog = true
+            return
+        }
+
+        applyContactFieldsToDraft(fields)
+    }
+
+    private func scopedDuplicateClients() -> [Client] {
+        guard let bizID = activeBiz.activeBusinessID else { return clients }
+        return clients.filter { $0.businessID == bizID }
+    }
+}
+
+private struct OpenExistingClientBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.turn.down.right")
+                .foregroundStyle(SBWTheme.brandBlue)
+            Text("Opened existing client")
+                .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.thinMaterial)
+                .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
+        )
+        .foregroundStyle(.primary)
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 }

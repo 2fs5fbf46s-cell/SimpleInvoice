@@ -63,18 +63,19 @@ struct DestinationFolderPicker: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(visibleChildren) { folder in
-                            NavigationLink(value: folder) {
-                                HStack {
+                            Button {
+                                path.append(folder)
+                            } label: {
+                                HStack(spacing: 10) {
                                     Image(systemName: "folder")
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(folder.name)
-                                        Text(folder.relativePath)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
+                                        .foregroundStyle(.secondary)
+                                    SBWNavigationRow(
+                                        title: folder.name,
+                                        subtitle: folder.relativePath
+                                    )
                                 }
                             }
+                            .buttonStyle(.plain)
                             .contextMenu {
                                 Button {
                                     onPick(folder)
@@ -108,7 +109,8 @@ struct DestinationFolderPicker: View {
                     business: business,
                     folder: folder,
                     allFolders: allFolders,
-                    searchText: $searchText
+                    searchText: $searchText,
+                    onNavigate: { path.append($0) }
                 ) { chosen in
                     onPick(chosen)
                     dismiss()
@@ -130,6 +132,7 @@ private struct FolderLevelView: View {
     let folder: Folder
     let allFolders: [Folder]
     @Binding var searchText: String
+    let onNavigate: (Folder) -> Void
     let onChoose: (Folder?) -> Void
 
     private var children: [Folder] {
@@ -169,18 +172,19 @@ private struct FolderLevelView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(children) { f in
-                        NavigationLink(value: f) {
-                            HStack {
+                        Button {
+                            onNavigate(f)
+                        } label: {
+                            HStack(spacing: 10) {
                                 Image(systemName: "folder")
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(f.name)
-                                    Text(f.relativePath)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
+                                    .foregroundStyle(.secondary)
+                                SBWNavigationRow(
+                                    title: f.name,
+                                    subtitle: f.relativePath
+                                )
                             }
                         }
+                        .buttonStyle(.plain)
                         .contextMenu {
                             Button {
                                 onChoose(f)

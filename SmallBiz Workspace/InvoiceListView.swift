@@ -20,6 +20,7 @@ struct InvoiceListView: View {
 
     // Navigate to the invoice created from a template
     @State private var navigateToInvoice: Invoice? = nil
+    @State private var selectedInvoice: Invoice? = nil
 
     // MARK: - Filters
     private enum Filter: String, CaseIterable, Identifiable {
@@ -61,11 +62,13 @@ struct InvoiceListView: View {
                     )
                 } else {
                     ForEach(filteredInvoices) { invoice in
-                        NavigationLink {
-                            InvoiceDetailView(invoice: invoice)
+                        Button {
+                            selectedInvoice = invoice
                         } label: {
                             row(invoice)
                         }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                     .onDelete(perform: deleteInvoices)
                 }
@@ -138,6 +141,9 @@ struct InvoiceListView: View {
         .navigationDestination(item: $navigateToInvoice) { invoice in
             InvoiceDetailView(invoice: invoice)
         }
+        .navigationDestination(item: $selectedInvoice) { invoice in
+            InvoiceDetailView(invoice: invoice)
+        }
     }
 
 
@@ -173,7 +179,10 @@ struct InvoiceListView: View {
 
     private func row(_ invoice: Invoice) -> some View {
         let statusText = invoice.isPaid ? "PAID" : "UNPAID"
-        let chip = SBWTheme.chip(forStatus: statusText)
+        let clientName = invoice.client?.name ?? "No Client"
+        let date = invoice.issueDate.formatted(date: .abbreviated, time: .omitted)
+        let total = invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        let subtitle = "\(statusText) • \(clientName) • \(date) • \(total)"
 
         return HStack(alignment: .top, spacing: 12) {
 
@@ -187,40 +196,28 @@ struct InvoiceListView: View {
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(invoice.invoiceNumber.isEmpty ? "Invoice" : "Invoice \(invoice.invoiceNumber)")
                         .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                    Spacer()
-
-                    Text(statusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(chip.fg)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(chip.bg)
-                        .clipShape(Capsule())
-                }
-
-                Text(invoice.client?.name ?? "No Client")
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Text(invoice.issueDate, style: .date)
+                    Text(subtitle)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Text(
-                        invoice.total,
-                        format: .currency(code: Locale.current.currency?.identifier ?? "USD")
-                    )
-                    .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
                 }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     // MARK: - Deletes

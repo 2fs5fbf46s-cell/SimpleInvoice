@@ -16,6 +16,7 @@ struct CreateMenuSheet: View {
 
     // Navigation target created here
     @State private var createdInvoice: Invoice? = nil
+    @State private var createdContract: Contract? = nil
 
     // Booking creation sheet
     @State private var showNewBooking = false
@@ -26,12 +27,17 @@ struct CreateMenuSheet: View {
     @State private var draftEstimateClient: Client? = nil
 
     // New Client (Clients-style)
-    @State private var showNewClientSheet = false
     @State private var newClientDraft: Client? = nil
+    @State private var newClientSaveError: String? = nil
+    @State private var openExistingClient: Client? = nil
+    @State private var showOpenExistingBanner = false
 
     // New Job (Clients-style)
     @State private var showNewJobSheet = false
     @State private var newJobDraft: Job? = nil
+
+    // New Contract
+    @State private var showNewContractSheet = false
 
     var body: some View {
         NavigationStack {
@@ -73,6 +79,17 @@ struct CreateMenuSheet: View {
                                 draftEstimateName = ""
                                 draftEstimateClient = nil
                                 showNewEstimateSheet = true
+                            }
+
+                            Divider().opacity(0.6)
+
+                            CreateActionRow(
+                                title: "New Contract",
+                                subtitle: "Start an agreement",
+                                systemImage: "doc.text",
+                                chipFill: SBWTheme.chipFill(for: "Contracts")
+                            ) {
+                                showNewContractSheet = true
                             }
                         }
 
@@ -139,6 +156,12 @@ struct CreateMenuSheet: View {
             .navigationDestination(item: $createdInvoice) { inv in
                 InvoiceDetailView(invoice: inv)
             }
+            .navigationDestination(item: $createdContract) { contract in
+                ContractDetailView(contract: contract)
+            }
+            .navigationDestination(item: $openExistingClient) { client in
+                ClientEditView(client: client)
+            }
 
             // New estimate: name + client sheet
             .sheet(isPresented: $showNewEstimateSheet) {
@@ -150,40 +173,82 @@ struct CreateMenuSheet: View {
                 )
             }
 
+            .sheet(isPresented: $showNewContractSheet) {
+                NavigationStack {
+                    CreateContractStartView(
+                        onCreated: { contract in
+                            createdContract = contract
+                            showNewContractSheet = false
+                        },
+                        onCancel: {
+                            showNewContractSheet = false
+                        }
+                    )
+                }
+            }
+
             // New booking flow
             .sheet(isPresented: $showNewBooking) {
                 NavigationStack { NewBookingView() }
             }
 
             // New client flow (uses ClientEditView)
-            .sheet(isPresented: $showNewClientSheet, onDismiss: {
-                newClientDraft = nil
-            }) {
+            .sheet(item: $newClientDraft, onDismiss: {
+                newClientSaveError = nil
+            }) { draft in
                 NavigationStack {
-                    if let newClientDraft {
-                        ClientEditView(client: newClientDraft)
-                            .navigationTitle("New Client")
-                            .navigationBarTitleDisplayMode(.inline)
-                            .toolbar {
-                                ToolbarItem(placement: .cancellationAction) {
-                                    Button("Cancel") { deleteClientIfEmptyAndClose() }
+                    ClientEditView(
+                        client: draft,
+                        isDraft: true,
+                        onOpenExisting: { existing in
+                            deleteClientIfEmptyAndClose()
+                            DispatchQueue.main.async {
+                                openExistingClient = existing
+                                showOpenExistingBanner = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                    showOpenExistingBanner = false
                                 }
-                                ToolbarItem(placement: .confirmationAction) {
-                                    Button("Done") {
-                                        if newClientDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                            deleteClientIfEmptyAndClose()
-                                            return
-                                        }
-                                        do { try modelContext.save(); showNewClientSheet = false }
-                                        catch { print("Failed to save new client: \(error)") }
+                            }
+                        }
+                    )
+                        .navigationTitle("New Client")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { deleteClientIfEmptyAndClose() }
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") {
+                                    let trimmed = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if trimmed.isEmpty {
+                                        deleteClientIfEmptyAndClose()
+                                        return
+                                    }
+                                    do {
+                                        // Client draft is inserted up-front; just save.
+                                        try modelContext.save()
+                                        newClientDraft = nil
+                                    } catch {
+                                        newClientSaveError = error.localizedDescription
+                                        print("Failed to save new client: \(error)")
                                     }
                                 }
                             }
-                    } else {
-                        ProgressView("Loading…").navigationTitle("New Client")
-                    }
+                        }
+                        .alert("Couldn’t Save Client", isPresented: Binding(get: { newClientSaveError != nil }, set: { if !$0 { newClientSaveError = nil } })) {
+                            Button("OK", role: .cancel) { newClientSaveError = nil }
+                        } message: {
+                            Text(newClientSaveError ?? "Unknown error")
+                        }
                 }
                 .presentationDetents([.medium, .large])
+            }
+            .overlay(alignment: .top) {
+                if showOpenExistingBanner {
+                    OpenExistingClientBanner()
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
 
             // New job flow (uses JobDetailView)
@@ -192,7 +257,7 @@ struct CreateMenuSheet: View {
             }) {
                 NavigationStack {
                     if let newJobDraft {
-                        JobDetailView(job: newJobDraft)
+                        JobDetailView(job: newJobDraft, isDraft: true)
                             .navigationTitle("New Request")
                             .navigationBarTitleDisplayMode(.inline)
                             .toolbar {
@@ -205,7 +270,12 @@ struct CreateMenuSheet: View {
                                             deleteJobIfEmptyAndClose()
                                             return
                                         }
-                                        do { try modelContext.save(); showNewJobSheet = false }
+                                        do {
+                                            modelContext.insert(newJobDraft)
+                                            try modelContext.save()
+                                            _ = try WorkspaceProvisioningService.ensureJobWorkspace(job: newJobDraft, context: modelContext)
+                                            showNewJobSheet = false
+                                        }
                                         catch { print("Failed to save new job: \(error)") }
                                     }
                                 }
@@ -325,25 +395,26 @@ struct CreateMenuSheet: View {
         }
 
         let c = Client(businessID: bizID)
+        // Insert the draft up-front so edits (including Contacts import) are tracked reliably.
         modelContext.insert(c)
-        newClientDraft = c
-        showNewClientSheet = true
+        try? modelContext.save()
 
-        do { try modelContext.save() }
-        catch { print("Failed to save new client draft: \(error)") }
+        newClientDraft = c
     }
 
     private func deleteClientIfEmptyAndClose() {
-        guard let c = newClientDraft else { showNewClientSheet = false; return }
+        if let draft = newClientDraft {
+            let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let email = draft.email.trimmingCharacters(in: .whitespacesAndNewlines)
+            let phone = draft.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+            let address = draft.address.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if c.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            modelContext.delete(c)
+            if name.isEmpty && email.isEmpty && phone.isEmpty && address.isEmpty {
+                modelContext.delete(draft)
+                try? modelContext.save()
+            }
         }
-
-        do { try modelContext.save() }
-        catch { print("Failed to save after cancel: \(error)") }
-
-        showNewClientSheet = false
+        newClientDraft = nil
     }
 
     // MARK: - New Job (match JobsListView Clients-style)
@@ -361,24 +432,12 @@ struct CreateMenuSheet: View {
         job.title = ""
         job.status = "scheduled"
 
-        modelContext.insert(job)
         newJobDraft = job
         showNewJobSheet = true
-
-        do { try modelContext.save() }
-        catch { print("Failed to save new job draft: \(error)") }
     }
 
     private func deleteJobIfEmptyAndClose() {
-        guard let j = newJobDraft else { showNewJobSheet = false; return }
-
-        if j.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            modelContext.delete(j)
-        }
-
-        do { try modelContext.save() }
-        catch { print("Failed to save after cancel: \(error)") }
-
+        newJobDraft = nil
         showNewJobSheet = false
     }
 
@@ -484,5 +543,26 @@ private struct CreateActionRow: View {
                 .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
                 .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
         }
+    }
+
+}
+
+private struct OpenExistingClientBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.turn.down.right")
+                .foregroundStyle(SBWTheme.brandBlue)
+            Text("Opened existing client")
+                .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.thinMaterial)
+                .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
+        )
+        .foregroundStyle(.primary)
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 }

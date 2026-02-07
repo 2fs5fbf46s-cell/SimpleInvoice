@@ -4,35 +4,22 @@ struct FolderRowView: View {
     let business: Business
     let folder: Folder
     let isEditing: Bool
+    let onOpen: () -> Void
 
     var body: some View {
-        NavigationLink {
-            FolderBrowserView(business: business, folder: folder)
-        } label: {
-            HStack(spacing: 12) {
+        Button(action: onOpen) {
+            HStack(spacing: 10) {
                 Image(systemName: "folder")
                     .foregroundStyle(.secondary)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(folder.name.isEmpty ? "Folder" : folder.name)
-                        .lineLimit(1)
-
-                    Text(folder.relativePath)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if isEditing {
-                    // In edit mode, NavigationLink still works, but visually less noisy
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .opacity(0.4)
-                }
+                SBWNavigationRow(
+                    title: folder.name.isEmpty ? "Folder" : folder.name,
+                    subtitle: folder.relativePath
+                )
             }
         }
+        .buttonStyle(.plain)
+        .disabled(isEditing)
+        .opacity(isEditing ? 0.75 : 1)
     }
 }

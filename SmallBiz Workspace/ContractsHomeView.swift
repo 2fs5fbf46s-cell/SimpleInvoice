@@ -18,6 +18,7 @@ struct ContractsHomeView: View {
     @Query private var profiles: [BusinessProfile]
 
     @State private var filter: HomeFilter = .all
+    @State private var selectedContract: Contract? = nil
 
     private enum HomeFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -95,11 +96,12 @@ struct ContractsHomeView: View {
                     if (filter == .all || filter == .drafts) && !draftContracts.isEmpty {
                         Section("Drafts") {
                             ForEach(draftContracts.prefix(10)) { contract in
-                                NavigationLink {
-                                    ContractDetailView(contract: contract)
+                                Button {
+                                    selectedContract = contract
                                 } label: {
                                     contractRow(contract)
                                 }
+                                .buttonStyle(.plain)
                                 .swipeActions {
                                     Button(role: .destructive) {
                                         deleteIfDraft(contract)
@@ -115,11 +117,12 @@ struct ContractsHomeView: View {
                     if (filter == .all || filter == .active) && !activeContracts.isEmpty {
                         Section("Active Contracts") {
                             ForEach(activeContracts.prefix(10)) { contract in
-                                NavigationLink {
-                                    ContractDetailView(contract: contract)
+                                Button {
+                                    selectedContract = contract
                                 } label: {
                                     contractRow(contract)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -140,6 +143,9 @@ struct ContractsHomeView: View {
         }
         .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(item: $selectedContract) { contract in
+            ContractDetailView(contract: contract)
+        }
         .task {
             // Ensure built-in templates exist (safe to call repeatedly)
             ContractTemplateSeeder.seedIfNeeded(context: modelContext)
@@ -153,7 +159,10 @@ struct ContractsHomeView: View {
 
     private func contractRow(_ contract: Contract) -> some View {
         let statusText = contract.status.rawValue.uppercased()
-        let chip = SBWTheme.chip(forStatus: statusText)
+        let client = resolvedClientName(for: contract)
+        let date = contract.updatedAt.formatted(date: .abbreviated, time: .omitted)
+        let category = contract.templateCategory.isEmpty ? "General" : contract.templateCategory
+        let subtitle = "\(statusText) • \(client) • \(date) • \(category)"
 
         return HStack(alignment: .top, spacing: 12) {
             ZStack {
@@ -165,35 +174,10 @@ struct ContractsHomeView: View {
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(contract.title.isEmpty ? "Contract" : contract.title)
-                        .font(.headline)
-
-                    Spacer()
-
-                    Text(statusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(chip.fg)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(chip.bg)
-                        .clipShape(Capsule())
-                }
-
-                Text(resolvedClientName(for: contract))
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Text(contract.updatedAt, style: .date)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(contract.templateCategory)
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                }
-            }
-            .padding(.vertical, 4)
+            SBWNavigationRow(
+                title: contract.title.isEmpty ? "Contract" : contract.title,
+                subtitle: subtitle
+            )
         }
     }
 

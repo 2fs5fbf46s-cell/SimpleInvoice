@@ -17,6 +17,7 @@ struct EstimateListView: View {
 
     // Navigate to the estimate we just created
     @State private var navigateToEstimate: Invoice? = nil
+    @State private var selectedEstimate: Invoice? = nil
 
     // MARK: - Rename
     @State private var renamingEstimate: Invoice? = nil
@@ -73,11 +74,12 @@ struct EstimateListView: View {
                     )
                 } else {
                     ForEach(filteredEstimates) { estimate in
-                        NavigationLink {
-                            InvoiceDetailView(invoice: estimate)
+                        Button {
+                            selectedEstimate = estimate
                         } label: {
                             row(estimate)
                         }
+                        .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
 
                             Button {
@@ -100,6 +102,10 @@ struct EstimateListView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .refreshable {
+                await refreshFilteredEstimatesFromPortal()
+                EstimateDecisionSync.applyPendingDecisions(in: modelContext)
+            }
         }
         .navigationTitle("Estimates")
         .navigationBarTitleDisplayMode(.large)
@@ -108,7 +114,6 @@ struct EstimateListView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search estimates"
         )
-        .settingsGear { BusinessProfileView() }
 
         // MARK: - Toolbar (matches InvoiceListView style)
         .toolbar {
@@ -145,6 +150,9 @@ struct EstimateListView: View {
 
         // Navigate to created estimate (template-style navigation)
         .navigationDestination(item: $navigateToEstimate) { estimate in
+            InvoiceDetailView(invoice: estimate)
+        }
+        .navigationDestination(item: $selectedEstimate) { estimate in
             InvoiceDetailView(invoice: estimate)
         }
 
@@ -216,6 +224,10 @@ struct EstimateListView: View {
                 }
             }
         }
+        .task {
+            EstimateDecisionSync.applyPendingDecisions(in: modelContext)
+            await refreshFilteredEstimatesFromPortal()
+        }
     }
 
     // MARK: - Data (scoped + filtered)
@@ -252,42 +264,17 @@ struct EstimateListView: View {
 
     // MARK: - Row UI (Option A chip styling)
 
-    @ViewBuilder
     private func row(_ estimate: Invoice) -> some View {
         let statusText = estimatePillText(for: estimate)
-        let chip = SBWTheme.chip(forStatus: statusText)
+        let clientName = estimate.client?.name ?? "No Client"
+        let date = estimate.issueDate.formatted(date: .abbreviated, time: .omitted)
+        let total = estimate.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        let subtitle = "\(statusText) • \(clientName) • \(date) • \(total)"
 
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Estimate \(estimate.invoiceNumber)")
-                    .font(.headline)
-
-                Spacer()
-
-                Text(statusText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(chip.fg)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(chip.bg)
-                    .clipShape(Capsule())
-            }
-
-            Text(estimate.client?.name ?? "No Client")
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Text(estimate.issueDate, style: .date)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(
-                    estimate.total,
-                    format: .currency(code: Locale.current.currency?.identifier ?? "USD")
-                )
-                .font(.subheadline.weight(.semibold))
-            }
-        }
-        .padding(.vertical, 4)
+        return SBWNavigationRow(
+            title: "Estimate \(estimate.invoiceNumber)",
+            subtitle: subtitle
+        )
     }
 
     private func estimatePillText(for estimate: Invoice) -> String {
@@ -302,6 +289,29 @@ struct EstimateListView: View {
 
     private func normalizedStatus(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    @MainActor
+    private func refreshFilteredEstimatesFromPortal() async {
+        for estimate in filteredEstimates {
+            do {
+                let remote = try await PortalBackend.shared.fetchEstimateStatus(
+                    businessId: estimate.businessID.uuidString,
+                    estimateId: estimate.id.uuidString
+                )
+                let local = normalizedStatus(estimate.estimateStatus)
+                if local != remote.status {
+                    EstimateDecisionSync.setEstimateDecision(
+                        estimate: estimate,
+                        status: remote.status,
+                        decidedAt: remote.decidedAt ?? .now
+                    )
+                }
+            } catch {
+                continue
+            }
+        }
+        try? modelContext.save()
     }
 
     // MARK: - Create

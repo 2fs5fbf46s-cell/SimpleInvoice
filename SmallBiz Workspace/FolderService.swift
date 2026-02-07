@@ -62,6 +62,20 @@ enum FolderService {
         return try context.fetch(descriptor).first
     }
 
+    static func fetchFolder(
+        businessID: UUID,
+        relativePath: String,
+        context: ModelContext
+    ) throws -> Folder? {
+        let descriptor = FetchDescriptor<Folder>(
+            predicate: #Predicate<Folder> { folder in
+                folder.businessID == businessID &&
+                folder.relativePath == relativePath
+            }
+        )
+        return try context.fetch(descriptor).first
+    }
+
     // MARK: - Create / Rename (conflict-safe)
 
     static func createFolder(

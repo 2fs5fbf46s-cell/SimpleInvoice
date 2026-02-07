@@ -28,6 +28,7 @@ struct ContractDetailView: View {
     @Query private var profiles: [BusinessProfile]
     @Query private var allFolders: [Folder]
     @Query private var attachments: [ContractAttachment]
+    @Query private var templates: [ContractTemplate]
 
     // Jobs (for picker)
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
@@ -49,6 +50,8 @@ struct ContractDetailView: View {
 
     // Job picker
     @State private var showJobPicker = false
+    @State private var lastAutoRenderedBody: String = ""
+    @State private var pendingTemplateRerender = false
 
     // Open Files (deep link)
     @State private var folderSheetItem: ContractFolderSheetItem? = nil
@@ -59,6 +62,7 @@ struct ContractDetailView: View {
     @State private var portalURL: URL? = nil
     @State private var showPortal = false
     @State private var portalError: String? = nil
+    @State private var navigateToClientSettings: Client? = nil
 
     // Status transition tracking (index once when it transitions TO "sent")
     @State private var lastStatusRaw: String = ""
@@ -76,17 +80,27 @@ struct ContractDetailView: View {
     }
 
     var body: some View {
-        Form {
-            headerSection
-            jobSection
-            bodySection
-            statusSection
-            attachmentsSection
-            exportSection
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
+
+            Form {
+                headerSection
+                jobSection
+                bodySection
+                statusSection
+                portalSection
+                attachmentsSection
+                exportSection
+            }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
+        .navigationDestination(item: $navigateToClientSettings) { client in
+            ClientEditView(client: client)
+        }
 
         .sheet(item: $folderSheetItem) { item in
             NavigationStack {
@@ -104,6 +118,7 @@ struct ContractDetailView: View {
                         get: { contract.job },
                         set: { newValue in
                             contract.job = newValue
+                            rerenderBodyFromTemplate()
                             try? modelContext.save()
                         }
                     )
@@ -209,13 +224,35 @@ struct ContractDetailView: View {
         } message: {
             Text(workspaceError ?? "")
         }
+        .confirmationDialog(
+            "Overwrite Contract Body?",
+            isPresented: $pendingTemplateRerender,
+            titleVisibility: .visible
+        ) {
+            Button("Overwrite", role: .destructive) {
+                rerenderBodyFromTemplate(force: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You edited this contract body manually. Overwrite it with the latest template render for the selected job?")
+        }
 
         .onAppear {
             lastStatusRaw = contract.statusRaw
+            lastAutoRenderedBody = contract.renderedBody
+            Task {
+                try? DocumentFileIndexService.upsertContractPDF(
+                    contract: contract,
+                    context: modelContext
+                )
+            }
         }
 
         .onChange(of: contract.title) { _, _ in scheduleSave() }
         .onChange(of: contract.renderedBody) { _, _ in scheduleSave() }
+        .onChange(of: contract.job?.id) { _, _ in
+            rerenderBodyFromTemplate()
+        }
 
         // ✅ Single, clean status watcher (autosave + index-once when transitioning to "sent")
         .onChange(of: contract.statusRaw) { _, newValue in
@@ -249,6 +286,12 @@ struct ContractDetailView: View {
 
                     // 2) Index contract into directory (so directory token passes NOT_IN_DIRECTORY)
                     try await PortalBackend.shared.indexContractForPortalDirectory(contract: contract)
+
+                    // 3) Index into Job workspace (FileItem + folder link)
+                    try DocumentFileIndexService.upsertContractPDF(
+                        contract: contract,
+                        context: modelContext
+                    )
 
                 } catch {
                     print("Portal contract upload/index failed:", error.localizedDescription)
@@ -338,10 +381,47 @@ private extension ContractDetailView {
             if contract.job != nil {
                 Button(role: .destructive) {
                     contract.job = nil
+                    rerenderBodyFromTemplate()
                     try? modelContext.save()
                 } label: {
                     Text("Clear Job")
                 }
+            }
+        }
+    }
+
+    var portalSection: some View {
+        Section("Client Portal") {
+            let portalEnabled = contract.client?.portalEnabled == true
+            let hasClient = contract.client != nil
+            let canOpenPortal = hasClient && portalEnabled
+
+            if !hasClient {
+                Text("Assign a client to enable portal access.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !portalEnabled {
+                Text("Client portal is disabled for this client.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                openContractPortalTapped()
+            } label: {
+                Label(openingPortal ? "Opening…" : "Open in Client Portal", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            .disabled(openingPortal || !canOpenPortal)
+            .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
+
+            if let client = contract.client, !portalEnabled {
+                Button {
+                    navigateToClientSettings = client
+                } label: {
+                    Label("Enable Client Portal", systemImage: "togglepower")
+                }
+                .buttonStyle(.bordered)
+                .tint(SBWTheme.brandBlue)
             }
         }
     }
@@ -431,6 +511,29 @@ private extension ContractDetailView {
 // MARK: - Actions
 
 private extension ContractDetailView {
+    @MainActor
+    func rerenderBodyFromTemplate(force: Bool = false) {
+        guard let template = templates.first(where: { $0.name == contract.templateName }) else { return }
+
+        let ctx = ContractContext(
+            business: profiles.first,
+            client: contract.client,
+            invoice: contract.invoice,
+            extras: [:]
+        )
+
+        let rendered = ContractTemplateEngine.render(template: template.body, context: ctx)
+
+        if !force, contract.renderedBody != lastAutoRenderedBody {
+            pendingTemplateRerender = true
+            return
+        }
+
+        pendingTemplateRerender = false
+        contract.renderedBody = rendered
+        lastAutoRenderedBody = rendered
+        scheduleSave()
+    }
 
     @MainActor
     func openContractInClientPortal() async {
@@ -481,62 +584,35 @@ private extension ContractDetailView {
     // ✅ Contract uses contract.job directly; fallback to Files/Contracts if nil
     func openContractFolder() {
         do {
-            let biz = try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
+            if let job = contract.job {
+                let contractsFolder = try WorkspaceProvisioningService.fetchJobSubfolder(
+                    job: job,
+                    kind: .contracts,
+                    context: modelContext
+                )
+                let biz = try fetchBusiness(for: job.businessID)
+                folderSheetItem = ContractFolderSheetItem(business: biz, folder: contractsFolder)
+                return
+            }
 
+            let biz = try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
             try FolderService.bootstrapRootIfNeeded(businessID: biz.id, context: modelContext)
             guard let root = try FolderService.fetchRootFolder(businessID: biz.id, context: modelContext) else {
                 workspaceError = "Files root folder could not be loaded."
                 return
             }
 
-            // If job exists -> open JOB…/Contracts
-            if let job = contract.job {
-                let title = job.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                let displayTitle = title.isEmpty ? "Project" : title
-                let shortID = job.id.uuidString.prefix(8)
-                let jobFolderName = "JOB-\(shortID) \(displayTitle)"
+            let rootPath = root.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let rel = rootPath.isEmpty ? "Contracts" : "\(rootPath)/Contracts"
 
-                let jobFolder: Folder
-                if let existing = allFolders.first(where: { f in
-                    f.businessID == biz.id && f.parentFolderID == root.id && f.name == jobFolderName
-                }) {
-                    jobFolder = existing
-                } else {
-                    jobFolder = createJobWorkspaceFolder(businessID: biz.id, root: root, jobFolderName: jobFolderName)
-                }
-
-                let contractsFolder: Folder
-                if let existingContracts = allFolders.first(where: { f in
-                    f.businessID == biz.id && f.parentFolderID == jobFolder.id && f.name == "Contracts"
-                }) {
-                    contractsFolder = existingContracts
-                } else {
-                    let parentPath = jobFolder.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                    let rel = parentPath.isEmpty ? "Contracts" : "\(parentPath)/Contracts"
-                    let created = Folder(
-                        businessID: biz.id,
-                        name: "Contracts",
-                        relativePath: rel,
-                        parentFolderID: jobFolder.id
-                    )
-                    modelContext.insert(created)
-                    try? modelContext.save()
-                    contractsFolder = created
-                }
-
-                folderSheetItem = ContractFolderSheetItem(business: biz, folder: contractsFolder)
-                return
-            }
-
-            // Fallback: Files root -> Contracts
             let contractsFolder: Folder
-            if let existingContracts = allFolders.first(where: { f in
-                f.businessID == biz.id && f.parentFolderID == root.id && f.name == "Contracts"
-            }) {
-                contractsFolder = existingContracts
+            if let existing = try FolderService.fetchFolder(
+                businessID: biz.id,
+                relativePath: rel,
+                context: modelContext
+            ) {
+                contractsFolder = existing
             } else {
-                let rootPath = root.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                let rel = rootPath.isEmpty ? "Contracts" : "\(rootPath)/Contracts"
                 let created = Folder(
                     businessID: biz.id,
                     name: "Contracts",
@@ -554,40 +630,26 @@ private extension ContractDetailView {
         }
     }
 
-    func createJobWorkspaceFolder(businessID: UUID, root: Folder, jobFolderName: String) -> Folder {
-        let rootPath = root.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let jobRel = rootPath.isEmpty ? jobFolderName : "\(rootPath)/\(jobFolderName)"
-
-        let jobFolder = Folder(
-            businessID: businessID,
-            name: jobFolderName,
-            relativePath: jobRel,
-            parentFolderID: root.id
-        )
-        modelContext.insert(jobFolder)
-
-        let subs = ["Contracts", "Invoices", "Media", "Deliverables", "Reference"]
-        for sub in subs {
-            let subRel = "\(jobRel)/\(sub)"
-            let f = Folder(
-                businessID: businessID,
-                name: sub,
-                relativePath: subRel,
-                parentFolderID: jobFolder.id
-            )
-            modelContext.insert(f)
+    private func fetchBusiness(for businessID: UUID) throws -> Business {
+        if let match = try modelContext.fetch(
+            FetchDescriptor<Business>(predicate: #Predicate { $0.id == businessID })
+        ).first {
+            return match
         }
+        return try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
+    }
 
-        try? modelContext.save()
-        return jobFolder
+    private func persistContractPDFToJobFiles() throws -> URL {
+        try DocumentFileIndexService.persistContractPDF(
+            contract: contract,
+            business: profiles.first,
+            context: modelContext
+        )
     }
 
     func previewPDF() {
         do {
-            let business = profiles.first
-            let pdfData = ContractPDFGenerator.makePDFData(contract: contract, business: business)
-            let filename = "Contract-\(Date().timeIntervalSince1970)"
-            let url = try ContractPDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
+            let url = try persistContractPDFToJobFiles()
             previewItem = ContractFileURL(url: url)
         } catch {
             exportError = error.localizedDescription
@@ -596,10 +658,7 @@ private extension ContractDetailView {
 
     func sharePDFOnly() {
         do {
-            let business = profiles.first
-            let pdfData = ContractPDFGenerator.makePDFData(contract: contract, business: business)
-            let filename = "Contract-\(Date().timeIntervalSince1970)"
-            let url = try ContractPDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
+            let url = try persistContractPDFToJobFiles()
             shareItems = [url]
         } catch {
             exportError = error.localizedDescription
@@ -608,10 +667,7 @@ private extension ContractDetailView {
 
     func sharePDFWithAttachments() {
         do {
-            let business = profiles.first
-            let pdfData = ContractPDFGenerator.makePDFData(contract: contract, business: business)
-            let filename = "Contract-\(Date().timeIntervalSince1970)"
-            let url = try ContractPDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
+            let url = try persistContractPDFToJobFiles()
             sharePDFWithAttachments(fromExistingPDFURL: url)
         } catch {
             exportError = error.localizedDescription

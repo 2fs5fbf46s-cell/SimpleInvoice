@@ -10,6 +10,8 @@ final class Business {
     var defaultTaxRate: Decimal = 0
     var currencyCode: String = "USD"
 
+    var paypalMeUrl: String? = nil
+
     var travelBufferMinutes: Int = 15
     var workdayStartMinutes: Int = 9 * 60
     var workdayEndMinutes: Int = 17 * 60
@@ -20,6 +22,7 @@ final class Business {
         isActive: Bool = true,
         defaultTaxRate: Decimal = 0,
         currencyCode: String = "USD",
+        paypalMeUrl: String? = nil,
         travelBufferMinutes: Int = 15,
         workdayStartMinutes: Int = 9 * 60,
         workdayEndMinutes: Int = 17 * 60
@@ -29,6 +32,7 @@ final class Business {
         self.isActive = isActive
         self.defaultTaxRate = defaultTaxRate
         self.currencyCode = currencyCode
+        self.paypalMeUrl = paypalMeUrl
         self.travelBufferMinutes = travelBufferMinutes
         self.workdayStartMinutes = workdayStartMinutes
         self.workdayEndMinutes = workdayEndMinutes

@@ -52,6 +52,10 @@ struct InvoiceDetailView: View {
     // Optional sections
     @State private var includeNotes = false
     @State private var includeThankYou = false
+    @State private var showTotalsBreakdown = false
+    @State private var showAdvancedOptions = false
+    @State private var showMarkPaidConfirm = false
+    @State private var showMarkUnpaidConfirm = false
 
     // Job picker
     @State private var showJobPicker = false
@@ -62,6 +66,9 @@ struct InvoiceDetailView: View {
     @State private var openingPortal = false
     @State private var uploadingPortalPDF = false
     @State private var portalPDFNotice: String? = nil
+    @State private var navigateToClientSettings: Client? = nil
+    @State private var selectedLineItem: LineItem? = nil
+    @State private var selectedLinkedContract: Contract? = nil
 
 
     // Open job workspace folder in Files
@@ -112,35 +119,29 @@ struct InvoiceDetailView: View {
 
     private var mainView: AnyView {
         AnyView(
-
-        Form {
-            clientSection
-            jobSection
-            estimateWorkflowSection
-            
-            if invoice.documentType == "estimate" {
-                contractFromEstimateSection
-                linkedContractsOnEstimateSection
-            }
-
-
-            // ✅ STEP 4: Convert section (only for estimates)
-            if invoice.documentType == "estimate" && invoice.estimateStatus == "accepted" {
-                convertSection
-            }
-
-            datesSection
-            paymentSection
-            portalSection
-            notesSection
-            thankYouSection
-            termsSection
-            chargesSection
-            lineItemsSection
-            totalsSection
-            auditSnapshotSection
-            statusSection
-            attachmentsSection
+        List {
+            InvoiceEssentialsSection
+            LineItemsSection
+            TotalsDisclosureSection
+            ClientPortalSection
+            StatusSection
+            AdvancedOptionsSection
+        }
+        .listStyle(.plain)
+        .listRowSeparator(.hidden)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            InvoicePinnedHeaderSection
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(
+                    SBWTheme.brandGradient
+                        .opacity(0.12)
+                        .overlay(Color(.systemBackground).opacity(0.85))
+                )
+                .overlay(
+                    Divider().opacity(0.35),
+                    alignment: .bottom
+                )
         }
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
@@ -149,9 +150,18 @@ struct InvoiceDetailView: View {
         .navigationDestination(item: $createdContract) { c in
             ContractDetailView(contract: c)
         }
+        .navigationDestination(item: $navigateToClientSettings) { client in
+            ClientEditView(client: client)
+        }
+        .navigationDestination(item: $selectedLineItem) { item in
+            LineItemEditView(item: item)
+        }
+        .navigationDestination(item: $selectedLinkedContract) { contract in
+            ContractDetailView(contract: contract)
+        }
         
         .sheet(isPresented: $showPortal, onDismiss: {
-            Task { await refreshInvoicePaidStatusFromPortal() }
+            Task { await refreshInvoicePortalState() }
         }) {
             if let portalURL {
                 SafariView(url: portalURL) {
@@ -165,19 +175,36 @@ struct InvoiceDetailView: View {
             guard newValue else { return }
             showPortal = false
             portalReturn.consumeReturnFlag()
-            Task { await refreshInvoicePaidStatusFromPortal() }
+            Task { await refreshInvoicePortalState() }
         }
         .task {
             await ensureSnapshotForFinalizedInvoiceIfNeeded()
+            await indexInvoiceIfPossible()
+            EstimateDecisionSync.applyCachedDecisionIfAny(for: invoice, in: modelContext)
+            EstimateDecisionSync.applyPendingDecisions(in: modelContext)
+            await refreshEstimateStatusFromPortal(estimate: invoice)
         }
         .onChange(of: invoice.estimateStatus) { _, _ in
+            let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if status == "accepted" {
+                if invoice.estimateAcceptedAt == nil { invoice.estimateAcceptedAt = .now }
+                invoice.estimateDeclinedAt = nil
+            } else if status == "declined" {
+                if invoice.estimateDeclinedAt == nil { invoice.estimateDeclinedAt = .now }
+                invoice.estimateAcceptedAt = nil
+            }
+            try? modelContext.save()
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+            Task { await indexInvoiceIfPossible() }
+            Task { await indexEstimateForDirectoryIfNeeded() }
         }
         .onChange(of: invoice.invoiceNumber) { _, _ in
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+            Task { await indexInvoiceIfPossible() }
         }
         .onChange(of: invoice.documentType) { _, _ in
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+            Task { await indexInvoiceIfPossible() }
         }
         
 
@@ -267,6 +294,7 @@ struct InvoiceDetailView: View {
                         conflictAction: .overwrite,
                         context: modelContext
                     )
+                    Task { await indexInvoiceIfPossible() }
                     if let shareAfter = p.shareAfterSave { shareItems = shareAfter }
                 } catch {
                     exportError = error.localizedDescription
@@ -285,6 +313,7 @@ struct InvoiceDetailView: View {
                         conflictAction: .saveCopy,
                         context: modelContext
                     )
+                    Task { await indexInvoiceIfPossible() }
                     if let shareAfter = p.shareAfterSave { shareItems = shareAfter }
                 } catch {
                     exportError = error.localizedDescription
@@ -416,61 +445,798 @@ struct InvoiceDetailView: View {
     }
 
     // MARK: - Sections
+    
+    private var InvoicePinnedHeaderSection: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(invoiceDisplayTitle)
+                    .font(.headline)
 
-    private var clientSection: some View {
-        Section("Client") {
-            Text(invoice.client?.name ?? "No Client Selected")
-                .foregroundStyle(invoice.client == nil ? .secondary : .primary)
-
-            NavigationLink("Select / Edit Client") {
-                ClientPickerManualFetchView(selectedClient: $invoice.client)
+                Text("Due \(invoice.dueDate.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(invoice.total, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
+                    .font(.title3.weight(.semibold))
+
+                statusPill(text: invoiceStatusText)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var InvoiceEssentialsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Client")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(invoice.client?.name ?? "No Client Selected")
+                        .foregroundStyle(invoice.client == nil ? .secondary : .primary)
+
+                    NavigationLink("Select / Edit Client") {
+                        ClientPickerManualFetchView(selectedClient: $invoice.client)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Job / Project")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text(invoice.job?.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                             ? (invoice.job?.title ?? "")
+                             : "None")
+                        .foregroundStyle(invoice.job == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                        Spacer()
+                    }
+
+                    HStack(spacing: 10) {
+                        Button("Select Job") { showJobPicker = true }
+                            .buttonStyle(.bordered)
+
+                        if invoice.job != nil {
+                            Button(role: .destructive) {
+                                invoice.job = nil
+                                try? modelContext.save()
+                            } label: {
+                                Text("Clear Job")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+
+                Divider()
+
+                DatePicker("Issue Date", selection: $invoice.issueDate, displayedComponents: .date)
+                DatePicker("Due Date", selection: $invoice.dueDate, displayedComponents: .date)
+            }
+            .sbwCardRow()
         }
     }
 
-    private var jobSection: some View {
-        Section("Job / Project") {
-            HStack {
-                Text("Job")
-                Spacer()
-                Text(invoice.job?.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                     ? (invoice.job?.title ?? "")
-                     : "None")
-                    .foregroundStyle(invoice.job == nil ? .secondary : .primary)
-                    .lineLimit(1)
+    private var LineItemsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Line Items")
+                    .font(.headline)
+
+                Button { showingItemPicker = true } label: {
+                    Label("Add From Saved Items", systemImage: "tray.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .tint(.secondary)
             }
+            .sbwCardRow()
+            .disabled(isEstimatePricingLocked)
 
-            Button("Select Job") { showJobPicker = true }
-
-            if invoice.job != nil {
-                Button(role: .destructive) {
-                    invoice.job = nil
-                    try? modelContext.save()
+            ForEach(invoice.items ?? []) { item in
+                Button {
+                    selectedLineItem = item
                 } label: {
-                    Text("Clear Job")
+                    lineItemRow(item)
+                }
+                .buttonStyle(.plain)
+                .sbwCardRow()
+                .disabled(isEstimatePricingLocked)
+            }
+            .onDelete(perform: deleteItems)
+
+            Button { addItem() } label: {
+                Label("Add Line Item", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(SBWTheme.brandBlue)
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 12, trailing: 16))
+            .listRowBackground(Color.clear)
+            .disabled(isEstimatePricingLocked)
+        }
+    }
+
+    private func lineItemRow(_ item: LineItem) -> some View {
+        let title = item.itemDescription.isEmpty ? "Item" : item.itemDescription
+        let qty = item.quantity.formatted(.number)
+        let price = item.unitPrice.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        let total = item.lineTotal.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        let subtitle = "\(qty) × \(price) • \(total)"
+
+        return SBWNavigationRow(title: title, subtitle: subtitle)
+    }
+
+    private var TotalsDisclosureSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showTotalsBreakdown.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Text("Total")
+                        Spacer()
+                        Text(invoice.total, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
+                            .font(.headline)
+                        Image(systemName: showTotalsBreakdown ? "chevron.up" : "chevron.down")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showTotalsBreakdown {
+                    totalRow("Subtotal", invoice.subtotal)
+
+                    HStack {
+                        Text("Discount")
+                        Spacer()
+                        TextField("0.00", value: $invoice.discountAmount, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    HStack {
+                        Text("Tax Rate")
+                        Spacer()
+                        TextField("0.00", value: $invoice.taxRate, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("%").foregroundStyle(.secondary)
+                    }
+                    .onChange(of: invoice.taxRate) { _, newValue in
+                        if newValue > 1 { invoice.taxRate = newValue / 100.0 }
+                    }
+
+                    totalRow("Tax", invoice.taxAmount)
+                    Divider()
+                    totalRow("Total", invoice.total, isEmphasis: true)
                 }
             }
+            .sbwCardRow()
+            .disabled(isEstimatePricingLocked)
         }
     }
 
-    // ✅ STEP 4: Convert section
-    private var convertSection: some View {
-        Section("Estimate") {
-            if invoice.estimateStatus != "accepted" {
-                Text("Accept this estimate before converting to an invoice.")
+    private var ClientPortalSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                if invoice.client == nil {
+                    portalNoticeRow(
+                        icon: "person.crop.circle.badge.xmark",
+                        title: "No client selected.",
+                        detail: "Assign a client to enable portal access."
+                    )
+                }
+
+                if !isClientPortalEnabled {
+                    portalNoticeRow(
+                        icon: "nosign",
+                        title: "Client portal is disabled for this client.",
+                        detail: "Enable it in the client’s settings to generate a new portal link."
+                    )
+                }
+
+                if isPortalExpiredForThisInvoice {
+                    portalNoticeRow(
+                        icon: "clock.arrow.circlepath",
+                        title: "This client link has expired.",
+                        detail: "Regenerate from the menu to issue a new link."
+                    )
+                }
+
+                let canOpenPortal = (invoice.client != nil) && isClientPortalEnabled
+
+                HStack(spacing: 12) {
+                    Button {
+                        Task {
+                            openingPortal = true
+                            portalError = nil
+                            portalNotice = nil
+
+                            do {
+                                let url = try await buildPortalLink(mode: nil)
+                                portalURL = url
+                                showPortal = true
+                            } catch {
+                                portalURL = nil
+                                print("Portal open failed:", error)
+                                portalError = error.localizedDescription
+                            }
+
+                            openingPortal = false
+                        }
+                    } label: {
+                        if openingPortal {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Opening secure portal…")
+                            }
+                        } else {
+                            if invoice.isPaid {
+                                Label("View Client Portal (Paid)", systemImage: "checkmark.seal")
+                            } else {
+                                Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SBWTheme.brandBlue)
+                    .disabled(openingPortal || !canOpenPortal)
+                    .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
+
+                    Spacer()
+
+                    Menu {
+                        Button {
+                            Task {
+                                openingPortal = true
+                                portalError = nil
+                                portalNotice = nil
+
+                                do {
+                                    let url = try await buildPortalLink(mode: nil)
+                                    UIPasteboard.general.string = url.absoluteString
+                                    showNotice("Client link copied")
+                                } catch {
+                                    print("Copy link failed:", error)
+                                    portalError = error.localizedDescription
+                                }
+
+                                openingPortal = false
+                            }
+                        } label: {
+                            Label("Copy Client Link", systemImage: "doc.on.doc")
+                        }
+
+                        Button {
+                            Task {
+                                openingPortal = true
+                                portalError = nil
+                                portalNotice = nil
+
+                                do {
+                                    let url = try await buildPortalLink(mode: nil)
+                                    shareItems = [url]
+                                    showNotice("Sharing link…")
+                                } catch {
+                                    print("Share link failed:", error)
+                                    portalError = error.localizedDescription
+                                }
+
+                                openingPortal = false
+                            }
+                        } label: {
+                            Label("Share Client Link", systemImage: "square.and.arrow.up")
+                        }
+
+                        if isPortalExpiredForThisInvoice {
+                            Button {
+                                Task {
+                                    openingPortal = true
+                                    portalError = nil
+                                    portalNotice = nil
+
+                                    do {
+                                        let url = try await buildPortalLink(mode: nil)
+                                        portalURL = url
+                                        showPortal = true
+                                        portalReturn.expiredInvoiceID = nil
+                                    } catch {
+                                        portalError = error.localizedDescription
+                                    }
+
+                                    openingPortal = false
+                                }
+                            } label: {
+                                Label("Regenerate Link", systemImage: "arrow.clockwise")
+                            }
+                        }
+
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .imageScale(.large)
+                            .padding(.vertical, 6)
+                    }
+                    .disabled(openingPortal || !canOpenPortal)
+                    .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
+                }
+
+                if let client = invoice.client, !isClientPortalEnabled {
+                    Button {
+                        navigateToClientSettings = client
+                    } label: {
+                        Label("Enable Client Portal", systemImage: "togglepower")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(SBWTheme.brandBlue)
+                }
+
+                if let portalNotice {
+                    Text(portalNotice)
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
+                if let issuerName = resolvedPortalBusinessName() {
+                    Text("Issued by: \(issuerName)")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
+                if let portalErrorMessage = portalError {
+                    portalErrorRow(portalErrorMessage)
+                }
+            }
+            .sbwCardRow()
+        }
+    }
+
+    private var StatusSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Status")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+
+                HStack {
+                    statusPill(text: invoiceStatusText)
+                    Spacer()
+                }
+
+                if invoice.documentType == "estimate" {
+                    if let timestamp = estimateStatusTimestampText {
+                        Text(timestamp)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "declined" {
+                        Label("This estimate was declined in the portal.", systemImage: "xmark.octagon.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    if invoice.isPaid {
+                        HStack(spacing: 8) {
+                            Label("Paid", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Mark as Unpaid") { showMarkUnpaidConfirm = true }
+                                .buttonStyle(.bordered)
+                        }
+                    } else {
+                        Button("Mark as Paid") { showMarkPaidConfirm = true }
+                            .buttonStyle(.borderedProminent)
+                            .tint(SBWTheme.brandGreen)
+                    }
+                }
+            }
+            .sbwCardRow()
+            .confirmationDialog(
+                "Mark this invoice as paid?",
+                isPresented: $showMarkPaidConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Mark as Paid", role: .destructive) {
+                    invoice.isPaid = true
+                    try? modelContext.save()
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+            .confirmationDialog(
+                "Mark this invoice as unpaid?",
+                isPresented: $showMarkUnpaidConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Mark as Unpaid", role: .destructive) {
+                    invoice.isPaid = false
+                    try? modelContext.save()
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+        }
+    }
+
+    private var AdvancedOptionsSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $showAdvancedOptions) {
+                advancedPaymentCard
+                    .disabled(isEstimateLocked)
+
+                advancedNotesCard
+                    .disabled(isEstimateLocked)
+
+                advancedThankYouCard
+                    .disabled(isEstimateLocked)
+
+                advancedTermsCard
+                    .disabled(isEstimateLocked)
+
+                advancedAttachmentsHeaderCard
+
+                if attachments.isEmpty {
+                    Text("No attachments yet")
+                        .foregroundStyle(.secondary)
+                        .sbwCardRow()
+                } else {
+                    ForEach(attachments) { a in
+                        Button {
+                            openAttachmentPreview(a)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(a.file?.displayName ?? "Missing file")
+                                    Text(a.file?.originalFileName ?? "")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .sbwCardRow()
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                removeAttachment(a)
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+
+                advancedAuditCard
+
+                advancedPortalDetailsCard
+
+                if invoice.documentType == "estimate" {
+                    advancedEstimateWorkflowCard
+                    advancedContractCard
+                    advancedLinkedContractsCard
+
+                    if invoice.estimateStatus == "accepted" {
+                        advancedConvertCard
+                    }
+                }
+            } label: {
+                HStack {
+                    Text("Advanced Options")
+                        .font(.headline)
+                    Spacer()
+                }
+            }
+            .sbwCardRow()
+        }
+    }
+
+    private var invoiceDisplayTitle: String {
+        let num = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = invoice.documentType == "estimate" ? "Estimate" : "Invoice"
+        return num.isEmpty ? base : "\(base) \(num)"
+    }
+
+    private var invoiceStatusText: String {
+        if invoice.documentType == "estimate" {
+            return estimateStatusText
+        }
+        return invoice.isPaid ? "PAID" : "UNPAID"
+    }
+
+    private var estimateStatusText: String {
+        switch invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "sent": return "SENT"
+        case "accepted": return "ACCEPTED"
+        case "declined": return "DECLINED"
+        default: return "DRAFT"
+        }
+    }
+
+    private var estimateStatusTimestampText: String? {
+        let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if status == "accepted", let acceptedAt = invoice.estimateAcceptedAt {
+            return "Accepted \(acceptedAt.formatted(date: .abbreviated, time: .shortened))"
+        }
+        if status == "declined", let declinedAt = invoice.estimateDeclinedAt {
+            return "Declined \(declinedAt.formatted(date: .abbreviated, time: .shortened))"
+        }
+        return nil
+    }
+
+    private func statusPill(text: String) -> some View {
+        let colors = SBWTheme.chip(forStatus: text)
+        return Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .background(Capsule().fill(colors.bg))
+            .foregroundStyle(colors.fg)
+            .accessibilityLabel(Text(text))
+    }
+
+    private func portalNoticeRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(10)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func portalErrorRow(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message)
+                    .font(.caption)
+
+                Button("Retry") {
+                    self.portalError = nil
+                }
+                .font(.caption.weight(.semibold))
+            }
+
+            Spacer()
+        }
+        .padding(10)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var advancedPaymentCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Payment Terms")
+                .font(.headline)
+
+            TextField(
+                "e.g. Due on receipt, Net 14",
+                text: $invoice.paymentTerms
+            )
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedNotesCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Add Notes", isOn: $includeNotes)
+
+            if includeNotes {
+                TextEditor(text: $invoice.notes)
+                    .frame(minHeight: 90)
+                    .overlay(alignment: .topLeading) {
+                        if invoice.notes.isEmpty {
+                            Text("Enter notes…")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                        }
+                    }
+            }
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedThankYouCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Add Thank You", isOn: $includeThankYou)
+
+            if includeThankYou {
+                TextEditor(text: $invoice.thankYou)
+                    .frame(minHeight: 70)
+                    .overlay(alignment: .topLeading) {
+                        if invoice.thankYou.isEmpty {
+                            Text("Enter thank-you message…")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                        }
+                    }
+            }
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedTermsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Terms & Conditions")
+                .font(.headline)
+
+            TextEditor(text: $invoice.termsAndConditions)
+                .frame(minHeight: 110)
+                .overlay(alignment: .topLeading) {
+                    if invoice.termsAndConditions.isEmpty {
+                        Text("Enter terms & conditions…")
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                    }
+                }
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedAttachmentsHeaderCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Attachments")
+                .font(.headline)
+
+            HStack {
+                Button {
+                    showFilePicker = true
+                } label: {
+                    Label("Attach Existing File", systemImage: "paperclip")
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Menu {
+                    Button("Import from Files") { showInvoiceAttachmentFileImporter = true }
+                    Button("Import from Photos") { showInvoiceAttachmentPhotosSheet = true }
+                } label: {
+                    Label("Import", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedAuditCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Audit / Snapshot")
+                .font(.headline)
+
+            if invoice.businessSnapshotData != nil {
+                Text("Business Snapshot: Locked")
+                    .font(.subheadline.weight(.semibold))
+            } else {
+                Text("Business Snapshot: Not Locked")
+                    .foregroundStyle(.secondary)
+            }
+
+            if invoice.isDraftForSnapshotRefresh {
+                Button("Refresh Snapshot") {
+                    Task { await refreshBusinessSnapshotIfAllowed() }
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedPortalDetailsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Portal Details")
+                .font(.headline)
+
+            if let portalPDFNotice {
+                Text(portalPDFNotice)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+
+            if isSnapshotLockedForInvoice {
+                Text("PDF matches portal copy")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+
+            Text("Client links expire after 30 days.")
+                .foregroundStyle(.secondary)
+                .font(.caption2)
+        }
+        .sbwCardRow()
+    }
+
+    private var advancedEstimateWorkflowCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Estimate Workflow")
+                .font(.headline)
+
+            Picker("Status", selection: $invoice.estimateStatus) {
+                Text("Draft").tag("draft")
+                Text("Sent").tag("sent")
+                Text("Accepted").tag("accepted")
+                Text("Declined").tag("declined")
+            }
+
+            if let timestamp = estimateStatusTimestampText {
+                Text(timestamp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if invoice.estimateStatus == "accepted" {
+                if let job = invoice.job {
+                    HStack {
+                        Text("Job Linked")
+                        Spacer()
+                        Text(job.title.isEmpty ? "Job" : job.title)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Button {
+                        acceptEstimateAndCreateJob()
+                    } label: {
+                        Label("Create Job from Accepted Estimate", systemImage: "hammer.fill")
+                    }
+                    .buttonStyle(.bordered)
+                }
             } else {
                 Button {
-                    convertEstimateToInvoice()
+                    invoice.estimateStatus = "accepted"
+                    invoice.estimateAcceptedAt = Date()
+                    invoice.estimateDeclinedAt = nil
+                    acceptEstimateAndCreateJob()
                 } label: {
-                    Label("Convert to Invoice", systemImage: "arrow.right.doc.on.clipboard")
+                    Label("Accept & Create Job", systemImage: "checkmark.seal.fill")
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(invoice.client == nil)
+            }
+
+            if invoice.client == nil {
+                Text("Select a customer first to create the Job.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
+        .sbwCardRow()
     }
-    
-    private var contractFromEstimateSection: some View {
-        Section("Contract") {
+
+    private var advancedContractCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Contract")
+                .font(.headline)
+
             let existing = (invoice.estimateContracts ?? [])
             let first = existing.first
 
@@ -480,11 +1246,11 @@ struct InvoiceDetailView: View {
 
             } else if let first {
                 Button {
-                    // ✅ state-driven navigation avoids the SwiftData NavigationLink hang
                     createdContract = first
                 } label: {
                     Label("Open Contract", systemImage: "doc.text")
                 }
+                .buttonStyle(.bordered)
 
                 Text("A contract already exists for this estimate.")
                     .font(.caption)
@@ -496,14 +1262,17 @@ struct InvoiceDetailView: View {
                 } label: {
                     Label("Create Contract for this Job", systemImage: "doc.badge.plus")
                 }
+                .buttonStyle(.borderedProminent)
             }
         }
+        .sbwCardRow()
     }
 
+    private var advancedLinkedContractsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Linked Contracts")
+                .font(.headline)
 
-   
-    private var linkedContractsOnEstimateSection: some View {
-        Section("Linked Contracts") {
             let contracts = (invoice.estimateContracts ?? [])
 
             if contracts.isEmpty {
@@ -511,25 +1280,39 @@ struct InvoiceDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(contracts) { c in
-                    NavigationLink {
-                        ContractDetailView(contract: c)
+                    Button {
+                        selectedLinkedContract = c
                     } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.title.isEmpty ? "Contract" : c.title)
-                                Text(statusLabel(c.status))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        SBWNavigationRow(
+                            title: c.title.isEmpty ? "Contract" : c.title,
+                            subtitle: statusLabel(c.status)
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
+        .sbwCardRow()
+    }
+
+    private var advancedConvertCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Estimate")
+                .font(.headline)
+
+            if invoice.estimateStatus != "accepted" {
+                Text("Accept this estimate before converting to an invoice.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Button {
+                    convertEstimateToInvoice()
+                } label: {
+                    Label("Convert to Invoice", systemImage: "arrow.right.doc.on.clipboard")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .sbwCardRow()
     }
 
     private func statusLabel(_ status: ContractStatus) -> String {
@@ -611,11 +1394,25 @@ struct InvoiceDetailView: View {
             ? mode!
             : "live"
 
-        let url = PortalBackend.shared.portalInvoiceURL(
-            invoiceId: invoice.id.uuidString,
-            token: token,
-            mode: modeValue
-        )
+        let url: URL
+        if invoice.documentType == "estimate" {
+            url = PortalBackend.shared.portalEstimateURL(
+                estimateId: invoice.id.uuidString,
+                token: token,
+                mode: modeValue
+            )
+        } else {
+            url = PortalBackend.shared.portalInvoiceURL(
+                invoiceId: invoice.id.uuidString,
+                token: token,
+                mode: modeValue
+            )
+        }
+
+        if invoice.documentType == "estimate" {
+            await indexEstimateForDirectoryIfNeeded()
+        }
+
         return url
     }
     
@@ -629,476 +1426,17 @@ struct InvoiceDetailView: View {
     }
 
 
-    private var datesSection: some View {
-        Section("Dates") {
-            DatePicker("Issue Date", selection: $invoice.issueDate, displayedComponents: .date)
-            DatePicker("Due Date", selection: $invoice.dueDate, displayedComponents: .date)
-        }
-    }
-
-    private var paymentSection: some View {
-        Section("Payment") {
-            TextField(
-                "Payment Terms",
-                text: $invoice.paymentTerms,
-                prompt: Text("e.g. Due on receipt, Net 14")
-            )
-        }
-        .disabled(isEstimateLocked)
-    }
-    
-        private var isClientPortalEnabled: Bool {
-        invoice.client?.portalEnabled ?? true
-    }
-
-private var isPortalExpiredForThisInvoice: Bool {
-        portalReturn.expiredInvoiceID == invoice.id
-    }
-
-    private var portalSection: some View {
-        Section("Client Portal") {
-            if !isClientPortalEnabled {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "nosign")
-                        .foregroundStyle(.orange)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Client portal is disabled for this client.")
-                            .font(.caption)
-
-                        Text("Enable it in the client’s settings to generate a new portal link.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-                }
-                .padding(10)
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-
-            if isPortalExpiredForThisInvoice {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.orange)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("This client link has expired.")
-                            .font(.caption)
-
-                        Button("Regenerate link") {
-                            guard isClientPortalEnabled else { return }
-
-                            Task {
-                                openingPortal = true
-                                portalError = nil
-                                portalNotice = nil
-
-                                do {
-                                    let url = try await buildPortalLink(mode: nil)
-                                    portalURL = url
-                                    showPortal = true
-                                    portalReturn.expiredInvoiceID = nil
-                                } catch {
-                                    portalError = error.localizedDescription
-                                }
-
-                                openingPortal = false
-                            }
-                        }
-                        .font(.caption.weight(.semibold))
-                    }
-
-                    Spacer()
-                }
-                .padding(10)
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-
-
-            HStack(spacing: 12) {
-                Button {
-                    Task {
-                        openingPortal = true
-                        portalError = nil
-                        portalNotice = nil
-
-                        do {
-                            let url = try await buildPortalLink(mode: nil)
-                            portalURL = url
-                            showPortal = true
-                        } catch {
-                            portalURL = nil
-                            print("Portal open failed:", error)
-                            portalError = error.localizedDescription
-                        }
-
-                        openingPortal = false
-                    }
-                } label: {
-                    if openingPortal {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Opening secure portal…")
-                        }
-                    } else {
-                        // Small polish: if already paid, label it as such
-                        if invoice.isPaid {
-                            Label("View Client Portal (Paid)", systemImage: "checkmark.seal")
-                        } else {
-                            Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
-                        }
-                    }
-                }
-                .disabled(openingPortal || !isClientPortalEnabled)
-                .opacity((openingPortal || !isClientPortalEnabled) ? 0.6 : 1)
-
-                Spacer()
-
-                Menu {
-                    Button {
-                        Task {
-                            openingPortal = true
-                            portalError = nil
-                            portalNotice = nil
-
-                            do {
-                                let url = try await buildPortalLink(mode: nil)
-                                UIPasteboard.general.string = url.absoluteString
-                                showNotice("Client link copied")
-                            } catch {
-                                print("Copy link failed:", error)
-                                portalError = error.localizedDescription
-                            }
-
-                            openingPortal = false
-                        }
-                    } label: {
-                        Label("Copy Client Link", systemImage: "doc.on.doc")
-                    }
-
-                    Button {
-                        Task {
-                            openingPortal = true
-                            portalError = nil
-                            portalNotice = nil
-
-                            do {
-                                let url = try await buildPortalLink(mode: nil)
-                                // Reuse your existing ShareSheet plumbing
-                                shareItems = [url]
-                                showNotice("Sharing link…")
-                            } catch {
-                                print("Share link failed:", error)
-                                portalError = error.localizedDescription
-                            }
-
-                            openingPortal = false
-                        }
-                    } label: {
-                        Label("Share Client Link", systemImage: "square.and.arrow.up")
-                    }
-
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .imageScale(.large)
-                        .padding(.vertical, 6)
-                }
-                .disabled(openingPortal || !isClientPortalEnabled)
-                .opacity((openingPortal || !isClientPortalEnabled) ? 0.6 : 1)
-            }
-
-            if let portalNotice {
-                Text(portalNotice)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-            if let portalPDFNotice {
-                Text(portalPDFNotice)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-            if let issuerName = resolvedPortalBusinessName() {
-                Text("Issued by: \(issuerName)")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-            if isSnapshotLockedForInvoice {
-                Text("PDF matches portal copy")
-                    .foregroundStyle(.secondary)
-                    .font(.caption2)
-            }
-
-            if let portalErrorMessage = portalError {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(portalErrorMessage)
-                            .font(.caption)
-
-                        Button("Retry") {
-                            self.portalError = nil
-                        }
-                        .font(.caption.weight(.semibold))
-                    }
-
-                    Spacer()
-                }
-                .padding(10)
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-
-            // Optional microcopy (nice polish)
-            Text("Client links expire after 30 days.")
-                .foregroundStyle(.secondary)
-                .font(.caption2)
-        }
-    }
-    
-    private var notesSection: some View {
-        Section("Notes") {
-            Toggle("Add Notes", isOn: $includeNotes)
-
-            if includeNotes {
-                TextEditor(text: $invoice.notes)
-                    .frame(minHeight: 90)
-                    .overlay(alignment: .topLeading) {
-                        if invoice.notes.isEmpty {
-                            Text("Enter notes…")
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 8)
-                                .padding(.leading, 5)
-                        }
-                    }
-            }
-        }
-        .disabled(isEstimateLocked)
-    }
-
-    private var thankYouSection: some View {
-        Section("Thank You") {
-            Toggle("Add Thank You", isOn: $includeThankYou)
-
-            if includeThankYou {
-                TextEditor(text: $invoice.thankYou)
-                    .frame(minHeight: 70)
-                    .overlay(alignment: .topLeading) {
-                        if invoice.thankYou.isEmpty {
-                            Text("Enter thank-you message…")
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 8)
-                                .padding(.leading, 5)
-                        }
-                    }
-            }
-        }
-        .disabled(isEstimateLocked)
-    }
-
-    private var termsSection: some View {
-        Section("Terms & Conditions") {
-            TextEditor(text: $invoice.termsAndConditions)
-                .frame(minHeight: 110)
-                .overlay(alignment: .topLeading) {
-                    if invoice.termsAndConditions.isEmpty {
-                        Text("Enter terms & conditions…")
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 8)
-                            .padding(.leading, 5)
-                    }
-                }
-        }
-        .disabled(isEstimateLocked)
-    }
-
-    private var chargesSection: some View {
-        Section("Charges") {
-            HStack {
-                Text("Discount")
-                Spacer()
-                TextField("0.00", value: $invoice.discountAmount, format: .number)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-            }
-
-            HStack {
-                Text("Tax Rate")
-                Spacer()
-                TextField("0.00", value: $invoice.taxRate, format: .number)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                Text("%").foregroundStyle(.secondary)
-            }
-            .onChange(of: invoice.taxRate) { _, newValue in
-                if newValue > 1 { invoice.taxRate = newValue / 100.0 }
-            }
-        }
-        .disabled(isEstimateLocked)
-    }
-
-    private var lineItemsSection: some View {
-        Section("Line Items") {
-            Button { showingItemPicker = true } label: {
-                Label("Add From Saved Items", systemImage: "tray.and.arrow.down")
-            }
-
-            ForEach(invoice.items ?? []) { item in
-                NavigationLink {
-                    LineItemEditView(item: item)
-                } label: {
-                    lineItemRow(item)
-                }
-            }
-            .onDelete(perform: deleteItems)
-
-            Button { addItem() } label: {
-                Label("Add Line Item", systemImage: "plus.circle")
-            }
-        }
-        .disabled(isEstimateLocked)
-    }
-
-    private func lineItemRow(_ item: LineItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(item.itemDescription.isEmpty ? "Item" : item.itemDescription)
-                .font(.headline)
-            HStack {
-                Text("\(item.quantity, format: .number) × \(item.unitPrice, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(item.lineTotal, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
-                    .font(.subheadline.weight(.semibold))
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var totalsSection: some View {
-        Section("Totals") {
-            totalRow("Subtotal", invoice.subtotal)
-            totalRow("Discount", -invoice.discountAmount)
-            totalRow("Tax", invoice.taxAmount)
-            Divider()
-            totalRow("Total", invoice.total, isEmphasis: true)
-        }
-        .disabled(isEstimateLocked)
-    }
-
-    private var auditSnapshotSection: some View {
-        Section("Audit / Snapshot") {
-            if invoice.businessSnapshotData != nil {
-                Text("Business Snapshot: Locked")
-                    .font(.subheadline.weight(.semibold))
-            } else {
-                Text("Business Snapshot: Not Locked")
-                    .foregroundStyle(.secondary)
-            }
-
-            if invoice.isDraftForSnapshotRefresh {
-                Button("Refresh Snapshot") {
-                    Task { await refreshBusinessSnapshotIfAllowed() }
-                }
-            }
-        }
-    }
-    private var estimateWorkflowSection: some View {
-        Group {
-            if invoice.documentType == "estimate" {
-                Section("Estimate Workflow") {
-
-                    Picker("Status", selection: $invoice.estimateStatus) {
-                        Text("Draft").tag("draft")
-                        Text("Sent").tag("sent")
-                        Text("Accepted").tag("accepted")
-                        Text("Declined").tag("declined")
-                    }
-
-                    if invoice.estimateStatus == "accepted" {
-                        if let job = invoice.job {
-                            HStack {
-                                Text("Job Linked")
-                                Spacer()
-                                Text(job.title.isEmpty ? "Job" : job.title)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            Button {
-                                acceptEstimateAndCreateJob()
-                            } label: {
-                                Label("Create Job from Accepted Estimate", systemImage: "hammer.fill")
-                            }
-                        }
-                    } else {
-                        Button {
-                            invoice.estimateStatus = "accepted"
-                            invoice.estimateAcceptedAt = Date()
-                            acceptEstimateAndCreateJob()
-                        } label: {
-                            Label("Accept & Create Job", systemImage: "checkmark.seal.fill")
-                        }
-                        .disabled(invoice.client == nil) // strongly recommended
-                    }
-
-                    if invoice.client == nil {
-                        Text("Select a customer first to create the Job.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
     private func acceptEstimateAndCreateJob() {
         exportError = nil
-
-        // If already linked, do nothing
-        if invoice.job != nil { return }
+        if invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "accepted" {
+            invoice.estimateStatus = "accepted"
+            if invoice.estimateAcceptedAt == nil { invoice.estimateAcceptedAt = .now }
+            invoice.estimateDeclinedAt = nil
+            try? modelContext.save()
+        }
 
         do {
-            // You already use this in openJobWorkspaceFolder()
-            let biz = try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
-
-            // ✅ Create a new Job (match your Job initializer)
-            // IMPORTANT: if your Job init signature differs, adjust ONLY this block.
-            let titleBase = invoice.client?.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let safeClient = (titleBase?.isEmpty == false) ? titleBase! : "Client"
-            let jobTitle = "Job - \(safeClient)"
-
-            // ---- Job creation (adjust if needed to match your Job model) ----
-            let job = Job(
-                businessID: biz.id,
-                clientID: invoice.client?.id,
-                title: jobTitle,
-                notes: "Created from estimate \(invoice.invoiceNumber)",
-                startDate: invoice.issueDate,
-                endDate: invoice.dueDate,
-                locationName: "",
-                latitude: nil,
-                longitude: nil,
-                status: "scheduled"
-            )
-            // ---------------------------------------------------------------
-
-            modelContext.insert(job)
-
-            // Link estimate → job
-            invoice.job = job
-            invoice.businessID = biz.id
-
-
-            // Mark accepted if not already
-            if invoice.estimateStatus != "accepted" {
-                invoice.estimateStatus = "accepted"
-                invoice.estimateAcceptedAt = Date()
-            }
-
-            try modelContext.save()
-
+            try EstimateAcceptanceHandler.handleAccepted(estimate: invoice, context: modelContext)
         } catch {
             exportError = error.localizedDescription
         }
@@ -1106,107 +1444,27 @@ private var isPortalExpiredForThisInvoice: Bool {
 
 
 
-    private var statusSection: some View {
-        Section("Status") {
-            Toggle("Mark as Paid", isOn: $invoice.isPaid)
-        }
+    private var isClientPortalEnabled: Bool {
+        invoice.client?.portalEnabled ?? true
     }
 
-    private var attachmentsSection: some View {
-        Section("Attachments") {
-            if attachments.isEmpty {
-                Text("No attachments yet")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(attachments) { a in
-                    Button {
-                        openAttachmentPreview(a)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(a.file?.displayName ?? "Missing file")
-                                Text(a.file?.originalFileName ?? "")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            removeAttachment(a)
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                    }
-                }
-            }
-
-            HStack {
-                Button {
-                    showFilePicker = true
-                } label: {
-                    Label("Attach Existing File", systemImage: "paperclip")
-                }
-
-                Spacer()
-
-                Menu {
-                    Button("Import from Files") { showInvoiceAttachmentFileImporter = true }
-                    Button("Import from Photos") { showInvoiceAttachmentPhotosSheet = true }
-                } label: {
-                    Label("Import", systemImage: "plus")
-                }
-            }
-        }
+    private var isPortalExpiredForThisInvoice: Bool {
+        portalReturn.expiredInvoiceID == invoice.id
     }
 
     // MARK: - STEP 4 helper
 
     private func convertEstimateToInvoice() {
-        let profile = resolvedBusinessProfile()
-        guard let profile else {
-            exportError = "Business Profile is missing. Create one first."
-            return
-        }
-
-        // Year rollover logic
-        let year = Calendar.current.component(.year, from: .now)
-        if profile.lastInvoiceYear != year {
-            profile.lastInvoiceYear = year
-            profile.nextInvoiceNumber = 1
-        }
-
-        let next = profile.nextInvoiceNumber
-        let prefix = profile.invoicePrefix.isEmpty ? "SI" : profile.invoicePrefix
-
-        invoice.invoiceNumber = "\(prefix)-\(year)-\(String(format: "%04d", next))"
-        profile.nextInvoiceNumber += 1
-
-        invoice.documentType = "invoice"
-        invoice.issueDate = .now
-
         do {
-            _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
-                invoice: invoice,
+            try EstimateToInvoiceConverter.convert(
+                estimate: invoice,
                 profiles: profiles,
                 context: modelContext
             )
-            try modelContext.save()
+            Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+            Task { await indexInvoiceIfPossible() }
         } catch {
             exportError = error.localizedDescription
-            
-            Task {
-                do {
-                    try modelContext.save()
-                    Task { await indexInvoiceIfPossible() }   // ✅ success path
-                } catch {
-                    exportError = error.localizedDescription
-                }
-            }
         }
     }
 
@@ -1358,85 +1616,18 @@ private var isPortalExpiredForThisInvoice: Bool {
         }
 
         do {
-            let biz = try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
+            let invoicesFolder = try WorkspaceProvisioningService.fetchJobSubfolder(
+                job: job,
+                kind: .invoices,
+                context: modelContext
+            )
 
-            // Ensure Files root exists
-            try FolderService.bootstrapRootIfNeeded(businessID: biz.id, context: modelContext)
-            guard let root = try FolderService.fetchRootFolder(businessID: biz.id, context: modelContext) else {
-                workspaceError = "Files root folder could not be loaded."
-                return
-            }
-
-            // Deterministic job folder name
-            let title = job.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let displayTitle = title.isEmpty ? "Project" : title
-            let shortID = job.id.uuidString.prefix(8)
-            let jobFolderName = "JOB-\(shortID) \(displayTitle)"
-
-            // Find or create job folder under root
-            let jobFolder: Folder
-            if let existing = allFolders.first(where: { f in
-                f.businessID == biz.id && f.parentFolderID == root.id && f.name == jobFolderName
-            }) {
-                jobFolder = existing
-            } else {
-                jobFolder = createJobWorkspaceFolder(businessID: biz.id, root: root, jobFolderName: jobFolderName)
-            }
-
-            // ✅ Now open the "Invoices" subfolder (create if missing)
-            let invoicesFolder: Folder
-            if let existingInvoices = allFolders.first(where: { f in
-                f.businessID == biz.id && f.parentFolderID == jobFolder.id && f.name == "Invoices"
-            }) {
-                invoicesFolder = existingInvoices
-            } else {
-                let parentPath = jobFolder.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                let rel = parentPath.isEmpty ? "Invoices" : "\(parentPath)/Invoices"
-                let created = Folder(
-                    businessID: biz.id,
-                    name: "Invoices",
-                    relativePath: rel,
-                    parentFolderID: jobFolder.id
-                )
-                modelContext.insert(created)
-                try? modelContext.save()
-                invoicesFolder = created
-            }
-
+            let biz = try fetchBusiness(for: job.businessID)
             workspaceDestination = WorkspaceDestination(business: biz, folder: invoicesFolder)
 
         } catch {
             workspaceError = error.localizedDescription
         }
-    }
-
-    private func createJobWorkspaceFolder(businessID: UUID, root: Folder, jobFolderName: String) -> Folder {
-        let rootPath = root.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let jobRel = rootPath.isEmpty ? jobFolderName : "\(rootPath)/\(jobFolderName)"
-
-        let jobFolder = Folder(
-            businessID: businessID,
-            name: jobFolderName,
-            relativePath: jobRel,
-            parentFolderID: root.id
-        )
-        modelContext.insert(jobFolder)
-
-        // Default subfolders
-        let subs = ["Contracts", "Invoices", "Media", "Deliverables", "Reference"]
-        for sub in subs {
-            let subRel = "\(jobRel)/\(sub)"
-            let f = Folder(
-                businessID: businessID,
-                name: sub,
-                relativePath: subRel,
-                parentFolderID: jobFolder.id
-            )
-            modelContext.insert(f)
-        }
-
-        try? modelContext.save()
-        return jobFolder
     }
 
     // MARK: - Helpers
@@ -1475,6 +1666,8 @@ private var isPortalExpiredForThisInvoice: Bool {
     
     @MainActor
     private func indexInvoiceIfPossible() async {
+        try? DocumentFileIndexService.upsertInvoicePDF(invoice: invoice, context: modelContext)
+
         guard invoice.documentType == "invoice" else { return }
         guard let client = invoice.client else { return }
         guard client.portalEnabled else { return }
@@ -1490,6 +1683,14 @@ private var isPortalExpiredForThisInvoice: Bool {
         }
     }
 
+    private func fetchBusiness(for businessID: UUID) throws -> Business {
+        if let match = try modelContext.fetch(
+            FetchDescriptor<Business>(predicate: #Predicate { $0.id == businessID })
+        ).first {
+            return match
+        }
+        return try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
+    }
 
     private func addItem() {
         let newItem = LineItem(itemDescription: "", quantity: 1, unitPrice: 0)
@@ -1544,6 +1745,19 @@ private var isPortalExpiredForThisInvoice: Bool {
     private var isEstimateLocked: Bool {
         guard invoice.documentType == "estimate" else { return false }
         return (invoice.estimateContracts ?? []).contains(where: { $0.status == .signed })
+    }
+
+    private var isEstimateAcceptedLocked: Bool {
+        guard invoice.documentType == "estimate" else { return false }
+        return invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "accepted"
+    }
+
+    private var isEstimatePricingLocked: Bool {
+        isEstimateLocked || isEstimateAcceptedLocked
+    }
+
+    private var isConvertedFromEstimate: Bool {
+        invoice.documentType == "invoice" && invoice.estimateAcceptedAt != nil
     }
 
 
@@ -1623,59 +1837,18 @@ private var isPortalExpiredForThisInvoice: Bool {
         try? modelContext.save()
     }
 
-    private func saveInvoicePDFToJobFiles(shareAfter: [Any]? = nil) {
-        exportError = nil
-
-        guard let job = invoice.job else {
-            exportError = "Link this invoice to a Job to save it into Job → Invoices."
-            return
+    private func persistInvoicePDFToJobFiles() throws -> URL {
+        guard invoice.job != nil else {
+            throw NSError(domain: "Invoice", code: 0, userInfo: [
+                NSLocalizedDescriptionKey: "Link this invoice to a Job to save it into Job → Invoices."
+            ])
         }
 
-        do {
-            let pdfData = InvoicePDFService.makePDFData(
-                invoice: invoice,
-                profiles: profiles,
-                context: modelContext
-            )
-
-            let invoicesFolder = try JobExportToFilesService.resolveJobSubfolder(
-                job: job,
-                named: "Invoices",
-                context: modelContext
-            )
-
-            let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
-            let fileName = "\(prefix)-\(invoice.invoiceNumber).pdf"
-
-            // check conflict in that folder
-            let existing = allFileItems.first(where: {
-                $0.folderKey == invoicesFolder.id.uuidString && $0.originalFileName == fileName
-            })
-
-            if existing != nil {
-                pendingInvoicePDFSave = PendingPDFSave(
-                    pdfData: pdfData,
-                    fileName: fileName,
-                    folder: invoicesFolder,
-                    existing: existing,
-                    shareAfterSave: shareAfter
-                )
-                showInvoicePDFConflictDialog = true
-            } else {
-                _ = try JobExportToFilesService.savePDF(
-                    data: pdfData,
-                    preferredFileNameWithExtension: fileName,
-                    into: invoicesFolder,
-                    existingMatch: nil,
-                    conflictAction: nil,
-                    context: modelContext
-                )
-                if let shareAfter { shareItems = shareAfter }
-            }
-
-        } catch {
-            exportError = error.localizedDescription
-        }
+        return try DocumentFileIndexService.persistInvoicePDF(
+            invoice: invoice,
+            profiles: profiles,
+            context: modelContext
+        )
     }
 
     // MARK: - Share actions
@@ -1688,9 +1861,8 @@ private var isPortalExpiredForThisInvoice: Bool {
 
     private func sharePDFOnly() {
         do {
-            let url = try makeInvoicePDFTempURL(suffix: "pdf")
-            // Save to Job → Invoices first (then share)
-            saveInvoicePDFToJobFiles(shareAfter: [url])
+            let url = try persistInvoicePDFToJobFiles()
+            shareItems = [url]
         } catch {
             exportError = error.localizedDescription
         }
@@ -1706,7 +1878,7 @@ private var isPortalExpiredForThisInvoice: Bool {
 
     private func sharePDFWithAttachments() {
         do {
-            let pdfURL = try makeInvoicePDFTempURL(suffix: "package")
+            let pdfURL = try persistInvoicePDFToJobFiles()
             var items: [Any] = [pdfURL]
             items.append(contentsOf: attachmentURLsForInvoice())
             shareItems = items
@@ -1717,7 +1889,7 @@ private var isPortalExpiredForThisInvoice: Bool {
 
     private func shareZIPPackage() {
         do {
-            let pdfURL = try makeInvoicePDFTempURL(suffix: "package")
+            let pdfURL = try persistInvoicePDFToJobFiles()
             let zipURL = try createZipPackage(pdfURL: pdfURL, attachmentURLs: attachmentURLsForInvoice())
             shareItems = [zipURL]
         } catch {
@@ -1758,6 +1930,63 @@ private var isPortalExpiredForThisInvoice: Bool {
         return try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
     }
     
+    @MainActor
+    private func refreshInvoicePortalState() async {
+        await refreshInvoicePaidStatusFromPortal()
+        await refreshEstimateStatusFromPortal(estimate: invoice)
+    }
+
+    @MainActor
+    private func indexEstimateForDirectoryIfNeeded() async {
+        guard invoice.documentType == "estimate" else { return }
+        let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard ["sent", "accepted", "declined"].contains(status) else { return }
+
+        do {
+            try await PortalBackend.shared.indexEstimateForDirectory(estimate: invoice)
+        } catch {
+            print("Estimate directory index failed:", error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func refreshEstimateStatusFromPortal(estimate: Invoice) async {
+        guard estimate.documentType == "estimate" else { return }
+
+        do {
+            let remote = try await PortalBackend.shared.fetchEstimateStatus(
+                businessId: estimate.businessID.uuidString,
+                estimateId: estimate.id.uuidString
+            )
+
+            let current = estimate.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard current != remote.status else { return }
+
+            let normalized = remote.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "accepted" || normalized == "declined" {
+                let decidedAt = remote.decidedAt ?? .now
+                let decidedAtMs = Int64((decidedAt.timeIntervalSince1970 * 1000.0).rounded())
+                EstimateDecisionSync.upsertDecision(
+                    businessId: estimate.businessID.uuidString,
+                    estimateId: estimate.id.uuidString,
+                    status: normalized,
+                    decidedAtMs: decidedAtMs,
+                    in: modelContext
+                )
+                EstimateDecisionSync.setEstimateDecision(
+                    estimate: estimate,
+                    status: normalized,
+                    decidedAtMs: decidedAtMs
+                )
+            } else {
+                estimate.estimateStatus = remote.status
+            }
+            try? modelContext.save()
+        } catch {
+            print("Estimate status refresh failed:", error.localizedDescription)
+        }
+    }
+
     @MainActor
     private func refreshInvoicePaidStatusFromPortal() async {
         do {
@@ -1937,6 +2166,30 @@ private var isPortalExpiredForThisInvoice: Bool {
         } catch {
             attachError = error.localizedDescription
         }
+    }
+}
+
+private struct SBWCardRow: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(SBWTheme.cardStroke, lineWidth: 1)
+            )
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+    }
+}
+
+private extension View {
+    func sbwCardRow() -> some View {
+        modifier(SBWCardRow())
     }
 }
 

@@ -12,6 +12,7 @@ struct BookingsListView: View {
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var refreshTask: Task<Void, Never>? = nil
+    @State private var selectedRequest: BookingRequestItem? = nil
 
     private var taskKey: String {
         "\(activeBiz.activeBusinessID?.uuidString ?? "none")-\(selectedStatus.rawValue)"
@@ -77,13 +78,12 @@ struct BookingsListView: View {
                     }
                 } else {
                     ForEach(filteredRequests) { request in
-                        NavigationLink {
-                            BookingDetailView(request: request) { newStatus in
-                                updateStatus(for: request.requestId, newStatus: newStatus)
-                            }
+                        Button {
+                            selectedRequest = request
                         } label: {
                             bookingRow(request)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -96,7 +96,11 @@ struct BookingsListView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search bookings"
         )
-        .settingsGear { BusinessProfileView() }
+        .navigationDestination(item: $selectedRequest) { request in
+            BookingDetailView(request: request) { newStatus in
+                updateStatus(for: request.requestId, newStatus: newStatus)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

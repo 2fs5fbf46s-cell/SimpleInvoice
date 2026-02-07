@@ -118,6 +118,14 @@ struct PaymentStatusResponse: Decodable {
     }
 }
 
+struct EstimateStatusResponseDTO: Decodable {
+    let status: String?
+    let decidedAt: String?
+    let acceptedAt: String?
+    let declinedAt: String?
+    let updatedAt: String?
+}
+
 // MARK: - Booking Admin DTOs
 
 struct BookingRequestDTO: Decodable, Identifiable, Equatable {
@@ -259,6 +267,111 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
 
 struct BookingRequestsResponseDTO: Decodable {
     let requests: [BookingRequestDTO]
+}
+
+private struct BookingSettingsEnvelopeDTO: Decodable {
+    let settings: BookingSettingsDTO?
+    let data: BookingSettingsDTO?
+}
+
+struct BookingSettingsDTO: Decodable, Encodable {
+    let businessId: String?
+    let slug: String?
+    let brandName: String?
+    let ownerEmail: String?
+    let services: [BookingServiceOption]?
+    let businessHours: [String: [String: String?]]?
+    let hoursJson: String?
+    let slotMinutes: Int?
+    let bookingSlotMinutes: Int?
+    let minBookingMinutes: Int?
+    let maxBookingMinutes: Int?
+    let allowSameDay: Bool?
+
+    init(
+        businessId: String? = nil,
+        slug: String? = nil,
+        brandName: String? = nil,
+        ownerEmail: String? = nil,
+        services: [BookingServiceOption]? = nil,
+        businessHours: [String: [String: String?]]? = nil,
+        hoursJson: String? = nil,
+        slotMinutes: Int? = nil,
+        bookingSlotMinutes: Int? = nil,
+        minBookingMinutes: Int? = nil,
+        maxBookingMinutes: Int? = nil,
+        allowSameDay: Bool? = nil
+    ) {
+        self.businessId = businessId
+        self.slug = slug
+        self.brandName = brandName
+        self.ownerEmail = ownerEmail
+        self.services = services
+        self.businessHours = businessHours
+        self.hoursJson = hoursJson
+        self.slotMinutes = slotMinutes
+        self.bookingSlotMinutes = bookingSlotMinutes
+        self.minBookingMinutes = minBookingMinutes
+        self.maxBookingMinutes = maxBookingMinutes
+        self.allowSameDay = allowSameDay
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case businessId
+        case slug
+        case brandName
+        case ownerEmail
+        case services
+        case businessHours
+        case hoursJson
+        case slotMinutes
+        case bookingSlotMinutes
+        case minBookingMinutes
+        case maxBookingMinutes
+        case allowSameDay
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        businessId = try c.decodeIfPresent(String.self, forKey: .businessId)
+        slug = try c.decodeIfPresent(String.self, forKey: .slug)
+        brandName = try c.decodeIfPresent(String.self, forKey: .brandName)
+        ownerEmail = try c.decodeIfPresent(String.self, forKey: .ownerEmail)
+        businessHours = try c.decodeIfPresent([String: [String: String?]].self, forKey: .businessHours)
+        hoursJson = try c.decodeIfPresent(String.self, forKey: .hoursJson)
+        minBookingMinutes = try c.decodeIfPresent(Int.self, forKey: .minBookingMinutes)
+        maxBookingMinutes = try c.decodeIfPresent(Int.self, forKey: .maxBookingMinutes)
+        allowSameDay = try c.decodeIfPresent(Bool.self, forKey: .allowSameDay)
+
+        if let opts = try c.decodeIfPresent([BookingServiceOption].self, forKey: .services) {
+            services = opts
+        } else if let names = try c.decodeIfPresent([String].self, forKey: .services) {
+            services = names.map { BookingServiceOption(name: $0, durationMinutes: 30) }
+        } else {
+            services = nil
+        }
+
+        let slot = try c.decodeIfPresent(Int.self, forKey: .slotMinutes)
+        let bookingSlot = try c.decodeIfPresent(Int.self, forKey: .bookingSlotMinutes)
+        slotMinutes = slot
+        bookingSlotMinutes = bookingSlot
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(businessId, forKey: .businessId)
+        try c.encodeIfPresent(slug, forKey: .slug)
+        try c.encodeIfPresent(brandName, forKey: .brandName)
+        try c.encodeIfPresent(ownerEmail, forKey: .ownerEmail)
+        try c.encodeIfPresent(services, forKey: .services)
+        try c.encodeIfPresent(businessHours, forKey: .businessHours)
+        try c.encodeIfPresent(hoursJson, forKey: .hoursJson)
+        try c.encodeIfPresent(slotMinutes, forKey: .slotMinutes)
+        try c.encodeIfPresent(bookingSlotMinutes, forKey: .bookingSlotMinutes)
+        try c.encodeIfPresent(minBookingMinutes, forKey: .minBookingMinutes)
+        try c.encodeIfPresent(maxBookingMinutes, forKey: .maxBookingMinutes)
+        try c.encodeIfPresent(allowSameDay, forKey: .allowSameDay)
+    }
 }
 
 // MARK: - Backend client
@@ -467,6 +580,18 @@ final class PortalBackend {
         return comps.url!
     }
 
+    func portalEstimateURL(estimateId: String, token: String, mode: String = "live") -> URL {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/portal/estimate/\(estimateId)"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "t", value: token),
+            URLQueryItem(name: "mode", value: mode)
+        ]
+        return comps.url!
+    }
+
     func portalContractURL(contractId: String, token: String, mode: String = "live") -> URL {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/portal/contract/\(contractId)"),
@@ -565,6 +690,48 @@ final class PortalBackend {
             "title": contract.title,
             "updatedAtMs": updatedAtMs,
             "contractBody": contract.renderedBody,
+            "clientPortalEnabled": client.portalEnabled
+        ]
+
+        _ = try await seedToken(payload: body)
+    }
+
+    /// Indexes an estimate into the portal directory list.
+    @MainActor
+    func indexEstimateForDirectory(estimate: Invoice) async throws {
+        guard estimate.documentType == "estimate" else { return }
+        guard let client = estimate.client else {
+            throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Estimate is not linked to a client."])
+        }
+        guard client.portalEnabled else { return }
+
+        let normalizedStatus = estimate.estimateStatus
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard ["sent", "accepted", "declined"].contains(normalizedStatus) else { return }
+
+        let amountCents = Int((estimate.total * 100).rounded())
+        let lineItems = buildPortalLineItems(invoice: estimate)
+        let subtotalCents = portalSubtotalCents(from: lineItems)
+        let taxCents = portalTaxCents(invoice: estimate)
+
+        let body: [String: Any] = [
+            "businessId": estimate.businessID.uuidString,
+            "clientId": client.id.uuidString,
+            "scope": "directory",
+            "mode": "live",
+            "documentType": "estimate",
+            "estimateId": estimate.id.uuidString,
+            "invoiceId": estimate.id.uuidString,
+            "invoiceNumber": estimate.invoiceNumber,
+            "amountCents": amountCents,
+            "subtotalCents": subtotalCents,
+            "taxCents": taxCents,
+            "lineItems": lineItems,
+            "currency": "usd",
+            "status": normalizedStatus,
+            "title": "Estimate \(estimate.invoiceNumber)",
+            "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
             "clientPortalEnabled": client.portalEnabled
         ]
 
@@ -801,9 +968,89 @@ final class PortalBackend {
         catch { throw PortalBackendError.decode(body: raw) }
     }
 
+    // MARK: - Estimate status
+
+    func fetchEstimateStatus(
+        businessId: String,
+        estimateId: String
+    ) async throws -> (status: String, decidedAt: Date?) {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/portal/estimate/status"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "businessId", value: businessId),
+            URLQueryItem(name: "estimateId", value: estimateId)
+        ]
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        let decoded: EstimateStatusResponseDTO
+        do {
+            decoded = try decoder().decode(EstimateStatusResponseDTO.self, from: data)
+        } catch {
+            throw PortalBackendError.decode(body: raw)
+        }
+
+        let normalized = decoded.status?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "draft"
+
+        let decidedAt = parsePortalDate(decoded.decidedAt)
+            ?? parsePortalDate(decoded.acceptedAt)
+            ?? parsePortalDate(decoded.declinedAt)
+            ?? parsePortalDate(decoded.updatedAt)
+
+        return (status: normalized, decidedAt: decidedAt)
+    }
+
+    private func parsePortalDate(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let value = Double(trimmed) {
+            if value > 1_000_000_000_000 {
+                return Date(timeIntervalSince1970: value / 1000.0)
+            }
+            return Date(timeIntervalSince1970: value)
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: trimmed) { return d }
+
+        let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime]
+        return fallback.date(from: trimmed)
+    }
+
     // MARK: - Booking Admin
 
-    func registerBookingSlug(businessId: UUID, slug: String, brandName: String, businessEmail: String?) async throws {
+    private struct RegisterBookingSlugResponseDTO: Decodable {
+        let ok: Bool?
+        let brandName: String?
+        let ownerEmail: String?
+        let error: String?
+    }
+
+    func upsertBookingSlug(
+        businessId: UUID,
+        slug: String,
+        brandName: String,
+        ownerEmail: String
+    ) async throws {
         let adminKey = try requireAdminKey()
 
         let url = baseURL.appendingPathComponent("/api/booking/admin/slug")
@@ -812,22 +1059,35 @@ final class PortalBackend {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
 
-        var payload: [String: Any] = [
+        let trimmedBrand = brandName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedOwner = ownerEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let payload: [String: Any] = [
             "businessId": businessId.uuidString,
             "slug": slug,
-            "brandName": brandName
+            "brandName": trimmedBrand,
+            "ownerEmail": trimmedOwner
         ]
-        if let businessEmail,
-           !businessEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            payload["businessEmail"] = businessEmail.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        #if DEBUG
+        print("[bookinglink] upsert request", payload)
+        #endif
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
-        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
-        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+        guard let http = resp as? HTTPURLResponse else {
+            #if DEBUG
+            print("[bookinglink] upsert response error", raw)
+            #endif
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            #if DEBUG
+            print("[bookinglink] upsert response error", http.statusCode, raw)
+            #endif
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
     }
 
     func fetchBookingRequests(businessId: UUID) async throws -> [BookingRequestDTO] {
@@ -908,6 +1168,260 @@ final class PortalBackend {
                 throw PortalBackendError.decode(body: raw)
             }
         }
+    }
+
+    func fetchBookingSettings(businessId: UUID) async throws -> BookingSettingsDTO {
+        try await fetchBookingSettings(businessId: businessId.uuidString)
+    }
+
+    func fetchBookingSettings(businessId: String) async throws -> BookingSettingsDTO {
+        let adminKey = try requireAdminKey()
+
+        #if DEBUG
+        print("📥 BookingSettings fetch: businessId=\(businessId)")
+        #endif
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/booking/settings"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "businessId", value: businessId)
+        ]
+
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else {
+            // Backward compatibility route.
+            return try await fetchBookingSettingsLegacy(businessId: businessId, adminKey: adminKey)
+        }
+
+        #if DEBUG
+        print("✅ BookingSettings fetch response: \(raw)")
+        #endif
+
+        if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
+            return dto
+        }
+        if let wrapped = try? decoder().decode(BookingSettingsEnvelopeDTO.self, from: data),
+           let dto = wrapped.settings ?? wrapped.data {
+            return dto
+        }
+        throw PortalBackendError.decode(body: raw)
+    }
+
+    func upsertBookingSettings(
+        businessId: UUID,
+        settings: BookingSettingsDTO
+    ) async throws -> BookingSettingsDTO {
+        try await upsertBookingSettings(businessId: businessId.uuidString, settings: settings)
+    }
+
+    func upsertBookingSettings(
+        businessId: String,
+        settings: BookingSettingsDTO
+    ) async throws -> BookingSettingsDTO {
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent("/api/booking/settings/upsert")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        let normalizedSlug = settings.slug?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedBrand = settings.brandName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedOwner = settings.ownerEmail?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let slotMinutes = settings.slotMinutes ?? settings.bookingSlotMinutes ?? 30
+        let bookingSlotMinutes = settings.bookingSlotMinutes ?? settings.slotMinutes ?? slotMinutes
+
+        let normalizedServices = (settings.services ?? [])
+            .map {
+                BookingServiceOption(
+                    name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    durationMinutes: max(1, $0.durationMinutes)
+                )
+            }
+            .filter { !$0.name.isEmpty }
+
+        let normalizedHoursDict: [String: [String: String?]]
+        if let hours = settings.businessHours, !hours.isEmpty {
+            normalizedHoursDict = hours
+        } else if let hoursJson = settings.hoursJson,
+                  let cfg = PortalHoursConfig.fromJSON(hoursJson) {
+            normalizedHoursDict = cfg.toBusinessHoursDict()
+        } else {
+            normalizedHoursDict = PortalHoursConfig.defaultClosed().toBusinessHoursDict()
+        }
+        let normalizedHoursJSON = PortalHoursConfig.fromBusinessHoursDict(normalizedHoursDict).toJSON() ?? "{}"
+
+        let ownerEmailValue: Any = (normalizedOwner?.isEmpty == false) ? (normalizedOwner ?? "") : NSNull()
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "slug": normalizedSlug ?? "",
+            "brandName": normalizedBrand ?? "",
+            "ownerEmail": ownerEmailValue,
+            "services": normalizedServices.map { svc in
+                [
+                    "name": svc.name,
+                    "durationMinutes": svc.durationMinutes,
+                    "duration_minutes": svc.durationMinutes
+                ]
+            },
+            "businessHours": normalizedHoursDict,
+            "business_hours": normalizedHoursDict,
+            "hoursJson": normalizedHoursJSON,
+            "hours_json": normalizedHoursJSON,
+            "slotMinutes": slotMinutes,
+            "slot_minutes": slotMinutes,
+            "bookingSlotMinutes": bookingSlotMinutes,
+            "booking_slot_minutes": bookingSlotMinutes,
+            "minBookingMinutes": settings.minBookingMinutes ?? NSNull(),
+            "min_booking_minutes": settings.minBookingMinutes ?? NSNull(),
+            "maxBookingMinutes": settings.maxBookingMinutes ?? NSNull(),
+            "max_booking_minutes": settings.maxBookingMinutes ?? NSNull(),
+            "allowSameDay": settings.allowSameDay ?? false,
+            "allow_same_day": settings.allowSameDay ?? false
+        ]
+
+        let payloadData = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        #if DEBUG
+        if let payloadJSONString = String(data: payloadData, encoding: .utf8) {
+            print("⬆️ BookingSettings upsert payload: \(payloadJSONString)")
+        } else {
+            print("⬆️ BookingSettings upsert payload: <non-utf8 payload>")
+        }
+        #endif
+
+        req.httpBody = payloadData
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else {
+            // Backward compatibility route.
+            return try await upsertBookingSettingsLegacy(businessId: businessId, settings: settings, adminKey: adminKey)
+        }
+
+        #if DEBUG
+        print("✅ BookingSettings upsert response: \(raw)")
+        #endif
+
+        if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
+            return dto
+        }
+        if let wrapped = try? decoder().decode(BookingSettingsEnvelopeDTO.self, from: data),
+           let dto = wrapped.settings ?? wrapped.data {
+            return dto
+        }
+
+        return BookingSettingsDTO(
+            businessId: businessId,
+            slug: normalizedSlug,
+            brandName: normalizedBrand,
+            ownerEmail: normalizedOwner?.isEmpty == true ? nil : normalizedOwner,
+            services: normalizedServices,
+            businessHours: normalizedHoursDict,
+            hoursJson: normalizedHoursJSON,
+            slotMinutes: slotMinutes,
+            bookingSlotMinutes: bookingSlotMinutes,
+            minBookingMinutes: settings.minBookingMinutes,
+            maxBookingMinutes: settings.maxBookingMinutes,
+            allowSameDay: settings.allowSameDay
+        )
+    }
+
+    private func fetchBookingSettingsLegacy(
+        businessId: String,
+        adminKey: String
+    ) async throws -> BookingSettingsDTO {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/booking/admin/settings"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "businessId", value: businessId)]
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        #if DEBUG
+        print("✅ BookingSettings fetch response (legacy): \(raw)")
+        #endif
+        if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
+            return dto
+        }
+        if let wrapped = try? decoder().decode(BookingSettingsEnvelopeDTO.self, from: data),
+           let dto = wrapped.settings ?? wrapped.data {
+            return dto
+        }
+        throw PortalBackendError.decode(body: raw)
+    }
+
+    private func upsertBookingSettingsLegacy(
+        businessId: String,
+        settings: BookingSettingsDTO,
+        adminKey: String
+    ) async throws -> BookingSettingsDTO {
+        let url = baseURL.appendingPathComponent("/api/booking/admin/settings")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        var fallbackSettings = settings
+        if fallbackSettings.businessId == nil {
+            fallbackSettings = BookingSettingsDTO(
+                businessId: businessId,
+                slug: settings.slug,
+                brandName: settings.brandName,
+                ownerEmail: settings.ownerEmail,
+                services: settings.services,
+                businessHours: settings.businessHours,
+                hoursJson: settings.hoursJson,
+                slotMinutes: settings.slotMinutes,
+                bookingSlotMinutes: settings.bookingSlotMinutes,
+                minBookingMinutes: settings.minBookingMinutes,
+                maxBookingMinutes: settings.maxBookingMinutes,
+                allowSameDay: settings.allowSameDay
+            )
+        }
+
+        req.httpBody = try JSONEncoder().encode(fallbackSettings)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        #if DEBUG
+        print("✅ BookingSettings upsert response (legacy): \(raw)")
+        #endif
+
+        if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
+            return dto
+        }
+        if let wrapped = try? decoder().decode(BookingSettingsEnvelopeDTO.self, from: data),
+           let dto = wrapped.settings ?? wrapped.data {
+            return dto
+        }
+        return fallbackSettings
     }
 
     // MARK: - Booking Admin (scaffold)

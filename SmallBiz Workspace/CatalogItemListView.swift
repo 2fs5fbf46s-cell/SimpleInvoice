@@ -9,6 +9,7 @@ struct CatalogItemListView: View {
 
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
+    @State private var selectedItem: CatalogItem? = nil
 
     private func normalizedCategory(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -75,30 +76,19 @@ struct CatalogItemListView: View {
                     )
                 } else {
                     ForEach(filteredItems) { item in
-                        NavigationLink {
-                            CatalogItemEditView(item: item)
+                        Button {
+                            selectedItem = item
                         } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Item" : item.name)
-                                    .font(.headline)
-
-                                HStack {
-                                    Text(normalizedCategory(item.category))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-
-                                    Text(item.details)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-
-                                    Spacer()
-
-                                    Text(item.unitPrice, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                            }
-                            .padding(.vertical, 4)
+                            let name = item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Item" : item.name
+                            let category = normalizedCategory(item.category)
+                            let details = item.details.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let price = item.unitPrice.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+                            let subtitleParts = [category, details.isEmpty ? nil : details, price]
+                                .compactMap { $0 }
+                                .joined(separator: " • ")
+                            SBWNavigationRow(title: name, subtitle: subtitleParts)
                         }
+                        .buttonStyle(.plain)
                     }
                     .onDelete(perform: deleteFiltered)
                 }
@@ -106,6 +96,9 @@ struct CatalogItemListView: View {
         }
         .navigationTitle("Saved Items")
         .searchable(text: $searchText, prompt: "Search saved items")
+        .navigationDestination(item: $selectedItem) { item in
+            CatalogItemEditView(item: item)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { add() } label: { Image(systemName: "plus") }
@@ -159,4 +152,3 @@ struct CatalogItemListView: View {
         }
     }
 }
-

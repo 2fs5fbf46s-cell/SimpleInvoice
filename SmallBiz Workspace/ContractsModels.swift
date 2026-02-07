@@ -31,6 +31,8 @@ final class Contract {
     /// Final generated contract text snapshot
     var renderedBody: String = ""
 
+    var pdfRelativePath: String = ""
+
     /// Store status as String for SwiftData
     var statusRaw: String = ContractStatus.draft.rawValue
     var isSigned: Bool {
@@ -74,6 +76,7 @@ final class Contract {
         templateName: String = "",
         templateCategory: String = "",
         renderedBody: String = "",
+        pdfRelativePath: String = "",
         statusRaw: String = ContractStatus.draft.rawValue,
         client: Client? = nil,
         invoice: Invoice? = nil
@@ -85,6 +88,7 @@ final class Contract {
         self.templateName = templateName
         self.templateCategory = templateCategory
         self.renderedBody = renderedBody
+        self.pdfRelativePath = pdfRelativePath
         self.statusRaw = statusRaw
         self.client = client
         self.invoice = invoice

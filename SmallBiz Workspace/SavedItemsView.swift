@@ -14,6 +14,7 @@ struct SavedItemsView: View {
     @Query private var profiles: [BusinessProfile]
 
     @State private var searchText: String = ""
+    @State private var selectedCategory: String = "All"
 
     // Clients-style draft -> sheet editor
     @State private var showingEditor = false
@@ -28,9 +29,14 @@ struct SavedItemsView: View {
 
     private var filteredItems: [CatalogItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return scopedItems }
+        let base = scopedItems.filter { item in
+            if selectedCategory == "All" { return true }
+            return item.category.trimmingCharacters(in: .whitespacesAndNewlines) == selectedCategory
+        }
 
-        return scopedItems.filter {
+        guard !q.isEmpty else { return base }
+
+        return base.filter {
             $0.name.lowercased().contains(q)
             || $0.details.lowercased().contains(q)
             || $0.category.lowercased().contains(q)
@@ -52,6 +58,12 @@ struct SavedItemsView: View {
         return lines.isEmpty ? ["General"] : lines
     }
 
+    private var categoryOptions: [String] {
+        var out = ["All"]
+        out.append(contentsOf: categories)
+        return out
+    }
+
     var body: some View {
         ZStack {
             // Background
@@ -66,6 +78,9 @@ struct SavedItemsView: View {
                 .ignoresSafeArea()
 
             List {
+                categoriesRow
+                categoryFilterRow
+
                 if filteredItems.isEmpty {
                     ContentUnavailableView(
                         scopedItems.isEmpty ? "No Saved Items" : "No Results",
@@ -74,6 +89,7 @@ struct SavedItemsView: View {
                                           ? "Tap + to add your first saved item."
                                           : "Try a different search.")
                     )
+                    .listRowBackground(Color.clear)
                 } else {
                     ForEach(filteredItems) { item in
                         Button {
@@ -94,18 +110,20 @@ struct SavedItemsView: View {
                         }
                     }
                     .onDelete(perform: deleteFiltered)
+                    .listRowBackground(Color.clear)
                 }
             }
+            .listStyle(.plain)
+            .listRowSeparator(.hidden)
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Saved Items")
+        .navigationTitle("Inventory")
         .navigationBarTitleDisplayMode(.large)
         .searchable(
             text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search items"
         )
-        .settingsGear { BusinessProfileView() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
 
@@ -151,6 +169,71 @@ struct SavedItemsView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .onChange(of: activeProfile?.catalogCategoriesText ?? "") { _, _ in
+            try? modelContext.save()
+        }
+    }
+
+    private var categoriesRow: some View {
+        NavigationLink {
+            CategoriesEditorView(profile: activeProfile)
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AnyShapeStyle(SBWTheme.brandGradient.opacity(0.18)))
+                    Image(systemName: "tag")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Categories")
+                        .font(.headline)
+                    Text("Edit the list used for saved items")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .sbwCardRow()
+    }
+
+    private var categoryFilterRow: some View {
+        WrapRow(items: categoryOptions) { option in
+            Button {
+                selectedCategory = option
+            } label: {
+                Text(option)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(filterBackground(for: option))
+                    .foregroundStyle(filterForeground(for: option))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .sbwCardRow()
+    }
+
+    private func filterBackground(for option: String) -> Color {
+        if option == selectedCategory {
+            return SBWTheme.brandBlue.opacity(0.20)
+        }
+        return Color(.secondarySystemFill)
+    }
+
+    private func filterForeground(for option: String) -> Color {
+        if option == selectedCategory {
+            return SBWTheme.brandBlue
+        }
+        return .secondary
     }
 
     // MARK: - Row UI (Option A)
@@ -258,6 +341,200 @@ struct SavedItemsView: View {
     }
 }
 
+// MARK: - Categories Editor
+
+private struct CategoriesEditorView: View {
+    @Environment(\.modelContext) private var modelContext
+    let profile: BusinessProfile?
+    @State private var draftCategories: [String] = []
+
+    var body: some View {
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
+
+            List {
+                if let profile {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Categories")
+                            .font(.headline)
+
+                        Text("These labels help you organize saved items.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        let tags = categories(from: profile)
+                        WrapRow(items: tags) { tag in
+                            CategoryTagView(text: tag)
+                        }
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Edit list")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Tap + to add a new line, then type the category.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(draftCategories.indices, id: \.self) { idx in
+                            CategoryLineRow(
+                                text: bindingForCategory(idx),
+                                onDelete: {
+                                    draftCategories.remove(at: idx)
+                                    persistDraft(profile)
+                                }
+                            )
+                        }
+
+                        Button {
+                            draftCategories.append("")
+                        } label: {
+                            Label("Add Category", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SBWTheme.brandBlue)
+                    }
+                    .sbwCardRow()
+                    .listRowBackground(Color.clear)
+                } else {
+                    Text("Select a business to edit categories.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .sbwCardRow()
+                }
+            }
+            .listStyle(.plain)
+            .listRowSeparator(.hidden)
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Categories")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard let profile else { return }
+            draftCategories = categories(from: profile)
+        }
+        .onChange(of: draftCategories) { _, _ in
+            if let profile { persistDraft(profile) }
+        }
+    }
+
+    private func categories(from profile: BusinessProfile) -> [String] {
+        let raw = profile.catalogCategoriesText
+        let lines = raw
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return lines.isEmpty ? ["General"] : lines
+    }
+
+    private func persistDraft(_ profile: BusinessProfile) {
+        let cleaned = draftCategories
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        profile.catalogCategoriesText = cleaned.joined(separator: "\n")
+        try? modelContext.save()
+    }
+
+    private func bindingForCategory(_ idx: Int) -> Binding<String> {
+        Binding(
+            get: { draftCategories[safe: idx] ?? "" },
+            set: { newValue in
+                guard draftCategories.indices.contains(idx) else { return }
+                draftCategories[idx] = newValue
+            }
+        )
+    }
+}
+
+private struct CategoryTagView: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(.secondarySystemFill))
+            .clipShape(Capsule())
+    }
+}
+
+private struct CategoryLineRow: View {
+    @Binding var text: String
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("Category", text: $text)
+                .textInputAutocapitalization(.words)
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(SBWTheme.cardStroke, lineWidth: 1)
+        )
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard indices.contains(index) else { return nil }
+        return self[index]
+    }
+}
+
+private struct WrapRow<Item: Hashable, Content: View>: View {
+    let items: [Item]
+    let content: (Item) -> Content
+
+    var body: some View {
+        var rows: [[Item]] = [[]]
+        var currentWidth: CGFloat = 0
+        let spacing: CGFloat = 8
+        let maxWidth: CGFloat = UIScreen.main.bounds.width - 64
+
+        for item in items {
+            let label = UIHostingController(rootView: content(item)).view
+            let size = label?.intrinsicContentSize ?? CGSize(width: 80, height: 24)
+            if currentWidth + size.width + spacing > maxWidth, !rows[rows.count - 1].isEmpty {
+                rows.append([item])
+                currentWidth = size.width
+            } else {
+                rows[rows.count - 1].append(item)
+                currentWidth += size.width + spacing
+            }
+        }
+
+        return VStack(alignment: .leading, spacing: spacing) {
+            ForEach(rows.indices, id: \.self) { idx in
+                HStack(spacing: spacing) {
+                    ForEach(rows[idx], id: \.self) { item in
+                        content(item)
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Editor Sheet (unique name to avoid redeclare conflicts)
 
 private struct CatalogItemEditorSheet: View {
@@ -305,5 +582,29 @@ private struct CatalogItemEditorSheet: View {
                     .fontWeight(.semibold)
             }
         }
+    }
+}
+
+private struct SBWCardRow: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(SBWTheme.cardStroke, lineWidth: 1)
+            )
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+    }
+}
+
+private extension View {
+    func sbwCardRow() -> some View {
+        modifier(SBWCardRow())
     }
 }

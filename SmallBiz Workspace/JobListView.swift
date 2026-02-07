@@ -15,6 +15,7 @@ struct JobsListView: View {
 
     @State private var searchText: String = ""
     @State private var filter: JobFilter = .active
+    @State private var selectedJob: Job? = nil
 
     // ✅ New Job sheet (Clients-style)
     @State private var showingNewJob = false
@@ -93,11 +94,12 @@ struct JobsListView: View {
                     )
                 } else {
                     ForEach(filteredJobs) { job in
-                        NavigationLink {
-                            JobDetailView(job: job)
+                        Button {
+                            selectedJob = job
                         } label: {
                             jobRow(job)
                         }
+                        .buttonStyle(.plain)
                     }
                     .onDelete(perform: deleteJobs)
                 }
@@ -111,7 +113,9 @@ struct JobsListView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search jobs"
         )
-        .settingsGear { BusinessProfileView() }
+        .navigationDestination(item: $selectedJob) { job in
+            JobDetailView(job: job)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
@@ -165,7 +169,12 @@ struct JobsListView: View {
         let contractCount = job.contracts?.count ?? 0
 
         let statusText = normalizedJobStatusLabel(job.status)
-        let chip = SBWTheme.chip(forStatus: statusText)
+        let location = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let date = job.startDate.formatted(date: .abbreviated, time: .omitted)
+        let contractText = contractCount > 0 ? "\(contractCount) contract\(contractCount == 1 ? "" : "s")" : nil
+        let subtitle = [statusText, location.isEmpty ? nil : location, contractText, date]
+            .compactMap { $0 }
+            .joined(separator: " • ")
 
         return HStack(alignment: .top, spacing: 12) {
 
@@ -179,48 +188,10 @@ struct JobsListView: View {
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(job.title.isEmpty ? "Job" : job.title)
-                        .font(.headline)
-
-                    Spacer()
-
-                    if contractCount > 0 {
-                        Text("\(contractCount) Contract\(contractCount == 1 ? "" : "s")")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if !job.locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(job.locationName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                HStack {
-                    Text(statusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(chip.fg)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(chip.bg)
-                        .clipShape(Capsule())
-
-                    Spacer()
-
-                    Text(job.startDate, style: .date)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.vertical, 4)
+            SBWNavigationRow(
+                title: job.title.isEmpty ? "Job" : job.title,
+                subtitle: subtitle.isEmpty ? " " : subtitle
+            )
         }
         .padding(.vertical, 6)
     }

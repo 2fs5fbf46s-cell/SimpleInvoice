@@ -10,6 +10,8 @@ struct CreateContractStartView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    let onCreated: (Contract) -> Void
+    let onCancel: () -> Void
 
     private var scopedInvoices: [Invoice] {
         guard let bizID = activeBiz.activeBusinessID else { return [] }
@@ -38,93 +40,110 @@ struct CreateContractStartView: View {
 
     @State private var createError: String?
 
+    init(
+        onCreated: @escaping (Contract) -> Void = { _ in },
+        onCancel: @escaping () -> Void = {}
+    ) {
+        self.onCreated = onCreated
+        self.onCancel = onCancel
+    }
+
     var body: some View {
-        Form {
-            Section("Template") {
-                if templates.isEmpty {
-                    ContentUnavailableView(
-                        "No Templates Found",
-                        systemImage: "doc.badge.gearshape",
-                        description: Text("Templates should seed on launch. Try closing/reopening the app.")
-                    )
-                } else {
-                    Picker("Choose Template", selection: $selectedTemplate) {
-                        Text("Select…").tag(Optional<ContractTemplate>.none)
-                        ForEach(templates) { t in
-                            Text("\(t.name) (\(t.category))").tag(Optional(t))
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
+
+            Form {
+                Section("Template") {
+                    if templates.isEmpty {
+                        ContentUnavailableView(
+                            "No Templates Found",
+                            systemImage: "doc.badge.gearshape",
+                            description: Text("Templates should seed on launch. Try closing/reopening the app.")
+                        )
+                    } else {
+                        Picker("Choose Template", selection: $selectedTemplate) {
+                            Text("Select…").tag(Optional<ContractTemplate>.none)
+                            ForEach(templates) { t in
+                                Text("\(t.name) (\(t.category))").tag(Optional(t))
+                            }
                         }
                     }
                 }
-            }
-            
-            Section("Source") {
-                Toggle("Fill from Invoice", isOn: $useInvoice)
-                    .onChange(of: useInvoice) { _, newValue in
-                        if newValue {
-                            selectedClient = nil
-                        } else {
-                            selectedInvoice = nil
-                        }
-                    }
                 
-                if useInvoice {
-                    if scopedInvoices.isEmpty {
-                        Text("No invoices yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Select Invoice", selection: $selectedInvoice) {
-                            Text("Select…").tag(Optional<Invoice>.none)
-                            ForEach(scopedInvoices) { inv in
-                                Text("Invoice \(inv.invoiceNumber) — \(inv.client?.name ?? "No Client")")
-                                    .tag(Optional(inv))
+                Section("Source") {
+                    Toggle("Fill from Invoice", isOn: $useInvoice)
+                        .onChange(of: useInvoice) { _, newValue in
+                            if newValue {
+                                selectedClient = nil
+                            } else {
+                                selectedInvoice = nil
                             }
                         }
-                        
-                        if let inv = selectedInvoice {
-                            Text("Client: \(inv.client?.name ?? "No Client")")
+                    
+                    if useInvoice {
+                        if scopedInvoices.isEmpty {
+                            Text("No invoices yet.")
                                 .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Select Invoice", selection: $selectedInvoice) {
+                                Text("Select…").tag(Optional<Invoice>.none)
+                                ForEach(scopedInvoices) { inv in
+                                    Text("Invoice \(inv.invoiceNumber) — \(inv.client?.name ?? "No Client")")
+                                        .tag(Optional(inv))
+                                }
+                            }
+                            
+                            if let inv = selectedInvoice {
+                                Text("Client: \(inv.client?.name ?? "No Client")")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                    }
-                } else {
-                    if scopedClients.isEmpty {
-                        Text("No clients yet.")
-                            .foregroundStyle(.secondary)
                     } else {
-                        Picker("Select Client", selection: $selectedClient) {
-                            Text("Select…").tag(Optional<Client>.none)
-                            ForEach(scopedClients) { c in
-                                Text(c.name.isEmpty ? "Client" : c.name).tag(Optional(c))
+                        if scopedClients.isEmpty {
+                            Text("No clients yet.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Select Client", selection: $selectedClient) {
+                                Text("Select…").tag(Optional<Client>.none)
+                                ForEach(scopedClients) { c in
+                                    Text(c.name.isEmpty ? "Client" : c.name).tag(Optional(c))
+                                }
                             }
                         }
                     }
                 }
-            }
-            
-            Section {
-                Button {
-                    generatePreview()
-                } label: {
-                    Label("Preview Contract", systemImage: "doc.richtext")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canProceed)
                 
-                Button {
-                    saveDraft()
-                } label: {
-                    Label("Save Draft Contract", systemImage: "tray.and.arrow.down")
-                        .frame(maxWidth: .infinity)
+                Section {
+                    Button {
+                        generatePreview()
+                    } label: {
+                        Label("Preview Contract", systemImage: "doc.richtext")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canProceed)
+                    
+                    Button {
+                        saveDraft()
+                    } label: {
+                        Label("Save Draft Contract", systemImage: "tray.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canProceed)
                 }
-                .buttonStyle(.bordered)
-                .disabled(!canProceed)
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("New Contract")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Close") { dismiss() }
+                Button("Close") {
+                    onCancel()
+                    dismiss()
+                }
             }
         }
         .sheet(isPresented: $showingPreview) {
@@ -211,7 +230,7 @@ struct CreateContractStartView: View {
         let client = resolvedClient
 
         do {
-            _ = try ContractCreation.create(
+            let contract = try ContractCreation.create(
                 context: modelContext,
                 template: template,
                 businessID: bizID,          // ✅ now defined
@@ -220,6 +239,11 @@ struct CreateContractStartView: View {
                 invoice: inv,
                 extras: [:]
             )
+            if contract.job == nil, let job = inv?.job {
+                contract.job = job
+                try? modelContext.save()
+            }
+            onCreated(contract)
             dismiss()
         } catch {
             createError = error.localizedDescription

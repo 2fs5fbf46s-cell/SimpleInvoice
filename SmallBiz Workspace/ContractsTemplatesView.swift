@@ -46,66 +46,80 @@ struct ContractTemplatesView: View {
     }
 
     var body: some View {
-        List {
-            if templates.isEmpty {
-                ContentUnavailableView(
-                    "No Templates",
-                    systemImage: "doc.badge.gearshape",
-                    description: Text("Tap + to create your first template.")
-                )
-            } else {
-                Section {
-                    Picker("Category", selection: $selectedCategory) {
-                        ForEach(categories, id: \.self) { c in
-                            Text(c).tag(c)
-                        }
-                    }
-                }
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
 
-                Section {
-                    if filteredTemplates.isEmpty {
-                        ContentUnavailableView(
-                            "No Matches",
-                            systemImage: "magnifyingglass",
-                            description: Text("Try a different category or search term.")
-                        )
-                    } else {
-                        ForEach(filteredTemplates) { template in
-                            NavigationLink {
-                                ContractTemplateDetailView(template: template)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                        .fill(.blue.opacity(0.8))
-                                        .frame(width: 6)
-
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            Text(template.name.isEmpty ? "Template" : template.name)
-                                                .font(.headline)
-
-                                            Spacer()
-
-                                            Text(normalizedCategory(template.category).uppercased())
-                                                .font(.caption.weight(.semibold))
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 4)
-                                                .background(.blue.opacity(0.12))
-                                                .clipShape(Capsule())
-                                        }
-
-                                        Text(template.isBuiltIn ? "Built-in template" : "Custom template")
-                                            .foregroundStyle(.secondary)
-                                            .font(.subheadline)
-                                    }
-                                    .padding(.vertical, 4)
-                                }
+            List {
+                if templates.isEmpty {
+                    ContentUnavailableView(
+                        "No Templates",
+                        systemImage: "doc.badge.gearshape",
+                        description: Text("Tap + to create your first template.")
+                    )
+                } else {
+                    Section {
+                        Picker("Category", selection: $selectedCategory) {
+                            ForEach(categories, id: \.self) { c in
+                                Text(c).tag(c)
                             }
                         }
-                        .onDelete(perform: deleteTemplates)
+                    }
+
+                    Section {
+                        if filteredTemplates.isEmpty {
+                            ContentUnavailableView(
+                                "No Matches",
+                                systemImage: "magnifyingglass",
+                                description: Text("Try a different category or search term.")
+                            )
+                        } else {
+                            ForEach(filteredTemplates) { template in
+                                Button {
+                                    navigateToTemplate = template
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                            .fill(SBWTheme.brandBlue.opacity(0.8))
+                                            .frame(width: 6)
+
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack(alignment: .firstTextBaseline) {
+                                                Text(template.name.isEmpty ? "Template" : template.name)
+                                                    .font(.headline)
+                                                    .foregroundStyle(.primary)
+
+                                                Spacer(minLength: 8)
+
+                                                Text(normalizedCategory(template.category).uppercased())
+                                                    .font(.caption.weight(.semibold))
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(SBWTheme.brandBlue.opacity(0.16))
+                                                    .clipShape(Capsule())
+                                                    .foregroundStyle(.secondary)
+                                            }
+
+                                            Text(template.isBuiltIn ? "Built-in template" : "Custom template")
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer(minLength: 8)
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .onDelete(perform: deleteTemplates)
+                        }
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Templates")
         .searchable(text: $searchText, prompt: "Search templates")
