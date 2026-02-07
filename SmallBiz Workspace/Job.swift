@@ -18,6 +18,7 @@ final class Job {
     var longitude: Double? = nil
 
     var status: String = "scheduled"
+    var sourceBookingRequestId: String? = nil
 
     /// ✅ New: workspace folder key (Folder.id.uuidString)
     var workspaceFolderKey: String? = nil
@@ -43,6 +44,7 @@ final class Job {
         latitude: Double? = nil,
         longitude: Double? = nil,
         status: String = "scheduled",
+        sourceBookingRequestId: String? = nil,
         workspaceFolderKey: String? = nil
     ) {
         self.id = id
@@ -56,6 +58,7 @@ final class Job {
         self.latitude = latitude
         self.longitude = longitude
         self.status = status
+        self.sourceBookingRequestId = sourceBookingRequestId
         self.workspaceFolderKey = workspaceFolderKey
     }
 }

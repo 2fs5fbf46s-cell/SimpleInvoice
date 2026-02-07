@@ -11,6 +11,7 @@ import PhotosUI
 struct JobDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var job: Job
+    let isDraft: Bool
 
     // Debounced save
     @State private var pendingSaveTask: Task<Void, Never>? = nil
@@ -33,8 +34,12 @@ struct JobDetailView: View {
     @State private var zipURL: URL? = nil
     @State private var zipError: String? = nil
 
-    init(job: Job) {
+    // Contracts navigation (avoid SwiftData NavigationLink freeze)
+    @State private var selectedContract: Contract? = nil
+
+    init(job: Job, isDraft: Bool = false) {
         self.job = job
+        self.isDraft = isDraft
 
         let key = job.id.uuidString
         self._attachments = Query(
@@ -62,6 +67,9 @@ struct JobDetailView: View {
         }
         .navigationTitle(job.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Job" : job.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $selectedContract) { c in
+            ContractDetailView(contract: c)
+        }
 
         // Import from Files -> create FileItem -> attach
         .fileImporter(
@@ -134,8 +142,14 @@ struct JobDetailView: View {
         } message: {
             Text(zipError ?? "")
         }
+        .task {
+            if !isDraft {
+                try? DocumentFileIndexService.syncJobDocuments(job: job, context: modelContext)
+            }
+        }
 
         .onDisappear {
+            if isDraft { return }
             pendingSaveTask?.cancel()
             pendingSaveTask = nil
 
@@ -264,8 +278,8 @@ struct JobDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(contracts) { c in
-                    NavigationLink {
-                        ContractDetailView(contract: c)
+                    Button {
+                        selectedContract = c
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -280,6 +294,7 @@ struct JobDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -301,6 +316,7 @@ struct JobDetailView: View {
     // MARK: - Save helpers
 
     private func scheduleSave() {
+        if isDraft { return }
         pendingSaveTask?.cancel()
         pendingSaveTask = Task {
             try? await Task.sleep(nanoseconds: 250_000_000)
@@ -310,12 +326,14 @@ struct JobDetailView: View {
     }
 
     private func saveNow() {
+        if isDraft { return }
         do { try modelContext.save() }
         catch { saveError = error.localizedDescription }
     }
 
     // ✅ NEW: live workspace rename (debounced)
     private func scheduleWorkspaceRename() {
+        if isDraft { return }
         pendingWorkspaceRenameTask?.cancel()
         pendingWorkspaceRenameTask = Task {
             // Rename less aggressively than autosave so typing feels smooth

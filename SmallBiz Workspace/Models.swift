@@ -20,9 +20,20 @@ final class BusinessProfile {
 
     // Booking Portal
     var bookingSlug: String = ""
+    var bookingURL: String = ""
     var bookingEnabled: Bool = true
     var bookingHoursText: String = ""
     var bookingInstructions: String = ""
+    var bookingServicesText: String? = nil
+    var bookingServicesJSON: String = ""
+    var bookingHoursJSON: String = ""
+    var bookingSlotMinutes: Int = 30
+    var bookingTimeIncrementMinutes: Int = 30
+    var bookingMinBookingMinutes: Int? = nil
+    var bookingMaxBookingMinutes: Int? = nil
+    var bookingAllowSameDay: Bool? = nil
+    var bookingBrandName: String? = nil
+    var bookingOwnerEmail: String? = nil
 
     var logoData: Data? = nil
    
@@ -51,9 +62,20 @@ Other
         defaultThankYou: String = "Thank you for your business!",
         defaultTerms: String = "Payment is due by the due date listed on this invoice.",
         bookingSlug: String = "",
+        bookingURL: String = "",
         bookingEnabled: Bool = true,
         bookingHoursText: String = "",
         bookingInstructions: String = "",
+        bookingServicesText: String? = nil,
+        bookingServicesJSON: String = "",
+        bookingHoursJSON: String = "",
+        bookingSlotMinutes: Int = 30,
+        bookingTimeIncrementMinutes: Int = 30,
+        bookingMinBookingMinutes: Int? = nil,
+        bookingMaxBookingMinutes: Int? = nil,
+        bookingAllowSameDay: Bool? = nil,
+        bookingBrandName: String? = nil,
+        bookingOwnerEmail: String? = nil,
         logoData: Data? = nil,
         invoicePrefix: String = "SI",
         nextInvoiceNumber: Int = 1,
@@ -75,9 +97,20 @@ Other
         self.defaultThankYou = defaultThankYou
         self.defaultTerms = defaultTerms
         self.bookingSlug = bookingSlug
+        self.bookingURL = bookingURL
         self.bookingEnabled = bookingEnabled
         self.bookingHoursText = bookingHoursText
         self.bookingInstructions = bookingInstructions
+        self.bookingServicesText = bookingServicesText
+        self.bookingServicesJSON = bookingServicesJSON
+        self.bookingHoursJSON = bookingHoursJSON
+        self.bookingSlotMinutes = bookingSlotMinutes
+        self.bookingTimeIncrementMinutes = bookingTimeIncrementMinutes
+        self.bookingMinBookingMinutes = bookingMinBookingMinutes
+        self.bookingMaxBookingMinutes = bookingMaxBookingMinutes
+        self.bookingAllowSameDay = bookingAllowSameDay
+        self.bookingBrandName = bookingBrandName
+        self.bookingOwnerEmail = bookingOwnerEmail
         self.logoData = logoData
         self.invoicePrefix = invoicePrefix
         self.nextInvoiceNumber = nextInvoiceNumber
@@ -182,6 +215,9 @@ final class Invoice {
 
     var isPaid: Bool = false
     var documentType: String = "invoice"   // "invoice" | "estimate"
+    var sourceBookingRequestId: String? = nil
+
+    var pdfRelativePath: String = ""
 
 
     // ✅ Single-side relationship stays plain (inverse declared on Client.invoices)
@@ -208,6 +244,7 @@ final class Invoice {
     // MARK: - Estimate workflow
     var estimateStatus: String = "draft"     // draft | sent | accepted | declined
     var estimateAcceptedAt: Date? = nil
+    var estimateDeclinedAt: Date? = nil
 
 
     init(
@@ -224,6 +261,8 @@ final class Invoice {
         discountAmount: Double = 0.0,
         isPaid: Bool = false,
         documentType: String = "invoice",
+        sourceBookingRequestId: String? = nil,
+        pdfRelativePath: String = "",
         client: Client? = nil,
         job: Job? = nil,
         items: [LineItem] = []
@@ -241,6 +280,8 @@ final class Invoice {
         self.discountAmount = discountAmount
         self.isPaid = isPaid
         self.documentType = documentType
+        self.sourceBookingRequestId = sourceBookingRequestId
+        self.pdfRelativePath = pdfRelativePath
         self.client = client
         self.job = job
 

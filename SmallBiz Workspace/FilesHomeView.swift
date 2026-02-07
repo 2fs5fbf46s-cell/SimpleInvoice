@@ -11,17 +11,22 @@ struct FilesHomeView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let business = activeBusiness, let root = rootFolder {
-                    FolderBrowserView(business: business, folder: root)
-                } else if let loadError {
-                    ContentUnavailableView(
-                        "Files Unavailable",
-                        systemImage: "folder.badge.questionmark",
-                        description: Text(loadError)
-                    )
-                } else {
-                    ProgressView("Loading Files…")
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                SBWTheme.headerWash()
+
+                Group {
+                    if let business = activeBusiness, let root = rootFolder {
+                        FolderBrowserView(business: business, folder: root)
+                    } else if let loadError {
+                        ContentUnavailableView(
+                            "Files Unavailable",
+                            systemImage: "folder.badge.questionmark",
+                            description: Text(loadError)
+                        )
+                    } else {
+                        ProgressView("Loading Files…")
+                    }
                 }
             }
             .navigationTitle("Files")

@@ -131,7 +131,11 @@ struct ClientPortalPreviewView: View {
             let realInvoices = invoices.filter { $0.documentType == "invoice" }
 
             if realInvoices.isEmpty {
-                Text("None").foregroundStyle(.secondary)
+                ContentUnavailableView(
+                    "No Invoices",
+                    systemImage: "doc.text",
+                    description: Text("Invoices shared in the portal will appear here.")
+                )
             } else {
                 ForEach(realInvoices) { inv in
                     HStack(alignment: .top) {
@@ -160,7 +164,11 @@ struct ClientPortalPreviewView: View {
     private func contractsSection(for session: PortalSession) -> some View {
         Section("Contracts") {
             if contracts.isEmpty {
-                Text("None").foregroundStyle(.secondary)
+                ContentUnavailableView(
+                    "No Contracts",
+                    systemImage: "doc.plaintext",
+                    description: Text("Contracts shared in the portal will appear here.")
+                )
             } else {
                 ForEach(contracts) { c in
                     HStack(alignment: .top) {

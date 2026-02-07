@@ -18,8 +18,10 @@ struct ClientListView: View {
     @State private var searchText: String = ""
 
     // New client sheet
-    @State private var showingNewClient = false
     @State private var newClientDraft: Client? = nil
+    @State private var openExistingClient: Client? = nil
+    @State private var showOpenExistingBanner = false
+    @State private var selectedClient: Client? = nil
 
     // MARK: - Scoping
 
@@ -63,11 +65,12 @@ struct ClientListView: View {
                     )
                 } else {
                     ForEach(filtered) { client in
-                        NavigationLink {
-                            ClientEditView(client: client)
+                        Button {
+                            selectedClient = client
                         } label: {
                             row(client)
                         }
+                        .buttonStyle(.plain)
                     }
                     .onDelete(perform: deleteFiltered)
                 }
@@ -81,7 +84,6 @@ struct ClientListView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search clients"
         )
-        .settingsGear { BusinessProfileView() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { addClientAndOpenSheet() } label: {
@@ -92,43 +94,69 @@ struct ClientListView: View {
         .onAppear {
             try? activeBiz.loadOrCreateDefaultBusiness(modelContext: modelContext)
         }
-        .sheet(isPresented: $showingNewClient, onDismiss: {
-            newClientDraft = nil
-        }) {
+        .sheet(item: $newClientDraft) { draft in
             NavigationStack {
-                if let newClientDraft {
-                    ClientEditView(client: newClientDraft)
-                        .navigationTitle("New Client")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Cancel") {
-                                    deleteIfEmptyAndClose()
-                                }
+                ClientEditView(
+                    client: draft,
+                    isDraft: true,
+                    onOpenExisting: { existing in
+                        deleteIfEmptyAndClose()
+                        DispatchQueue.main.async {
+                            openExistingClient = existing
+                            showOpenExistingBanner = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                showOpenExistingBanner = false
                             }
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") {
-                                    if newClientDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                        deleteIfEmptyAndClose()
-                                        return
-                                    }
+                        }
+                    }
+                )
+                    .navigationTitle("New Client")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                deleteIfEmptyAndClose()
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    deleteIfEmptyAndClose()
+                                    return
+                                }
 
-                                    do {
-                                        try modelContext.save()
-                                        searchText = ""
-                                        showingNewClient = false
-                                    } catch {
-                                        print("Failed to save new client: \(error)")
+                                do {
+                                    try modelContext.save()
+                                    if jobsCount(for: draft) == 0 {
+                                        _ = try JobWorkspaceFactory.createInitialJobAndWorkspace(
+                                            context: modelContext,
+                                            businessID: draft.businessID,
+                                            client: draft
+                                        )
                                     }
+                                    searchText = ""
+                                    newClientDraft = nil
+                                } catch {
+                                    print("Failed to save new client: \(error)")
                                 }
                             }
                         }
-                } else {
-                    ProgressView("Loading…")
-                        .navigationTitle("New Client")
-                }
+                    }
             }
             .presentationDetents([.medium, .large])
+        }
+        .navigationDestination(item: $openExistingClient) { client in
+            ClientEditView(client: client)
+        }
+        .navigationDestination(item: $selectedClient) { client in
+            ClientEditView(client: client)
+        }
+        .overlay(alignment: .top) {
+            if showOpenExistingBanner {
+                OpenExistingClientBanner()
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
     }
 
@@ -136,6 +164,12 @@ struct ClientListView: View {
 
     private func row(_ client: Client) -> some View {
         let count = jobsCount(for: client)
+        let name = client.name.isEmpty ? "Client" : client.name
+        let contact = client.email.isEmpty ? client.phone : client.email
+        let subtitle = [count > 0 ? "\(count) job\(count == 1 ? "" : "s")" : nil,
+                        contact.isEmpty ? nil : contact]
+            .compactMap { $0 }
+            .joined(separator: " • ")
 
         return HStack(alignment: .top, spacing: 12) {
             // Leading icon chip
@@ -148,38 +182,10 @@ struct ClientListView: View {
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(client.name.isEmpty ? "Client" : client.name)
-                        .font(.headline)
-
-                    Spacer(minLength: 8)
-
-                    if count > 0 {
-                        Text("\(count)")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel("\(count) jobs")
-                    }
-                }
-
-                if !client.email.isEmpty {
-                    Text(client.email)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else if !client.phone.isEmpty {
-                    Text(client.phone)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text(" ")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            SBWNavigationRow(
+                title: name,
+                subtitle: subtitle.isEmpty ? " " : subtitle
+            )
         }
         .padding(.vertical, 6)
     }
@@ -194,28 +200,25 @@ struct ClientListView: View {
 
         let c = Client(businessID: bizID)
         modelContext.insert(c)
+        try? modelContext.save()
         newClientDraft = c
-        showingNewClient = true
-
-        do { try modelContext.save() }
-        catch { print("Failed to save new client draft: \(error)") }
     }
 
     private func deleteIfEmptyAndClose() {
-        guard let c = newClientDraft else {
-            showingNewClient = false
-            return
+        if let draft = newClientDraft {
+            let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let email = draft.email.trimmingCharacters(in: .whitespacesAndNewlines)
+            let phone = draft.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+            let address = draft.address.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if name.isEmpty && email.isEmpty && phone.isEmpty && address.isEmpty {
+                modelContext.delete(draft)
+                try? modelContext.save()
+            }
         }
-
-        if c.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            modelContext.delete(c)
-        }
-
-        do { try modelContext.save() }
-        catch { print("Failed to save after cancel: \(error)") }
-
-        showingNewClient = false
+        newClientDraft = nil
     }
+
 
     private func deleteFiltered(at offsets: IndexSet) {
         let toDelete = offsets.map { filtered[$0] }
@@ -230,5 +233,25 @@ struct ClientListView: View {
         return jobs.reduce(0) { partial, job in
             partial + ((job.clientID == id) ? 1 : 0)
         }
+    }
+}
+
+private struct OpenExistingClientBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.turn.down.right")
+                .foregroundStyle(SBWTheme.brandBlue)
+            Text("Opened existing client")
+                .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.thinMaterial)
+                .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
+        )
+        .foregroundStyle(.primary)
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 }

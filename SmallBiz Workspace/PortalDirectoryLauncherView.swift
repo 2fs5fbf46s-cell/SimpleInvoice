@@ -16,6 +16,7 @@ struct PortalDirectoryLauncherView: View {
     @State private var portalURL: URL? = nil
     @State private var showPortal = false
     @State private var errorText: String? = nil
+    @State private var navigateToClientSettings: Client? = nil
 
     // MARK: - Scoping
 
@@ -65,14 +66,31 @@ struct PortalDirectoryLauncherView: View {
                     )
                 } else {
                     ForEach(filtered) { c in
-                        Button {
-                            Task { await openDirectory(for: c) }
-                        } label: {
-                            row(c)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                Task { await openDirectory(for: c) }
+                            } label: {
+                                row(c)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(opening || !c.portalEnabled)
+                            .opacity((opening || !c.portalEnabled) ? 0.55 : 1)
+
+                            if !c.portalEnabled {
+                                Text("Client portal is disabled.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Button {
+                                    navigateToClientSettings = c
+                                } label: {
+                                    Label("Enable Client Portal", systemImage: "togglepower")
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(SBWTheme.brandBlue)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(opening || !c.portalEnabled)
-                        .opacity((opening || !c.portalEnabled) ? 0.55 : 1)
+                        .padding(.vertical, 4)
                     }
                 }
             }
@@ -85,7 +103,9 @@ struct PortalDirectoryLauncherView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search clients"
         )
-        .settingsGear { BusinessProfileView() }
+        .navigationDestination(item: $navigateToClientSettings) { client in
+            ClientEditView(client: client)
+        }
         .sheet(isPresented: $showPortal) {
             if let url = portalURL {
                 SafariView(url: url, onDone: {})
@@ -143,12 +163,6 @@ struct PortalDirectoryLauncherView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                // Small helper when disabled
-                if !c.portalEnabled {
-                    Text("Enable Client Portal to open directory.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             Spacer()

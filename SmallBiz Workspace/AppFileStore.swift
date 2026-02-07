@@ -74,6 +74,22 @@ struct AppFileStore {
         return try appSupportBaseURL().appendingPathComponent(rel, isDirectory: false)
     }
 
+    /// Writes data into a stable relative path under Application Support.
+    /// Returns byteCount.
+    static func writeData(_ data: Data, toRelativePath rel: String) throws -> Int64 {
+        let base = try appSupportBaseURL()
+        let destURL = base.appendingPathComponent(rel, isDirectory: false)
+        let parent = destURL.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: parent.path) {
+            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        }
+
+        try data.write(to: destURL, options: .atomic)
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: destURL.path)
+        return (attrs[.size] as? NSNumber)?.int64Value ?? Int64(data.count)
+    }
+
     static func deleteFile(for item: FileItem) throws {
         let url = try absoluteURL(forRelativePath: item.relativePath)
         if FileManager.default.fileExists(atPath: url.path) {

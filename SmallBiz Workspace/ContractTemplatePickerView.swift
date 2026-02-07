@@ -56,47 +56,65 @@ struct ContractTemplatePickerView: View {
     }
 
     var body: some View {
-        List {
-            if filteredTemplates.isEmpty {
-                ContentUnavailableView(
-                    searchText.isEmpty ? "No Templates" : "No Results",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text(searchText.isEmpty
-                                      ? "No templates are available yet."
-                                      : "Try a different search or category.")
-                )
-            } else {
-                ForEach(filteredTemplates) { template in
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(template.name.isEmpty ? "Template" : template.name)
-                                .font(.headline)
+        ZStack {
+            // Background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                            Text(normalizedCategory(template.category))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+            // Subtle header wash
+            SBWTheme.headerWash()
 
-                            Text(template.body)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(4)
+            List {
+                if filteredTemplates.isEmpty {
+                    ContentUnavailableView(
+                        searchText.isEmpty ? "No Templates" : "No Results",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text(searchText.isEmpty
+                                          ? "No templates are available yet."
+                                          : "Try a different search or category.")
+                    )
+                } else {
+                    ForEach(filteredTemplates) { template in
+                        Section {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(template.name.isEmpty ? "Template" : template.name)
+                                        .font(.headline)
 
-                            Button {
-                                // Open setup (select client/invoice)
-                                selectedTemplate = template
-                                selectedClient = nil
-                                selectedInvoice = nil
-                                showingSetup = true
-                            } label: {
-                                Label("Use This Template", systemImage: "wand.and.stars")
-                                    .frame(maxWidth: .infinity)
+                                    Spacer(minLength: 8)
+
+                                    Text(normalizedCategory(template.category).uppercased())
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(SBWTheme.brandBlue.opacity(0.16))
+                                        .clipShape(Capsule())
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text(template.body)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(4)
+
+                                Button {
+                                    // Open setup (select client/invoice)
+                                    selectedTemplate = template
+                                    selectedClient = nil
+                                    selectedInvoice = nil
+                                    showingSetup = true
+                                } label: {
+                                    Label("Use This Template", systemImage: "wand.and.stars")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
-                            .buttonStyle(.borderedProminent)
+                            .padding(.vertical, 6)
                         }
-                        .padding(.vertical, 6)
+                        .modifier(SBWCardRowStyle())
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Templates")
         .searchable(text: $searchText, prompt: "Search templates")
@@ -194,43 +212,64 @@ private struct ContractDraftSetupView: View {
     let onCreate: () -> Void
 
     var body: some View {
-        Form {
-            Section("Template") {
-                Text(templateName)
-                    .font(.headline)
-            }
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
 
-            Section("Autofill Sources (Optional)") {
-                Picker("Client", selection: $selectedClient) {
-                    Text("None").tag(Client?.none)
-                    ForEach(clients) { c in
-                        Text(c.name.isEmpty ? "Client" : c.name).tag(Client?.some(c))
+            Form {
+                Section("Template") {
+                    Text(templateName)
+                        .font(.headline)
+                }
+
+                Section("Autofill Sources (Optional)") {
+                    Picker("Client", selection: $selectedClient) {
+                        Text("None").tag(Client?.none)
+                        ForEach(clients) { c in
+                            Text(c.name.isEmpty ? "Client" : c.name).tag(Client?.some(c))
+                        }
                     }
-                }
 
-                Picker("Invoice", selection: $selectedInvoice) {
-                    Text("None").tag(Invoice?.none)
-                    ForEach(invoices) { inv in
-                        Text(inv.invoiceNumber).tag(Invoice?.some(inv))
+                    Picker("Invoice", selection: $selectedInvoice) {
+                        Text("None").tag(Invoice?.none)
+                        ForEach(invoices) { inv in
+                            Text(inv.invoiceNumber).tag(Invoice?.some(inv))
+                        }
                     }
+
+                    Text("Tip: If you select a Client or Invoice, tokens like {{Client.Name}} or {{Invoice.Total}} will be filled automatically.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
-                Text("Tip: If you select a Client or Invoice, tokens like {{Client.Name}} or {{Invoice.Total}} will be filled automatically.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Button {
-                    onCreate()
-                } label: {
-                    Label("Create Draft Contract", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity)
+                Section {
+                    Button {
+                        onCreate()
+                    } label: {
+                        Label("Create Draft Contract", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Create Draft")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct SBWCardRowStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(SBWTheme.cardStroke, lineWidth: 1)
+            )
     }
 }

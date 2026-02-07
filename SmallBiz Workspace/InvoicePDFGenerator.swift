@@ -269,21 +269,42 @@ enum InvoicePDFGenerator {
             drawTableHeader()
 
             let rowFont = UIFont.systemFont(ofSize: 11, weight: .regular)
-            let rowHeight: CGFloat = 18
+            let baseRowHeight: CGFloat = 18
+            let descWidth = colQty - colDesc - 8
+            let descParagraph = {
+                let style = NSMutableParagraphStyle()
+                style.alignment = .left
+                style.lineBreakMode = .byWordWrapping
+                return style
+            }()
+            let descAttrs: [NSAttributedString.Key: Any] = [
+                .font: rowFont,
+                .paragraphStyle: descParagraph
+            ]
 
             for item in (invoice.items ?? []) {
+                let rawDesc = trimmed(item.itemDescription)
+                let isPlaceholder = rawDesc.isEmpty && item.unitPrice == 0 && item.quantity == 1
+                if isPlaceholder { continue }
 
-                if y > pageHeight - 210 {
-                    ctx.beginPage()
-                    y = 36
+                let desc = rawDesc.isEmpty ? "Item" : rawDesc
+                let bounding = (desc as NSString).boundingRect(
+                    with: CGSize(width: descWidth, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: descAttrs,
+                    context: nil
+                )
+                let descHeight = ceil(bounding.height)
+                let rowHeight = max(baseRowHeight, descHeight)
+
+                beginNewPageIfNeeded(neededSpace: rowHeight + 6 + 18)
+                if y == 36 {
                     drawWatermarkIfNeeded()
                     drawTableHeader()
                 }
 
-                let desc = trimmed(item.itemDescription).isEmpty ? "Item" : item.itemDescription
-
                 drawText(desc, font: rowFont,
-                         rect: CGRect(x: colDesc, y: y, width: colQty - colDesc - 8, height: rowHeight),
+                         rect: CGRect(x: colDesc, y: y, width: descWidth, height: rowHeight),
                          color: primaryText)
 
                 drawText(String(format: "%.2f", item.quantity), font: rowFont,

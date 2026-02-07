@@ -16,6 +16,7 @@ struct ContractsListView: View {
     @State private var searchText: String = ""
     @State private var filter: ContractFilter = .all
     @State private var blockedDeleteMessage: String? = nil
+    @State private var selectedContract: Contract? = nil
 
     private enum ContractFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -115,11 +116,12 @@ struct ContractsListView: View {
                     )
                 } else {
                     ForEach(filteredContracts) { contract in
-                        NavigationLink {
-                            ContractDetailView(contract: contract)
+                        Button {
+                            selectedContract = contract
                         } label: {
                             row(contract)
                         }
+                        .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 attemptDelete(contract)
@@ -140,7 +142,6 @@ struct ContractsListView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search contracts"
         )
-        .settingsGear { BusinessProfileView() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
 
@@ -151,6 +152,9 @@ struct ContractsListView: View {
                     Image(systemName: "plus")
                 }
             }
+        }
+        .navigationDestination(item: $selectedContract) { contract in
+            ContractDetailView(contract: contract)
         }
         .alert("Can’t Delete", isPresented: Binding(
             get: { blockedDeleteMessage != nil },
@@ -166,8 +170,10 @@ struct ContractsListView: View {
 
     private func row(_ contract: Contract) -> some View {
         let statusText = statusText(for: contract)
-        let chip = SBWTheme.chip(forStatus: statusText)
         let client = clientName(for: contract)
+        let date = contract.createdAt.formatted(date: .abbreviated, time: .omitted)
+        let category = contract.templateCategory.isEmpty ? "General" : contract.templateCategory
+        let subtitle = "\(statusText) • \(client) • \(date) • \(category)"
 
         return HStack(alignment: .top, spacing: 12) {
             // Leading icon chip (matches other tiles/lists)
@@ -180,37 +186,10 @@ struct ContractsListView: View {
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(contract.title.isEmpty ? "Contract" : contract.title)
-                        .font(.headline)
-
-                    Spacer()
-
-                    Text(statusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(chip.fg)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(chip.bg)
-                        .clipShape(Capsule())
-                }
-
-                Text(client)
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Text(contract.createdAt, style: .date)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Text(contract.templateCategory)
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                }
-            }
-            .padding(.vertical, 4)
+            SBWNavigationRow(
+                title: contract.title.isEmpty ? "Contract" : contract.title,
+                subtitle: subtitle
+            )
         }
     }
 

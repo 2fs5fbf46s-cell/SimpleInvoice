@@ -48,43 +48,61 @@ struct ContractTemplatePickerForJobView: View {
     private var businessProfile: BusinessProfile? { profiles.first }
 
     var body: some View {
-        List {
-            if filteredTemplates.isEmpty {
-                ContentUnavailableView(
-                    searchText.isEmpty ? "No Templates" : "No Results",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text(searchText.isEmpty
-                                      ? "No templates are available yet."
-                                      : "Try a different search or category.")
-                )
-            } else {
-                ForEach(filteredTemplates) { template in
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(template.name.isEmpty ? "Template" : template.name)
-                                .font(.headline)
+        ZStack {
+            // Background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                            Text(normalizedCategory(template.category))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+            // Subtle header wash
+            SBWTheme.headerWash()
 
-                            Text(template.body)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(4)
+            List {
+                if filteredTemplates.isEmpty {
+                    ContentUnavailableView(
+                        searchText.isEmpty ? "No Templates" : "No Results",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text(searchText.isEmpty
+                                          ? "No templates are available yet."
+                                          : "Try a different search or category.")
+                    )
+                } else {
+                    ForEach(filteredTemplates) { template in
+                        Section {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(template.name.isEmpty ? "Template" : template.name)
+                                        .font(.headline)
 
-                            Button {
-                                createDraft(from: template)
-                            } label: {
-                                Label("Use This Template", systemImage: "wand.and.stars")
-                                    .frame(maxWidth: .infinity)
+                                    Spacer(minLength: 8)
+
+                                    Text(normalizedCategory(template.category).uppercased())
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(SBWTheme.brandBlue.opacity(0.16))
+                                        .clipShape(Capsule())
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text(template.body)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(4)
+
+                                Button {
+                                    createDraft(from: template)
+                                } label: {
+                                    Label("Use This Template", systemImage: "wand.and.stars")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
-                            .buttonStyle(.borderedProminent)
+                            .padding(.vertical, 6)
                         }
-                        .padding(.vertical, 6)
+                        .modifier(SBWCardRowStyle())
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Templates")
         .searchable(text: $searchText, prompt: "Search templates")
@@ -108,6 +126,21 @@ struct ContractTemplatePickerForJobView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
             }
+        }
+    }
+
+    private struct SBWCardRowStyle: ViewModifier {
+        func body(content: Content) -> some View {
+            content
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                )
         }
     }
 

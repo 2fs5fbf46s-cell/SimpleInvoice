@@ -15,7 +15,12 @@ struct BookingPortalView: View {
     @State private var showRegenerateConfirm = false
     @State private var didAttemptSlug = false
     @State private var showCopyToast = false
+    @State private var toastMessage: String = "Copied to clipboard"
     @State private var showErrorAlert = false
+    @State private var showMissingEmailAlert = false
+    @State private var showBusinessProfile = false
+    @State private var isSyncingSettings = false
+    @State private var lastSyncedAt: Date? = nil
 
     private let bookingBaseURL = "https://book.smallbizworkspace.com"
 
@@ -35,7 +40,7 @@ struct BookingPortalView: View {
 
     var body: some View {
         Group {
-            if let profile {
+            if let currentProfile = profile {
                 Form {
                     Section("Booking Link") {
                         Text(bookingURLString)
@@ -51,6 +56,12 @@ struct BookingPortalView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        
+                        if isOwnerEmailMissing {
+                            Text("Add a business email to receive booking request notifications.")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
 
                     }
 
@@ -58,6 +69,7 @@ struct BookingPortalView: View {
                         Button {
                             guard let bookingURL else { return }
                             UIPasteboard.general.string = bookingURL.absoluteString
+                            toastMessage = "Copied to clipboard"
                             showCopyToast = true
                             let generator = UINotificationFeedbackGenerator()
                             generator.notificationOccurred(.success)
@@ -67,6 +79,8 @@ struct BookingPortalView: View {
                         .disabled(bookingURL == nil || isGenerating)
 
                         Button {
+                            showSafari = false
+                            showBusinessProfile = false
                             showShare = true
                         } label: {
                             Label("Share", systemImage: "square.and.arrow.up")
@@ -74,34 +88,92 @@ struct BookingPortalView: View {
                         .disabled(bookingURL == nil || isGenerating)
 
                         Button {
+                            showShare = false
+                            showBusinessProfile = false
                             showSafari = true
                         } label: {
                             Label("View as Client", systemImage: "safari")
                         }
-                        .disabled(bookingURL == nil || isGenerating)
+                        .disabled(bookingURL == nil || isGenerating || isOwnerEmailMissing)
                     }
 
-                    Section("Slug") {
-                        Text(bookingSlug.isEmpty ? "(Not set)" : bookingSlug)
-                            .font(.footnote)
-                            .foregroundStyle(bookingSlug.isEmpty ? .secondary : .primary)
-                            .textSelection(.enabled)
+                    Section("Quick Setup") {
+                        HStack {
+                            Text("Services")
+                            Spacer()
+                            Text(servicesSummaryText)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Text("Business Hours")
+                            Spacer()
+                            Text(hoursSummaryText)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack {
+                            Text("Default appointment length")
+                            Spacer()
+                            Text(defaultAppointmentText)
+                                .foregroundStyle(.secondary)
+                        }
 
                         Button {
-                            if bookingSlug.isEmpty {
-                                Task { await registerNewSlug(force: true) }
-                            } else {
-                                showRegenerateConfirm = true
-                            }
+                            Task { await syncBookingSettingsNow() }
                         } label: {
-                            Label(bookingSlug.isEmpty ? "Generate" : "Regenerate", systemImage: "arrow.triangle.2.circlepath")
+                            if isSyncingSettings {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                    Text("Syncing…")
+                                }
+                            } else {
+                                Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                            }
                         }
-                        .disabled(isGenerating)
+                        .disabled(isSyncingSettings)
+
+                        if let lastSyncedAt {
+                            Text("Synced \(lastSyncedAt.formatted(date: .omitted, time: .shortened))")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Section {
+                        DisclosureGroup("Link Settings (Advanced)") {
+                            HStack {
+                                Text("Link ending")
+                                Spacer()
+                                Text(bookingSlug.isEmpty ? "(Not set)" : bookingSlug)
+                                    .font(.footnote)
+                                    .foregroundStyle(bookingSlug.isEmpty ? .secondary : .primary)
+                                    .textSelection(.enabled)
+                            }
+
+                            if bookingSlug.isEmpty {
+                                Button("Create my booking link") {
+                                    Task { await registerNewSlug(force: true) }
+                                }
+                                .disabled(isGenerating)
+                            } else {
+                                Button("Change booking link address…") {
+                                    Task { await registerNewSlug(force: true) }
+                                }
+                                .foregroundStyle(.secondary)
+                                .disabled(isGenerating)
+
+                                Button("Regenerate link", role: .destructive) {
+                                    showRegenerateConfirm = true
+                                }
+                                .disabled(isGenerating)
+                            }
+                        }
                     }
 
                     Section {
                         NavigationLink("Customize Info") {
-                            BookingPortalCustomizeView(profile: profile)
+                            BookingPortalCustomizeView(profile: currentProfile)
                         }
                     }
                 }
@@ -119,9 +191,25 @@ struct BookingPortalView: View {
                 } message: {
                     Text(errorMessage ?? "Something went wrong.")
                 }
+                .alert("Missing Email", isPresented: $showMissingEmailAlert) {
+                    Button("Open Business Profile") {
+                        showShare = false
+                        showSafari = false
+                        showBusinessProfile = true
+                    }
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("Add a business email in Business Profile to receive booking notifications.")
+                }
                 .sheet(isPresented: $showShare) {
                     if let bookingURL {
                         ShareSheet(items: [bookingURL])
+                    }
+                }
+                .sheet(isPresented: $showBusinessProfile) {
+                    NavigationStack {
+                        BusinessProfileView()
+                            .navigationTitle("Business Profile")
                     }
                 }
                 .sheet(isPresented: $showSafari) {
@@ -131,7 +219,7 @@ struct BookingPortalView: View {
                 }
                 .overlay(alignment: .bottom) {
                     if showCopyToast {
-                        Text("Copied to clipboard")
+                        Text(toastMessage)
                             .font(.footnote.weight(.semibold))
                             .padding(.vertical, 8)
                             .padding(.horizontal, 12)
@@ -169,6 +257,12 @@ struct BookingPortalView: View {
 
             if let existing = profiles.first(where: { $0.businessID == bizID }) {
                 self.profile = existing
+                if existing.bookingURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !existing.bookingSlug.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    existing.bookingURL = "\(bookingBaseURL)/\(existing.bookingSlug)"
+                    try? modelContext.save()
+                }
+                Task { await syncBookingSlugIfNeeded(profile: existing) }
             } else {
                 let created = BusinessProfile(businessID: bizID)
                 modelContext.insert(created)
@@ -178,6 +272,137 @@ struct BookingPortalView: View {
         } catch {
             self.profile = profiles.first
         }
+    }
+
+    private var servicesSummaryText: String {
+        guard let profile else { return "No services configured" }
+        if let services = decodeServices(from: profile.bookingServicesJSON), !services.isEmpty {
+            return "\(services.count) services"
+        }
+        let fallback = (profile.bookingServicesText ?? "")
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if fallback.isEmpty { return "No services configured" }
+        return "\(fallback.count) services"
+    }
+
+    private var defaultAppointmentText: String {
+        let minutes = profile?.bookingSlotMinutes ?? 30
+        return "\(minutes) minutes"
+    }
+
+    private var hoursSummaryText: String {
+        guard let profile else { return "Not set" }
+        if let summary = summarizeBusinessHours(json: profile.bookingHoursJSON) {
+            return summary
+        }
+        return profile.bookingHoursJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Not set" : "Custom"
+    }
+
+    private func summarizeBusinessHours(json: String?) -> String? {
+        guard let json else { return nil }
+        guard let config = PortalHoursConfig.fromJSON(json) else { return nil }
+
+        let weekdays: [PortalWeekday] = [.mon, .tue, .wed, .thu, .fri]
+        let dayHours = weekdays.compactMap { hoursString(for: $0, in: config) }
+        if dayHours.count == weekdays.count, let first = dayHours.first,
+           dayHours.allSatisfy({ $0 == first }) {
+            return "Mon–Fri \(first)"
+        }
+
+        if let mon = hoursString(for: .mon, in: config) {
+            return "Mon \(mon)"
+        }
+
+        return nil
+    }
+
+    private func hoursString(for day: PortalWeekday, in config: PortalHoursConfig) -> String? {
+        guard let dayInfo = config.days[day], dayInfo.isOpen else { return nil }
+        guard let start = dayInfo.start, let end = dayInfo.end else { return nil }
+        let startTrimmed = start.trimmingCharacters(in: .whitespacesAndNewlines)
+        let endTrimmed = end.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !startTrimmed.isEmpty, !endTrimmed.isEmpty else { return nil }
+        return "\(startTrimmed)–\(endTrimmed)"
+    }
+
+    private func decodeServices(from json: String) -> [BookingServiceOption]? {
+        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([BookingServiceOption].self, from: data)
+    }
+
+    @MainActor
+    private func syncBookingSettingsNow() async {
+        guard let profile else { return }
+        guard let businessId = activeBiz.activeBusinessID else { return }
+        guard !isSyncingSettings else { return }
+
+        isSyncingSettings = true
+        defer { isSyncingSettings = false }
+
+        let services: [BookingServiceOption]
+        if let decoded = decodeServices(from: profile.bookingServicesJSON), !decoded.isEmpty {
+            services = decoded
+        } else {
+            let fallback = (profile.bookingServicesText ?? "")
+                .split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { BookingServiceOption(name: $0, durationMinutes: profile.bookingSlotMinutes) }
+            services = fallback
+        }
+
+        let hoursConfig = PortalHoursConfig.fromJSON(profile.bookingHoursJSON)
+
+        let settings = BookingSettingsDTO(
+            businessId: businessId.uuidString,
+            slug: bookingSlug.isEmpty ? nil : bookingSlug,
+            brandName: (profile.bookingBrandName ?? profile.name).trimmingCharacters(in: .whitespacesAndNewlines),
+            ownerEmail: (profile.bookingOwnerEmail ?? profile.email).trimmingCharacters(in: .whitespacesAndNewlines),
+            services: services.isEmpty ? nil : services,
+            businessHours: hoursConfig?.toBusinessHoursDict(),
+            hoursJson: hoursConfig?.toJSON(),
+            slotMinutes: profile.bookingTimeIncrementMinutes,
+            bookingSlotMinutes: profile.bookingSlotMinutes,
+            minBookingMinutes: profile.bookingMinBookingMinutes,
+            maxBookingMinutes: profile.bookingMaxBookingMinutes,
+            allowSameDay: profile.bookingAllowSameDay
+        )
+
+        do {
+            _ = try await PortalBackend.shared.upsertBookingSettings(
+                businessId: businessId,
+                settings: settings
+            )
+            let latest = try? await PortalBackend.shared.fetchBookingSettings(businessId: businessId.uuidString)
+            if let latest {
+                profile.bookingBrandName = latest.brandName ?? profile.bookingBrandName
+                profile.bookingOwnerEmail = latest.ownerEmail ?? profile.bookingOwnerEmail
+                if let hoursJson = latest.hoursJson {
+                    profile.bookingHoursJSON = hoursJson
+                }
+            }
+            if profile.bookingServicesJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let encoded = encodeServices(services) {
+                profile.bookingServicesJSON = encoded
+                try? modelContext.save()
+            }
+            lastSyncedAt = Date()
+            toastMessage = "Synced"
+            showCopyToast = true
+        } catch {
+            errorMessage = error.localizedDescription
+            showErrorAlert = true
+        }
+    }
+
+    private func encodeServices(_ services: [BookingServiceOption]) -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(services) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     @MainActor
@@ -203,15 +428,21 @@ struct BookingPortalView: View {
         defer { isGenerating = false }
 
         let baseSlug = makeSlug(from: profile.name)
+        let trimmedOwner = profile.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedOwner.isEmpty {
+            showMissingEmailAlert = true
+            return
+        }
 
         do {
             let finalSlug = try await registerSlugWithRetry(
                 baseSlug: baseSlug,
                 businessId: profile.businessID,
                 brandName: profile.name,
-                businessEmail: profile.email
+                ownerEmail: trimmedOwner
             )
             profile.bookingSlug = finalSlug
+            profile.bookingURL = "\(bookingBaseURL)/\(finalSlug)"
             try? modelContext.save()
         } catch {
             if error is CancellationError {
@@ -229,25 +460,34 @@ struct BookingPortalView: View {
         baseSlug: String,
         businessId: UUID,
         brandName: String,
-        businessEmail: String?
+        ownerEmail: String?
     ) async throws -> String {
         var lastError: Error?
+
+        let trimmedOwner = ownerEmail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         for attempt in 1...10 {
             let candidate = (attempt == 1) ? baseSlug : "\(baseSlug)-\(attempt)"
             do {
+                #if DEBUG
                 print("[bookinglink] generate start", businessId.uuidString, candidate)
-                try await PortalBackend.shared.registerBookingSlug(
+                #endif
+                try await PortalBackend.shared.upsertBookingSlug(
                     businessId: businessId,
                     slug: candidate,
                     brandName: brandName,
-                    businessEmail: businessEmail
+                    ownerEmail: trimmedOwner
                 )
-                print("[bookinglink] generate success", "\(bookingBaseURL)/\(candidate)")
+                #if DEBUG
+                let link = "\(bookingBaseURL)/\(candidate)"
+                print("[bookinglink] generate success", link)
+                #endif
                 return candidate
             } catch {
                 lastError = error
+                #if DEBUG
                 print("[bookinglink] generate error", error)
+                #endif
                 if case PortalBackendError.http(let code, _) = error, code == 409, attempt < 10 {
                     continue
                 }
@@ -256,6 +496,33 @@ struct BookingPortalView: View {
         }
 
         throw lastError ?? PortalBackendError.http(409, body: "Slug conflict")
+    }
+
+    @MainActor
+    private func syncBookingSlugIfNeeded(profile: BusinessProfile) async {
+        let trimmedSlug = profile.bookingSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSlug.isEmpty else { return }
+        let trimmedOwner = profile.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOwner.isEmpty else { return }
+
+        do {
+            #if DEBUG
+            print("📘 booking slug register attempt", profile.businessID.uuidString, trimmedSlug, trimmedOwner)
+            #endif
+            try await PortalBackend.shared.upsertBookingSlug(
+                businessId: profile.businessID,
+                slug: trimmedSlug,
+                brandName: profile.name,
+                ownerEmail: trimmedOwner
+            )
+            #if DEBUG
+            print("✅ booking slug register success", profile.name, trimmedOwner)
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ booking slug register failed", error.localizedDescription)
+            #endif
+        }
     }
 
     private func makeSlug(from name: String) -> String {
@@ -309,6 +576,13 @@ struct BookingPortalView: View {
         }
 
         return slug
+    }
+
+    private var isOwnerEmailMissing: Bool {
+        let bookingOwner = profile?.bookingOwnerEmail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let profileEmail = profile?.email.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmed = bookingOwner.isEmpty ? profileEmail : bookingOwner
+        return trimmed.isEmpty
     }
 }
 

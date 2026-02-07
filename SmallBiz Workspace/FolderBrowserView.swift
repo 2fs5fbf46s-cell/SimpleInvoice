@@ -38,6 +38,7 @@ struct FolderBrowserView: View {
 
     // ✅ List-managed selection
     @State private var selection = Set<UUID>()
+    @State private var selectedFolder: Folder? = nil
 
     // Sheets / dialogs
     @State private var showMoveSheet = false
@@ -122,17 +123,31 @@ struct FolderBrowserView: View {
         return !all.isEmpty && selection.isSuperset(of: all)
     }
 
+    private var summaryText: String {
+        "\(visibleFolders.count) folders • \(visibleFiles.count) files"
+    }
+
     // MARK: - Body
 
     var body: some View {
-        List(selection: $selection) {
-            errorBanner
-            filesSection
-            foldersSection
+        ZStack(alignment: .top) {
+            List(selection: $selection) {
+                errorBanner
+                foldersSection
+                filesSection
+            }
+            .id(refreshToken)
+            .listStyle(.plain)
+            .listRowSeparator(.hidden)
+            .padding(.top, 58)
+
+            pinnedHeader
         }
-        .id(refreshToken)
         .navigationTitle(folder.name)
         .searchable(text: $searchText, prompt: "Search files & folders")
+        .navigationDestination(item: $selectedFolder) { f in
+            FolderBrowserView(business: business, folder: f)
+        }
         .toolbar { toolbarContent }
         .safeAreaInset(edge: .bottom) { bottomBar }
 
@@ -219,7 +234,11 @@ struct FolderBrowserView: View {
     // MARK: - Split views
 
     @ViewBuilder private var errorBanner: some View {
-        if let errorText { Text(errorText).foregroundStyle(.red) }
+        if let errorText {
+            Text(errorText)
+                .foregroundStyle(.red)
+                .sbwFilesCardRow()
+        }
     }
 
     @ViewBuilder private var filesSection: some View {
@@ -236,6 +255,7 @@ struct FolderBrowserView: View {
                         onDelete: { deleteFile(item) }
                     )
                     .tag(item.id)
+                    .sbwFilesCardRow()
                 }
                 .onDelete { offsets in deleteOffsets(offsets, from: visibleFiles) }
             }
@@ -248,8 +268,14 @@ struct FolderBrowserView: View {
                 ContentUnavailableView("No folders yet", systemImage: "folder")
             } else {
                 ForEach(visibleFolders) { f in
-                    FolderRowView(business: business, folder: f, isEditing: isEditing)
+                    FolderRowView(
+                        business: business,
+                        folder: f,
+                        isEditing: isEditing,
+                        onOpen: { selectedFolder = f }
+                    )
                         .tag(f.id)
+                        .sbwFilesCardRow()
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             // ✅ Swipe-to-delete for folders (matches file behavior)
                             // Avoid swipe actions while multi-select edit mode is active.
@@ -296,9 +322,6 @@ struct FolderBrowserView: View {
         ToolbarItemGroup(placement: .topBarTrailing) {
 
             Menu {
-                Picker("Sort Folders", selection: $folderSort) {
-                    ForEach(FolderSort.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
                 Picker("Sort Files", selection: $fileSort) {
                     ForEach(FileSort.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
@@ -323,6 +346,31 @@ struct FolderBrowserView: View {
 
             EditButton()
         }
+    }
+
+    private var pinnedHeader: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(folder.name.isEmpty ? "Files" : folder.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text(isEditing ? "EDITING" : "BROWSE")
+                .font(.caption.weight(.semibold))
+                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .background(Capsule().fill((isEditing ? SBWTheme.brandBlue : SBWTheme.brandGreen).opacity(0.18)))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     // MARK: - Bottom bar
@@ -668,6 +716,30 @@ struct FolderBrowserView: View {
     }
 }
 
+private struct SBWFilesCardRowModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(SBWTheme.cardStroke, lineWidth: 1)
+            )
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+    }
+}
+
+private extension View {
+    func sbwFilesCardRow() -> some View {
+        modifier(SBWFilesCardRowModifier())
+    }
+}
+
 // MARK: - Sort enums
 
 private enum FileSort: CaseIterable, Hashable {
@@ -720,4 +792,3 @@ private enum FolderSort: CaseIterable, Hashable {
         }
     }
 }
-

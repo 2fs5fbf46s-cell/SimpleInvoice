@@ -366,6 +366,7 @@
 				INFOPLIST_FILE = "SmallBiz-Workspace-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SmallBiz Workspace";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSContactsUsageDescription = "SmallBiz Workspace uses your contacts to quickly import client details.";
 				INFOPLIST_KEY_PORTAL_ADMIN_KEY = "$(PORTAL_ADMIN_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -411,6 +412,7 @@
 				INFOPLIST_FILE = "SmallBiz-Workspace-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SmallBiz Workspace";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSContactsUsageDescription = "SmallBiz Workspace uses your contacts to quickly import client details.";
 				INFOPLIST_KEY_PORTAL_ADMIN_KEY = "$(PORTAL_ADMIN_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

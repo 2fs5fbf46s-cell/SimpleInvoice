@@ -7,6 +7,7 @@ struct SmallBizWorkspaceApp: App {
 
     @StateObject private var lock = AppLockManager()
     @StateObject private var activeBiz = ActiveBusinessStore()
+    @State private var estimateSyncPollTask: Task<Void, Never>? = nil
 
     var body: some Scene {
         WindowGroup {
@@ -20,12 +21,22 @@ struct SmallBizWorkspaceApp: App {
             // ✅ Close Safari when portal redirects back to app via scheme
             .onOpenURL { url in
                 PortalReturnRouter.shared.handle(url)
+                EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: Self.container.mainContext)
+            }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
+                guard let url = userActivity.webpageURL else { return }
+                PortalReturnRouter.shared.handle(url)
+                EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: Self.container.mainContext)
             }
 
             // ✅ Xcode 26.2: onChange closure expects ONE argument
             .onChange(of: scenePhase) { _, newPhase in
-                guard newPhase == .active else { return }
                 let context = Self.container.mainContext
+                guard newPhase == .active else {
+                    estimateSyncPollTask?.cancel()
+                    estimateSyncPollTask = nil
+                    return
+                }
 
                 if activeBiz.activeBusinessID == nil {
                     do {
@@ -34,9 +45,30 @@ struct SmallBizWorkspaceApp: App {
                         print("⚠️ Re-restore active business failed:", error)
                     }
                 }
+
+                Task { await EstimatePortalSyncService.sync(context: context) }
+                startEstimatePolling(context: context)
+            }
+            .task {
+                let context = Self.container.mainContext
+                await EstimatePortalSyncService.sync(context: context)
+                if scenePhase == .active {
+                    startEstimatePolling(context: context)
+                }
             }
         }
         .modelContainer(Self.container)
+    }
+
+    @MainActor
+    private func startEstimatePolling(context: ModelContext) {
+        estimateSyncPollTask?.cancel()
+        estimateSyncPollTask = Task {
+            while !Task.isCancelled {
+                await EstimatePortalSyncService.sync(context: context)
+                try? await Task.sleep(nanoseconds: 90_000_000_000)
+            }
+        }
     }
 
     // MARK: - SwiftData Container (CloudKit with safe fallbacks)
@@ -58,6 +90,7 @@ struct SmallBizWorkspaceApp: App {
             PortalSession.self,
             PortalInvite.self,
             PortalAuditEvent.self,
+            EstimateDecisionRecord.self,
 
             ContractTemplate.self,
 

@@ -19,30 +19,39 @@ struct ContractTemplateDetailView: View {
     @State private var saveError: String? = nil
 
     var body: some View {
-        Form {
-            Section("Template Info") {
-                TextField("Template Name", text: $template.name)
-                    .textInputAutocapitalization(.words)
+        ZStack {
+            // Background
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                TextField("Category", text: $template.category)
-                    .textInputAutocapitalization(.words)
+            // Subtle header wash
+            SBWTheme.headerWash()
 
-                Toggle("Built-in (locked)", isOn: $template.isBuiltIn)
-                    .disabled(true)
+            Form {
+                Section("Template Info") {
+                    TextField("Template Name", text: $template.name)
+                        .textInputAutocapitalization(.words)
+
+                    TextField("Category", text: $template.category)
+                        .textInputAutocapitalization(.words)
+
+                    Toggle("Built-in (locked)", isOn: $template.isBuiltIn)
+                        .disabled(true)
+                }
+
+                Section("Template Body") {
+                    TextEditor(text: $template.body)
+                        .frame(minHeight: 280)
+                        .font(.body)
+                        .textInputAutocapitalization(.sentences)
+                }
+
+                Section {
+                    Text("Changes auto-save.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
-
-            Section("Template Body") {
-                TextEditor(text: $template.body)
-                    .frame(minHeight: 280)
-                    .font(.body)
-                    .textInputAutocapitalization(.sentences)
-            }
-
-            Section {
-                Text("Changes auto-save.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)

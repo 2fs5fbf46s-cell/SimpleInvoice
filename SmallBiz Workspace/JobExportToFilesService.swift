@@ -21,20 +21,26 @@ struct JobExportToFilesService {
         named folderName: String,
         context: ModelContext
     ) throws -> Folder {
-        let root = try WorkspaceProvisioningService.ensureJobWorkspace(job: job, context: context)
-
-        let children = try FolderService.fetchChildren(
-            businessID: root.businessID,
-            parentID: root.id,
-            context: context
-        )
-
-        if let match = children.first(where: { $0.name == folderName }) {
-            return match
+        let lower = folderName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let kind = JobWorkspaceSubfolder(rawValue: lower) {
+            return try WorkspaceProvisioningService.fetchJobSubfolder(
+                job: job,
+                kind: kind,
+                context: context
+            )
         }
 
-        // Create missing subfolder (same relativePath rule as FolderBrowserView)
+        // Fallback: explicit relative path under job root (non-standard folder)
+        let root = try WorkspaceProvisioningService.ensureJobWorkspace(job: job, context: context)
         let rel = makeChildRelativePath(parent: root, childName: folderName)
+        if let existing = try FolderService.fetchFolder(
+            businessID: root.businessID,
+            relativePath: rel,
+            context: context
+        ) {
+            return existing
+        }
+
         let newFolder = Folder(
             businessID: root.businessID,
             name: folderName,

@@ -103,38 +103,44 @@ struct DashboardView: View {
 
                     // Stats strip
                     HStack(spacing: 12) {
-                        StatCard(
+                        DashboardStatCard(
                             title: "Weekly",
                             value: currency(weekPaidTotal),
-                            subtitle: "Paid"
+                            subtitle: "Paid",
+                            updateKey: weekPaidTotal
                         )
 
-                        StatCard(
+                        DashboardStatCard(
                             title: "Monthly",
                             value: currency(monthPaidTotal),
-                            subtitle: "Paid"
+                            subtitle: "Paid",
+                            updateKey: monthPaidTotal
                         )
 
-                        StatCard(
+                        DashboardStatCard(
                             title: "Schedule",
                             value: "\(upcomingBookingsCount)",
-                            subtitle: "Upcoming"
+                            subtitle: "Upcoming",
+                            updateKey: upcomingBookingsCount
                         )
                     }
 
-                    // Date row
-                    HStack {
-                        Text(formattedDate(Date()))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    // Date row (live)
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        let now = context.date
+                        HStack {
+                            Text(formattedDate(now))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
 
-                        Spacer()
+                            Spacer()
 
-                        Text(formattedTime(Date()))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            Text(formattedTime(now))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 2)
                     }
-                    .padding(.top, 2)
 
                     // Main tiles grid
                     LazyVGrid(columns: columns, spacing: 12) {
@@ -186,8 +192,8 @@ struct DashboardView: View {
 
                         NavigationLink { JobsListView() } label: {
                             TileCard(
-                                title: "Requests",
-                                subtitle: "Jobs",
+                                title: "Jobs",
+                                subtitle: "Projects",
                                 systemImage: "tray.full",
                                 tint: .gradient
                             )
@@ -205,7 +211,7 @@ struct DashboardView: View {
                         NavigationLink { SavedItemsView() } label: {
                             TileCard(
                                 title: "Inventory",
-                                subtitle: "Saved items",
+                                subtitle: "Services & materials",
                                 systemImage: "tag",
                                 tint: .mint
                             )
@@ -220,7 +226,6 @@ struct DashboardView: View {
             }
         }
         .navigationTitle("") // Keep header custom
-        .settingsGear { BusinessProfileView() }
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -408,6 +413,7 @@ private struct StatCard: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
+                .contentTransition(.numericText())
 
             Text(subtitle)
                 .font(.system(size: 12, weight: .semibold))
@@ -423,6 +429,33 @@ private struct StatCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(SBWTheme.cardStroke, lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Dashboard Stat Wrapper
+
+private struct DashboardStatCard<UpdateKey: Equatable>: View {
+    let title: String
+    let value: String
+    let subtitle: String
+    let updateKey: UpdateKey
+
+    @State private var pulse = false
+
+    var body: some View {
+        StatCard(title: title, value: value, subtitle: subtitle)
+            .scaleEffect(pulse ? 1.02 : 1.0)
+            .animation(.easeInOut(duration: 0.18), value: pulse)
+            .onChange(of: updateKey) { _, _ in
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    pulse = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        pulse = false
+                    }
+                }
+            }
     }
 }
 

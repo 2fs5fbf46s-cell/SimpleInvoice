@@ -57,30 +57,39 @@ struct MoreView: View {
                 destination: AnyView(FilesHomeView())
             ),
             MoreItem(
+                title: "Inventory",
+                systemImage: "tray",
+                keyword: "Saved Items",
+                destination: AnyView(SavedItemsView())
+            ),
+            MoreItem(
                 title: "Invoices",
                 systemImage: "doc.text.fill",
                 keyword: "Invoices",
                 destination: AnyView(InvoiceListView())
             ),
             MoreItem(
+                title: "Jobs",
+                systemImage: "tray.full",
+                keyword: "Jobs",
+                destination: AnyView(JobsListView())
+            ),
+            MoreItem(
                 title: "Portal Preview",
                 systemImage: "person.crop.rectangle",
                 keyword: "Client Portal",
                 destination: AnyView(PortalPreviewView())
-            ),
-            MoreItem(
-                title: "Requests",
-                systemImage: "tray.full",
-                keyword: "Requests",
-                destination: AnyView(JobsListView())
             )
         ]
     }
 
     private var filtered: [MoreItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return items }
-        return items.filter { $0.title.lowercased().contains(q) }
+        let sorted = items.sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+        guard !q.isEmpty else { return sorted }
+        return sorted.filter { $0.title.lowercased().contains(q) }
     }
 
     var body: some View {
