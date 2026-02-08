@@ -1616,9 +1616,10 @@ struct InvoiceDetailView: View {
         }
 
         do {
+            let folderKind: JobWorkspaceSubfolder = invoice.documentType == "estimate" ? .estimates : .invoices
             let invoicesFolder = try WorkspaceProvisioningService.fetchJobSubfolder(
                 job: job,
-                kind: .invoices,
+                kind: folderKind,
                 context: modelContext
             )
 
@@ -1838,12 +1839,6 @@ struct InvoiceDetailView: View {
     }
 
     private func persistInvoicePDFToJobFiles() throws -> URL {
-        guard invoice.job != nil else {
-            throw NSError(domain: "Invoice", code: 0, userInfo: [
-                NSLocalizedDescriptionKey: "Link this invoice to a Job to save it into Job → Invoices."
-            ])
-        }
-
         return try DocumentFileIndexService.persistInvoicePDF(
             invoice: invoice,
             profiles: profiles,
@@ -2059,10 +2054,6 @@ struct InvoiceDetailView: View {
 
     // MARK: - Attachments helpers
 
-    private var invoiceFolderKey: String {
-        "invoice:\(String(describing: invoice.id))"
-    }
-
     private func attach(_ file: FileItem) {
         let fileKey = file.id.uuidString
         if attachments.contains(where: { $0.fileKey == fileKey }) { return }
@@ -2104,11 +2095,15 @@ struct InvoiceDetailView: View {
                 let didStart = url.startAccessingSecurityScopedResource()
                 defer { if didStart { url.stopAccessingSecurityScopedResource() } }
 
-                let fileId = UUID()
+                let folder = try resolveAttachmentFolder(kind: .attachments)
+
                 let ext = url.pathExtension.lowercased()
                 let uti = (UTType(filenameExtension: ext)?.identifier) ?? "public.data"
 
-                let (rel, size) = try AppFileStore.importFile(from: url, fileId: fileId)
+                let (rel, size) = try AppFileStore.importFile(
+                    from: url,
+                    toRelativeFolderPath: folder.relativePath
+                )
 
                 let item = FileItem(
                     displayName: url.deletingPathExtension().lastPathComponent,
@@ -2117,8 +2112,8 @@ struct InvoiceDetailView: View {
                     fileExtension: ext,
                     uti: uti,
                     byteCount: size,
-                    folderKey: invoiceFolderKey,
-                    folder: nil
+                    folderKey: folder.id.uuidString,
+                    folder: folder
                 )
                 modelContext.insert(item)
 
@@ -2136,11 +2131,11 @@ struct InvoiceDetailView: View {
 
     private func importAndAttachFromPhotos(data: Data, suggestedFileName: String) {
         do {
-            let fileId = UUID()
+            let folder = try resolveAttachmentFolder(kind: .photos)
 
             let (rel, size) = try AppFileStore.importData(
                 data,
-                fileId: fileId,
+                toRelativeFolderPath: folder.relativePath,
                 preferredFileName: suggestedFileName
             )
 
@@ -2154,8 +2149,8 @@ struct InvoiceDetailView: View {
                 fileExtension: ext,
                 uti: uti,
                 byteCount: size,
-                folderKey: invoiceFolderKey,
-                folder: nil
+                folderKey: folder.id.uuidString,
+                folder: folder
             )
             modelContext.insert(file)
 
@@ -2166,6 +2161,17 @@ struct InvoiceDetailView: View {
         } catch {
             attachError = error.localizedDescription
         }
+    }
+
+    private func resolveAttachmentFolder(kind: FolderDestinationKind) throws -> Folder {
+        let business = try fetchBusiness(for: invoice.businessID)
+        return try WorkspaceProvisioningService.resolveFolder(
+            business: business,
+            client: invoice.client,
+            job: invoice.job,
+            kind: kind,
+            context: modelContext
+        )
     }
 }
 

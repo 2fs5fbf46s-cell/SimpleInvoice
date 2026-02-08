@@ -12,6 +12,7 @@
 		B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */; };
 		B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */; };
 		B7A00000000000000000000E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000000F /* XCTest.framework */; };
+		B7A000000000000000000012 /* RoutingAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000013 /* RoutingAcceptanceTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +32,7 @@
 		B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallBizWorkspaceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000004 /* SmallBizWorkspaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmallBizWorkspaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7A00000000000000000000F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		B7A000000000000000000013 /* RoutingAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingAcceptanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -85,6 +87,7 @@
 		B7A000000000000000000003 /* SmallBizWorkspaceTests */ = {
 			isa = PBXGroup;
 			children = (
+				B7A000000000000000000013 /* RoutingAcceptanceTests.swift */,
 				B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */,
 			);
 			path = SmallBizWorkspaceTests;
@@ -215,6 +218,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B7A000000000000000000012 /* RoutingAcceptanceTests.swift in Sources */,
 				B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

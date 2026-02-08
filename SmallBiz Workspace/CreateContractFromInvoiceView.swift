@@ -9,12 +9,16 @@ struct CreateContractFromInvoiceView: View {
     @Bindable var invoice: Invoice
 
     @Query(sort: \ContractTemplate.name) private var templates: [ContractTemplate]
+    @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
     @Query private var profiles: [BusinessProfile]
 
     @State private var selectedTemplate: ContractTemplate?
     @State private var previewText: String = ""
     @State private var showPreview = false
     @State private var errorText: String?
+    @State private var selectedJobIDs: [UUID] = []
+    @State private var primaryJobID: UUID? = nil
+    @State private var showJobsPicker = false
 
     var body: some View {
         Form {
@@ -39,6 +43,29 @@ struct CreateContractFromInvoiceView: View {
                 Text("Invoice \(invoice.invoiceNumber)")
                 Text(invoice.client?.name ?? "No Client")
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Jobs") {
+                if selectedJobs.isEmpty {
+                    Text("No linked jobs")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(selectedJobs) { job in
+                        HStack {
+                            Text(job.title.isEmpty ? "Untitled Job" : job.title)
+                            Spacer()
+                            if primaryJobID == job.id {
+                                Text("Primary")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                Button("Manage Jobs") {
+                    showJobsPicker = true
+                }
             }
 
             Section {
@@ -84,6 +111,17 @@ struct CreateContractFromInvoiceView: View {
                 }
             }
         }
+        .sheet(isPresented: $showJobsPicker) {
+            NavigationStack {
+                ContractJobsPickerSheet(
+                    jobs: scopedJobs,
+                    selectedJobIDs: $selectedJobIDs,
+                    primaryJobID: $primaryJobID
+                )
+                .navigationTitle("Select Jobs")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
         .alert("Error", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -94,12 +132,25 @@ struct CreateContractFromInvoiceView: View {
         }
         .onAppear {
             if selectedTemplate == nil { selectedTemplate = templates.first }
+            if selectedJobIDs.isEmpty, let invoiceJobID = invoice.job?.id {
+                selectedJobIDs = [invoiceJobID]
+                primaryJobID = invoiceJobID
+            }
         }
     }
 
     // If you want this scoped later, we can fetch by businessID.
     private var business: BusinessProfile? {
         InvoicePDFService.resolvedBusinessProfile(for: invoice, profiles: profiles)
+    }
+
+    private var scopedJobs: [Job] {
+        jobs.filter { $0.businessID == invoice.businessID }
+    }
+
+    private var selectedJobs: [Job] {
+        let ids = Set(selectedJobIDs)
+        return scopedJobs.filter { ids.contains($0.id) }.sorted { $0.startDate > $1.startDate }
     }
 
     private func generatePreview() {
@@ -118,7 +169,7 @@ struct CreateContractFromInvoiceView: View {
         }
 
         do {
-            _ = try ContractCreation.create(
+            let contract = try ContractCreation.create(
                 context: modelContext,
                 template: template,
                 businessID: bizID,
@@ -126,6 +177,16 @@ struct CreateContractFromInvoiceView: View {
                 client: invoice.client,
                 invoice: invoice
             )
+
+            let primary = scopedJobs.first(where: { $0.id == primaryJobID })
+            contract.job = primary ?? invoice.job
+
+            var linked = Set(selectedJobIDs)
+            if let primaryID = contract.job?.id {
+                linked.insert(primaryID)
+            }
+            contract.linkedJobIDsCSV = linked.map(\.uuidString).joined(separator: ",")
+            try? modelContext.save()
 
             dismiss()
         } catch {

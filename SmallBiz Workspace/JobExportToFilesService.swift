@@ -22,7 +22,7 @@ struct JobExportToFilesService {
         context: ModelContext
     ) throws -> Folder {
         let lower = folderName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if let kind = JobWorkspaceSubfolder(rawValue: lower) {
+        if let kind = JobWorkspaceSubfolder.from(folderName: lower) {
             return try WorkspaceProvisioningService.fetchJobSubfolder(
                 job: job,
                 kind: kind,
@@ -78,8 +78,11 @@ struct JobExportToFilesService {
             finalName = preferredFileNameWithExtension
         }
 
-        let fileId = UUID()
-        let (rel, size) = try AppFileStore.importData(data, fileId: fileId, preferredFileName: finalName)
+        let (rel, size) = try AppFileStore.importData(
+            data,
+            toRelativeFolderPath: folder.relativePath,
+            preferredFileName: finalName
+        )
 
         let ext = (finalName as NSString).pathExtension.lowercased()
         let uti = UTType(filenameExtension: ext)?.identifier ?? "public.data"

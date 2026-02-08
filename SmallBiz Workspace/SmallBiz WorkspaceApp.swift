@@ -47,11 +47,15 @@ struct SmallBizWorkspaceApp: App {
                 }
 
                 Task { await EstimatePortalSyncService.sync(context: context) }
+                BusinessSitePublishService.shared.startMonitoring(context: context)
+                Task { await BusinessSitePublishService.shared.syncQueuedSites(context: context) }
                 startEstimatePolling(context: context)
             }
             .task {
                 let context = Self.container.mainContext
                 await EstimatePortalSyncService.sync(context: context)
+                BusinessSitePublishService.shared.startMonitoring(context: context)
+                await BusinessSitePublishService.shared.syncQueuedSites(context: context)
                 if scenePhase == .active {
                     startEstimatePolling(context: context)
                 }
@@ -76,6 +80,7 @@ struct SmallBizWorkspaceApp: App {
         let schema = Schema([
             Business.self,
             BusinessProfile.self,
+            PublishedBusinessSite.self,
             Client.self,
             Invoice.self,
             LineItem.self,

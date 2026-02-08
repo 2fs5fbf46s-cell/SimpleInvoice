@@ -13,6 +13,12 @@ import UIKit
 import Contacts
 import ContactsUI
 
+private struct ClientFolderSheetItem: Identifiable {
+    let id = UUID()
+    let business: Business
+    let folder: Folder
+}
+
 struct ClientEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -63,6 +69,9 @@ struct ClientEditView: View {
     @State private var navigateToExistingClient: Client? = nil
     @State private var showAdvancedOptions = false
     @State private var contactAccessDenied = false
+    @State private var clientFolderSheetItem: ClientFolderSheetItem? = nil
+    @State private var clientFolder: Folder? = nil
+    @State private var workspaceError: String? = nil
 
 
     @Query private var businessClients: [Client]
@@ -103,16 +112,15 @@ struct ClientEditView: View {
         )
     }
 
-    var body: some View { bodyContent }
+    var body: some View { lifecycleView }
 
-
-
-    @ViewBuilder private var bodyContent: some View {
+    private var baseListView: some View {
         List {
             clientEssentialsSection
             clientAddressSection
             clientPortalSection
             linkedItemsSection
+            clientFilesSection
             advancedOptionsSection
         }
         .listStyle(.plain)
@@ -121,259 +129,269 @@ struct ClientEditView: View {
         .navigationTitle("Client")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
+        .erased()
+    }
 
-        // ✅ Client → Job navigation
-        .navigationDestination(item: $navigateToJob) { job in
-            JobDetailView(job: job)
-        }
-        .navigationDestination(item: $selectedJob) { job in
-            JobDetailView(job: job)
-        }
-        .navigationDestination(item: $navigateToExistingClient) { existing in
-            ClientEditView(client: existing)
-        }
-
-        // ✅ Client Portal Directory Safari
-        .sheet(isPresented: $showClientPortal) {
-            if let url = clientPortalURL {
-                SafariView(url: url, onDone: {})
+    private var navigationAndSheetsView: some View {
+        baseListView
+            .navigationDestination(item: $navigateToJob) { job in
+                JobDetailView(job: job)
             }
-        }
-
-
-        // ✅ Import directly to client attachments
-        .fileImporter(
-            isPresented: $showClientAttachmentFileImporter,
-            allowedContentTypes: UTType.importable,
-            allowsMultipleSelection: true
-        ) { result in
-            switch result {
-            case .success(let urls):
-                importAndAttachFromFiles(urls: urls)
-            case .failure(let error):
-                attachError = error.localizedDescription
+            .navigationDestination(item: $selectedJob) { job in
+                JobDetailView(job: job)
             }
-        }
-
-        // ✅ Photos import sheet (reliable)
-        .sheet(isPresented: $showClientAttachmentPhotosSheet) {
-            NavigationStack {
-                List {
-                    PhotosImportButton { data, suggestedName in
-                        importAndAttachFromPhotos(data: data, suggestedFileName: suggestedName)
-                        showClientAttachmentPhotosSheet = false
-                    }
-                }
-                .navigationTitle("Import Photo")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") { showClientAttachmentPhotosSheet = false }
-                    }
+            .navigationDestination(item: $navigateToExistingClient) { existing in
+                ClientEditView(client: existing)
+            }
+            .sheet(item: $clientFolderSheetItem) { item in
+                NavigationStack {
+                    FolderBrowserView(business: item.business, folder: item.folder)
                 }
             }
-        }
-
-        // ✅ Pick an existing file to attach
-        .sheet(isPresented: $showExistingFilePicker) {
-            ClientAttachmentPickerView { file in
-                attachExisting(file)
+            .sheet(isPresented: $showClientPortal) {
+                if let url = clientPortalURL {
+                    SafariView(url: url, onDone: {})
+                }
             }
-        }
-
-        // ✅ QuickLook preview for attachments
-        .sheet(item: $attachmentPreviewItem) { item in
-            QuickLookPreview(url: item.url)
-        }
-        
-        .sheet(isPresented: $showSendPortalSheet) {
-            NavigationStack {
-                Form {
-                    Section("Send via") {
-                        Toggle("Email", isOn: $sendByEmail)
-                        Toggle("SMS", isOn: $sendBySms)
-                    }
-
-                    Section("Recipient") {
-                        HStack {
-                            Text("Email")
-                            Spacer()
-                            Text(client.email.isEmpty ? "Missing" : client.email)
-                                .foregroundStyle(client.email.isEmpty ? .red : .secondary)
-                                .lineLimit(1)
-                        }
-
-                        HStack {
-                            Text("Phone")
-                            Spacer()
-                            Text(client.phone.isEmpty ? "Missing" : client.phone)
-                                .foregroundStyle(client.phone.isEmpty ? .red : .secondary)
-                                .lineLimit(1)
+            .fileImporter(
+                isPresented: $showClientAttachmentFileImporter,
+                allowedContentTypes: UTType.importable,
+                allowsMultipleSelection: true
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    importAndAttachFromFiles(urls: urls)
+                case .failure(let error):
+                    attachError = error.localizedDescription
+                }
+            }
+            .sheet(isPresented: $showClientAttachmentPhotosSheet) {
+                NavigationStack {
+                    List {
+                        PhotosImportButton { data, suggestedName in
+                            importAndAttachFromPhotos(data: data, suggestedFileName: suggestedName)
+                            showClientAttachmentPhotosSheet = false
                         }
                     }
-
-                    Section("Link Settings") {
-                        Stepper("Expires in \(ttlDays) day(s)", value: $ttlDays, in: 1...30)
-                    }
-
-                    Section("Optional Message") {
-                        TextField("Custom message (optional)", text: $customMessage, axis: .vertical)
-                            .lineLimit(2...6)
-                    }
-
-                    Section {
-                        Button {
-                            sendPortalLinkNow()
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if sendingPortalLink {
-                                    ProgressView()
-                                } else {
-                                    Text("Send Portal Link")
-                                        .fontWeight(.semibold)
-                                }
-                                Spacer()
-                            }
-                        }
-                        .disabled(sendingPortalLink || (!sendByEmail && !sendBySms))
-                    }
-
-                    if let link = lastSentPortalLink, !link.isEmpty {
-                        Section("Last Link") {
-                            Text(link)
-                                .font(.footnote)
-                                .textSelection(.enabled)
-
-                            Button {
-                                UIPasteboard.general.string = link
-                            } label: {
-                                Label("Copy Link", systemImage: "doc.on.doc")
-                            }
-
-                            if let url = URL(string: link) {
-                                ShareLink(item: url) {
-                                    Label("Share…", systemImage: "square.and.arrow.up")
-                                }
-                            }
+                    .navigationTitle("Import Photo")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showClientAttachmentPhotosSheet = false }
                         }
                     }
                 }
-                .navigationTitle("Send Portal Link")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") { showSendPortalSheet = false }
-                    }
+            }
+            .sheet(isPresented: $showExistingFilePicker) {
+                ClientAttachmentPickerView { file in
+                    attachExisting(file)
                 }
             }
-        }
+            .sheet(item: $attachmentPreviewItem) { item in
+                QuickLookPreview(url: item.url)
+            }
+            .sheet(isPresented: $showSendPortalSheet) {
+                sendPortalSheetView
+            }
         .sheet(isPresented: $showingContactPicker) {
             ContactPicker(isPresented: $showingContactPicker) { contact in
                 handleContactSelection(contact)
             } onCancel: {
             }
         }
+        .erased()
+    }
 
-        // Errors
-        
-
-        .alert("Client Portal", isPresented: Binding(
-            get: { clientPortalError != nil },
-            set: { if !$0 { clientPortalError = nil } }
+    private var alertsAndOverlaysView: some View {
+        navigationAndSheetsView
+            .alert("Client Portal", isPresented: Binding(
+                get: { clientPortalError != nil },
+                set: { if !$0 { clientPortalError = nil } }
+            )) {
+                Button("OK", role: .cancel) { clientPortalError = nil }
+            } message: {
+                Text(clientPortalError ?? "")
+            }
+            .alert("Save Failed", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button("OK", role: .cancel) { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
+            }
+            .alert("Attachment Error", isPresented: Binding(
+                get: { attachError != nil },
+                set: { if !$0 { attachError = nil } }
+            )) {
+                Button("OK", role: .cancel) { attachError = nil }
+            } message: {
+                Text(attachError ?? "")
+            }
+            .alert("ZIP Export Error", isPresented: Binding(
+                get: { zipError != nil },
+                set: { if !$0 { zipError = nil } }
+            )) {
+                Button("OK", role: .cancel) { zipError = nil }
+            } message: {
+                Text(zipError ?? "")
+            }
+            .alert("Send Portal Link", isPresented: Binding(
+                get: { sendPortalError != nil },
+                set: { if !$0 { sendPortalError = nil } }
+            )) {
+                Button("OK", role: .cancel) { sendPortalError = nil }
+            } message: {
+                Text(sendPortalError ?? "")
+            }
+            .alert("Import from Contacts Failed", isPresented: Binding(
+                get: { contactImportError != nil },
+                set: { if !$0 { contactImportError = nil } }
+            )) {
+                Button("OK", role: .cancel) { contactImportError = nil }
+            } message: {
+                Text(contactImportError ?? "")
+            }
+        .alert("Workspace", isPresented: Binding(
+            get: { workspaceError != nil },
+            set: { if !$0 { workspaceError = nil } }
         )) {
-            Button("OK", role: .cancel) { clientPortalError = nil }
+            Button("OK", role: .cancel) { workspaceError = nil }
         } message: {
-            Text(clientPortalError ?? "")
+            Text(workspaceError ?? "")
         }
-
-
-        .alert("Save Failed", isPresented: Binding(
-            get: { saveError != nil },
-            set: { if !$0 { saveError = nil } }
-        )) {
-            Button("OK", role: .cancel) { saveError = nil }
-        } message: {
-            Text(saveError ?? "")
-        }
-
-        .alert("Attachment Error", isPresented: Binding(
-            get: { attachError != nil },
-            set: { if !$0 { attachError = nil } }
-        )) {
-            Button("OK", role: .cancel) { attachError = nil }
-        } message: {
-            Text(attachError ?? "")
-        }
-
-        .alert("ZIP Export Error", isPresented: Binding(
-            get: { zipError != nil },
-            set: { if !$0 { zipError = nil } }
-        )) {
-            Button("OK", role: .cancel) { zipError = nil }
-        } message: {
-            Text(zipError ?? "")
-        }
-        
-        .alert("Send Portal Link", isPresented: Binding(
-            get: { sendPortalError != nil },
-            set: { if !$0 { sendPortalError = nil } }
-        )) {
-            Button("OK", role: .cancel) { sendPortalError = nil }
-        } message: {
-            Text(sendPortalError ?? "")
-        }
-        .alert("Import from Contacts Failed", isPresented: Binding(
-            get: { contactImportError != nil },
-            set: { if !$0 { contactImportError = nil } }
-        )) {
-            Button("OK", role: .cancel) { contactImportError = nil }
-        } message: {
-            Text(contactImportError ?? "")
-        }
+        .erased()
         .confirmationDialog(
-            "Existing Client Found",
-            isPresented: $showDuplicateDialog,
-            presenting: duplicateCandidate
-        ) { match in
-            Button("Open Existing") {
-                if let onOpenExisting {
-                    onOpenExisting(match)
-                } else if isDraft {
-                    dismiss()
-                } else {
-                    navigateToExistingClient = match
+                "Existing Client Found",
+                isPresented: $showDuplicateDialog,
+                presenting: duplicateCandidate
+            ) { match in
+                Button("Open Existing") {
+                    if let onOpenExisting {
+                        onOpenExisting(match)
+                    } else if isDraft {
+                        dismiss()
+                    } else {
+                        navigateToExistingClient = match
+                    }
+                    pendingContact = nil
+                    duplicateCandidate = nil
                 }
-                pendingContact = nil
-                duplicateCandidate = nil
-            }
-            Button("Create New Anyway") {
-                if let contact = pendingContact {
-                    applyContactToClient(contact)
+                Button("Create New Anyway") {
+                    if let contact = pendingContact {
+                        applyContactToClient(contact)
+                    }
+                    pendingContact = nil
+                    duplicateCandidate = nil
                 }
-                pendingContact = nil
-                duplicateCandidate = nil
+                Button("Cancel", role: .cancel) {
+                    pendingContact = nil
+                    duplicateCandidate = nil
+                }
+            } message: { match in
+                Text("A client with the same email or phone already exists: \(match.name.isEmpty ? "Client" : match.name).")
             }
-            Button("Cancel", role: .cancel) {
-                pendingContact = nil
-                duplicateCandidate = nil
+            .overlay(alignment: .top) {
+                if showContactImportBanner {
+                    ContactImportBanner()
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-        } message: { match in
-            Text("A client with the same email or phone already exists: \(match.name.isEmpty ? "Client" : match.name).")
-        }
-        .overlay(alignment: .top) {
-            if showContactImportBanner {
-                ContactImportBanner()
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
+    }
 
-        .onDisappear {
-            pendingSaveTask?.cancel()
-            pendingSaveTask = nil
-            // Don't force-save here. Navigation transitions can deadlock if save blocks.
-        }
-        .onAppear {
-            refreshContactsPermissionState()
+    private var lifecycleView: some View {
+        alertsAndOverlaysView
+            .onDisappear {
+                pendingSaveTask?.cancel()
+                pendingSaveTask = nil
+                // Don't force-save here. Navigation transitions can deadlock if save blocks.
+            }
+            .onAppear {
+                refreshContactsPermissionState()
+                guard !isDraft else { return }
+                clientFolder = try? WorkspaceProvisioningService.ensureClientFolder(client: client, context: modelContext)
+            }
+    }
+
+    private var sendPortalSheetView: some View {
+        NavigationStack {
+            Form {
+                Section("Send via") {
+                    Toggle("Email", isOn: $sendByEmail)
+                    Toggle("SMS", isOn: $sendBySms)
+                }
+
+                Section("Recipient") {
+                    HStack {
+                        Text("Email")
+                        Spacer()
+                        Text(client.email.isEmpty ? "Missing" : client.email)
+                            .foregroundStyle(client.email.isEmpty ? .red : .secondary)
+                            .lineLimit(1)
+                    }
+
+                    HStack {
+                        Text("Phone")
+                        Spacer()
+                        Text(client.phone.isEmpty ? "Missing" : client.phone)
+                            .foregroundStyle(client.phone.isEmpty ? .red : .secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Section("Link Settings") {
+                    Stepper("Expires in \(ttlDays) day(s)", value: $ttlDays, in: 1...30)
+                }
+
+                Section("Optional Message") {
+                    TextField("Custom message (optional)", text: $customMessage, axis: .vertical)
+                        .lineLimit(2...6)
+                }
+
+                Section {
+                    Button {
+                        sendPortalLinkNow()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if sendingPortalLink {
+                                ProgressView()
+                            } else {
+                                Text("Send Portal Link")
+                                    .fontWeight(.semibold)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(sendingPortalLink || (!sendByEmail && !sendBySms))
+                }
+
+                if let link = lastSentPortalLink, !link.isEmpty {
+                    Section("Last Link") {
+                        Text(link)
+                            .font(.footnote)
+                            .textSelection(.enabled)
+
+                        Button {
+                            UIPasteboard.general.string = link
+                        } label: {
+                            Label("Copy Link", systemImage: "doc.on.doc")
+                        }
+
+                        if let url = URL(string: link) {
+                            ShareLink(item: url) {
+                                Label("Share…", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Send Portal Link")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { showSendPortalSheet = false }
+                }
+            }
         }
     }
 
@@ -586,6 +604,25 @@ struct ClientEditView: View {
                 Label("Create Job", systemImage: "plus")
             }
             .disabled(isDraft)
+
+        }
+        .sbwCardRow()
+    }
+
+    private var clientFilesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Client Files")
+                .font(.headline)
+
+            Button {
+                openClientFolder()
+            } label: {
+                Label("Open Client Folder", systemImage: "folder")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .tint(SBWTheme.brandBlue)
+            .disabled(isDraft)
         }
         .sbwCardRow()
     }
@@ -621,6 +658,34 @@ struct ClientEditView: View {
 
         // Navigate into job immediately
         navigateToJob = job
+    }
+
+    private func openClientFolder() {
+        do {
+            let resolvedFolder: Folder
+            if let existing = clientFolder {
+                resolvedFolder = existing
+            } else {
+                resolvedFolder = try WorkspaceProvisioningService.ensureClientFolder(
+                    client: client,
+                    context: modelContext
+                )
+            }
+            clientFolder = resolvedFolder
+            let business = try fetchBusiness(for: client.businessID)
+            clientFolderSheetItem = ClientFolderSheetItem(business: business, folder: resolvedFolder)
+        } catch {
+            workspaceError = error.localizedDescription
+        }
+    }
+
+    private func fetchBusiness(for businessID: UUID) throws -> Business {
+        if let match = try modelContext.fetch(
+            FetchDescriptor<Business>(predicate: #Predicate { $0.id == businessID })
+        ).first {
+            return match
+        }
+        return try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
     }
 
     
@@ -897,10 +962,6 @@ struct ClientEditView: View {
 
     // MARK: - Attachments helpers
 
-    private var clientFolderKey: String {
-        "client:\(client.id.uuidString)"
-    }
-
     private func attachExisting(_ file: FileItem) {
         let fileKey = file.id.uuidString
         if attachments.contains(where: { $0.fileKey == fileKey }) { return }
@@ -950,11 +1011,15 @@ struct ClientEditView: View {
                 let didStart = url.startAccessingSecurityScopedResource()
                 defer { if didStart { url.stopAccessingSecurityScopedResource() } }
 
-                let fileId = UUID()
+                let folder = try resolveClientAttachmentFolder(kind: .attachments)
+
                 let ext = url.pathExtension.lowercased()
                 let uti = (UTType(filenameExtension: ext)?.identifier) ?? "public.data"
 
-                let (rel, size) = try AppFileStore.importFile(from: url, fileId: fileId)
+                let (rel, size) = try AppFileStore.importFile(
+                    from: url,
+                    toRelativeFolderPath: folder.relativePath
+                )
 
                 let file = FileItem(
                     displayName: url.deletingPathExtension().lastPathComponent,
@@ -963,8 +1028,8 @@ struct ClientEditView: View {
                     fileExtension: ext,
                     uti: uti,
                     byteCount: size,
-                    folderKey: clientFolderKey,
-                    folder: nil
+                    folderKey: folder.id.uuidString,
+                    folder: folder
                 )
                 modelContext.insert(file)
 
@@ -986,11 +1051,11 @@ struct ClientEditView: View {
 
     private func importAndAttachFromPhotos(data: Data, suggestedFileName: String) {
         do {
-            let fileId = UUID()
+            let folder = try resolveClientAttachmentFolder(kind: .photos)
 
             let (rel, size) = try AppFileStore.importData(
                 data,
-                fileId: fileId,
+                toRelativeFolderPath: folder.relativePath,
                 preferredFileName: suggestedFileName
             )
 
@@ -1004,8 +1069,8 @@ struct ClientEditView: View {
                 fileExtension: ext,
                 uti: uti,
                 byteCount: size,
-                folderKey: clientFolderKey,
-                folder: nil
+                folderKey: folder.id.uuidString,
+                folder: folder
             )
             modelContext.insert(file)
 
@@ -1017,6 +1082,17 @@ struct ClientEditView: View {
         } catch {
             attachError = error.localizedDescription
         }
+    }
+
+    private func resolveClientAttachmentFolder(kind: FolderDestinationKind) throws -> Folder {
+        let business = try fetchBusiness(for: client.businessID)
+        return try WorkspaceProvisioningService.resolveFolder(
+            business: business,
+            client: client,
+            job: nil,
+            kind: kind,
+            context: modelContext
+        )
     }
 
     // MARK: - ZIP Export
@@ -1071,6 +1147,10 @@ private struct SBWClientCardRow: ViewModifier {
 private extension View {
     func sbwCardRow() -> some View {
         modifier(SBWClientCardRow())
+    }
+
+    func erased() -> AnyView {
+        AnyView(self)
     }
 }
 

@@ -8,6 +8,7 @@ struct FileRowView: View {
     let onOpen: () -> Void
     let onZip: () -> Void
     let onMove: () -> Void
+    let onRename: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -57,6 +58,12 @@ struct FileRowView: View {
                 Label("Move…", systemImage: "folder")
             }
 
+            Button {
+                onRename()
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+
             Button(role: .destructive) {
                 onDelete()
             } label: {
@@ -76,6 +83,14 @@ struct FileRowView: View {
                 Label("Move", systemImage: "folder")
             }
             .tint(.blue)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                onRename()
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.orange)
         }
     }
 }

@@ -55,6 +55,8 @@ final class Contract {
 
     
     var job: Job? = nil
+    // Stores all linked job ids (including primary) as comma-separated UUIDs.
+    var linkedJobIDsCSV: String = ""
     
     // ✅ Optional “generated from” reference (should point to an estimate Invoice)
     var estimate: Invoice? = nil
@@ -79,7 +81,8 @@ final class Contract {
         pdfRelativePath: String = "",
         statusRaw: String = ContractStatus.draft.rawValue,
         client: Client? = nil,
-        invoice: Invoice? = nil
+        invoice: Invoice? = nil,
+        linkedJobIDsCSV: String = ""
     ) {
         self.businessID = businessID
         self.title = title
@@ -92,6 +95,7 @@ final class Contract {
         self.statusRaw = statusRaw
         self.client = client
         self.invoice = invoice
+        self.linkedJobIDsCSV = linkedJobIDsCSV
     }
 
     var status: ContractStatus {
