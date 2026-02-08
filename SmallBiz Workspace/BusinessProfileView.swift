@@ -13,6 +13,15 @@ struct BusinessProfileView: View {
     @State private var selectedLogoItem: PhotosPickerItem?
     @State private var profile: BusinessProfile?
     @State private var business: Business?
+    @State private var siteDraft: PublishedBusinessSite?
+    @State private var siteServicesText: String = ""
+    @State private var siteTeamText: String = ""
+    @State private var siteGalleryPathsText: String = ""
+    @State private var isPublishingSite = false
+    @State private var siteAlertMessage: String?
+    @State private var showSiteAlert = false
+    @State private var showSitePreviewSafari = false
+    @State private var sitePreviewURL: URL?
 
     @State private var paypalStatus: PayPalStatus?
     @State private var isLoadingPayPalStatus = false
@@ -48,9 +57,16 @@ struct BusinessProfileView: View {
                     } else {
                         self.business = businesses.first
                     }
+
+                    if let profile = self.profile {
+                        bindWebsiteDraft(for: profile)
+                    }
                 } catch {
                     self.profile = profiles.first
                     self.business = businesses.first
+                    if let profile = self.profile {
+                        bindWebsiteDraft(for: profile)
+                    }
                 }
                 Task { await refreshPayPalStatus() }
             }
@@ -67,7 +83,7 @@ struct BusinessProfileView: View {
     }
 
     private func profileView(_ profile: BusinessProfile) -> some View {
-        ZStack {
+        let base = ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
             SBWTheme.brandGradient
@@ -84,57 +100,88 @@ struct BusinessProfileView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             pinnedHeader(profile)
         }
-        .onChange(of: selectedLogoItem) { _, newItem in
-            Task {
-                if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                    profile.logoData = data
-                    try? modelContext.save()
+        return applyProfileLifecycle(to: base, profile: profile)
+    }
+
+    private func applyProfileLifecycle<V: View>(to view: V, profile: BusinessProfile) -> some View {
+        let withLocalSaves = view
+            .onChange(of: selectedLogoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        profile.logoData = data
+                        try? modelContext.save()
+                    }
                 }
             }
-        }
-        // ✅ auto-save for text changes
-        .onChange(of: profile.defaultThankYou) { _, _ in try? modelContext.save() }
-        .onChange(of: profile.defaultTerms) { _, _ in try? modelContext.save() }
-        .onChange(of: profile.catalogCategoriesText) { _, _ in try? modelContext.save() }
-        .onChange(of: profile.invoicePrefix) { _, _ in try? modelContext.save() }
-        .onChange(of: profile.nextInvoiceNumber) { _, _ in try? modelContext.save() }
-        .onChange(of: profile.lastInvoiceYear) { _, _ in try? modelContext.save() }
-        .onChange(of: activeBiz.activeBusinessID) { _, _ in
-            if let bizID = activeBiz.activeBusinessID {
-                self.business = businesses.first(where: { $0.id == bizID })
+            .onChange(of: profile.defaultThankYou) { _, _ in try? modelContext.save() }
+            .onChange(of: profile.defaultTerms) { _, _ in try? modelContext.save() }
+            .onChange(of: profile.catalogCategoriesText) { _, _ in try? modelContext.save() }
+            .onChange(of: profile.invoicePrefix) { _, _ in try? modelContext.save() }
+            .onChange(of: profile.nextInvoiceNumber) { _, _ in try? modelContext.save() }
+            .onChange(of: profile.lastInvoiceYear) { _, _ in try? modelContext.save() }
+
+        let withContextRefresh = withLocalSaves
+            .onChange(of: activeBiz.activeBusinessID) { _, _ in
+                if let bizID = activeBiz.activeBusinessID {
+                    self.business = businesses.first(where: { $0.id == bizID })
+                    if let refreshedProfile = profiles.first(where: { $0.businessID == bizID }) {
+                        self.profile = refreshedProfile
+                        bindWebsiteDraft(for: refreshedProfile)
+                    }
+                }
+                Task { await refreshPayPalStatus() }
             }
-            Task { await refreshPayPalStatus() }
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                handlePayPalReturnIfNeeded()
-            }
-        }
-        .sheet(isPresented: $showPayPalSafari) {
-            if let url = paypalOnboardingURL {
-                SafariView(url: url) {
-                    showPayPalSafari = false
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
                     handlePayPalReturnIfNeeded()
                 }
-            } else {
-                Text("Unable to open PayPal onboarding.")
-                    .foregroundStyle(.secondary)
             }
-        }
-        .alert("PayPal Error", isPresented: $showPayPalErrorAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(paypalErrorMessage ?? "Something went wrong.")
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    normalizePayPalMeIfNeeded()
-                    paypalMeFocused = false
+
+        let withSheets = withContextRefresh
+            .sheet(isPresented: $showPayPalSafari) {
+                if let url = paypalOnboardingURL {
+                    SafariView(url: url) {
+                        showPayPalSafari = false
+                        handlePayPalReturnIfNeeded()
+                    }
+                } else {
+                    Text("Unable to open PayPal onboarding.")
+                        .foregroundStyle(.secondary)
                 }
             }
-        }
+            .sheet(isPresented: $showSitePreviewSafari) {
+                if let url = sitePreviewURL {
+                    SafariView(url: url) {
+                        showSitePreviewSafari = false
+                    }
+                } else {
+                    Text("Unable to open website preview.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+        let withAlerts = withSheets
+            .alert("PayPal Error", isPresented: $showPayPalErrorAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(paypalErrorMessage ?? "Something went wrong.")
+            }
+            .alert("Website", isPresented: $showSiteAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(siteAlertMessage ?? "Something went wrong.")
+            }
+
+        return withAlerts
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        normalizePayPalMeIfNeeded()
+                        paypalMeFocused = false
+                    }
+                }
+            }
     }
 
     private func contentList(_ profile: BusinessProfile) -> some View {
@@ -264,6 +311,83 @@ struct BusinessProfileView: View {
 
             TextField("Default Terms & Conditions", text: Bindable(profile).defaultTerms, axis: .vertical)
                 .lineLimit(4...10)
+        }
+        .sbwCardRow()
+    }
+
+    private func websitePublishingCard(_ profile: BusinessProfile) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                cardHeader("Website", subtitle: "Publish your lightweight page")
+                Spacer()
+                websiteStatusPill
+            }
+
+            if let siteDraft {
+                TextField("Handle (example: javonfreeman)", text: websiteHandleBinding(siteDraft))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onSubmit {
+                        siteDraft.handle = PublishedBusinessSite.normalizeHandle(siteDraft.handle)
+                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                    }
+
+                TextField("Display Name", text: websiteAppNameBinding(siteDraft))
+
+                TextField("About Us", text: websiteAboutBinding(siteDraft), axis: .vertical)
+                    .lineLimit(2...6)
+
+                TextField("Services (one per line)", text: $siteServicesText, axis: .vertical)
+                    .lineLimit(2...6)
+                    .onChange(of: siteServicesText) { _, newValue in
+                        siteDraft.services = PublishedBusinessSite.splitLines(newValue)
+                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                    }
+
+                TextField("Team Members (one per line)", text: $siteTeamText, axis: .vertical)
+                    .lineLimit(2...6)
+                    .onChange(of: siteTeamText) { _, newValue in
+                        siteDraft.teamMembers = PublishedBusinessSite.splitLines(newValue)
+                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                    }
+
+                TextField("Gallery Local Paths (one per line)", text: $siteGalleryPathsText, axis: .vertical)
+                    .lineLimit(2...6)
+                    .onChange(of: siteGalleryPathsText) { _, newValue in
+                        siteDraft.galleryLocalPaths = PublishedBusinessSite.splitLines(newValue)
+                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                    }
+
+                HStack(spacing: 10) {
+                    Button {
+                        previewWebsiteTapped()
+                    } label: {
+                        Label("Preview Website", systemImage: "safari")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        Task { await publishWebsiteTapped(profile: profile) }
+                    } label: {
+                        if isPublishingSite {
+                            ProgressView()
+                        } else {
+                            Label("Publish Website", systemImage: "arrow.up.circle.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isPublishingSite)
+                }
+
+                if let lastError = siteDraft.lastPublishError,
+                   !lastError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(lastError)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            } else {
+                ProgressView("Preparing website draft…")
+            }
         }
         .sbwCardRow()
     }
@@ -462,6 +586,103 @@ struct BusinessProfileView: View {
         }
     }
 
+    // MARK: - Website publishing
+
+    private func websiteHandleBinding(_ draft: PublishedBusinessSite) -> Binding<String> {
+        Binding(
+            get: { draft.handle },
+            set: { newValue in
+                draft.handle = newValue
+                BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
+            }
+        )
+    }
+
+    private func websiteAppNameBinding(_ draft: PublishedBusinessSite) -> Binding<String> {
+        Binding(
+            get: { draft.appName },
+            set: { newValue in
+                draft.appName = newValue
+                BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
+            }
+        )
+    }
+
+    private func websiteAboutBinding(_ draft: PublishedBusinessSite) -> Binding<String> {
+        Binding(
+            get: { draft.aboutUs },
+            set: { newValue in
+                draft.aboutUs = newValue
+                BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
+            }
+        )
+    }
+
+    private func bindWebsiteDraft(for profile: BusinessProfile) {
+        guard let bizID = activeBiz.activeBusinessID ?? business?.id else { return }
+        let draft = BusinessSitePublishService.shared.draft(for: bizID, context: modelContext)
+
+        if draft.appName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let fallbackName = business?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            draft.appName = (fallbackName?.isEmpty == false) ? (fallbackName ?? "") : profile.name
+        }
+        if draft.handle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft.handle = PublishedBusinessSite.normalizeHandle(profile.name)
+        }
+
+        if draft.services.isEmpty {
+            draft.services = PublishedBusinessSite.splitLines(profile.catalogCategoriesText)
+        }
+        if draft.aboutUs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft.aboutUs = profile.defaultThankYou.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
+        siteDraft = draft
+        siteServicesText = PublishedBusinessSite.joinLines(draft.services)
+        siteTeamText = PublishedBusinessSite.joinLines(draft.teamMembers)
+        siteGalleryPathsText = PublishedBusinessSite.joinLines(draft.galleryLocalPaths)
+    }
+
+    private func previewWebsiteTapped() {
+        guard let siteDraft else { return }
+        let normalized = PublishedBusinessSite.normalizeHandle(siteDraft.handle)
+        guard !normalized.isEmpty else {
+            siteAlertMessage = "Add a website handle before previewing."
+            showSiteAlert = true
+            return
+        }
+
+        siteDraft.handle = normalized
+        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+        sitePreviewURL = PortalBackend.shared.publicSiteURL(handle: normalized)
+        showSitePreviewSafari = true
+    }
+
+    @MainActor
+    private func publishWebsiteTapped(profile: BusinessProfile) async {
+        guard let siteDraft else { return }
+        guard !isPublishingSite else { return }
+        isPublishingSite = true
+        defer { isPublishingSite = false }
+
+        siteDraft.services = PublishedBusinessSite.splitLines(siteServicesText)
+        siteDraft.teamMembers = PublishedBusinessSite.splitLines(siteTeamText)
+        siteDraft.galleryLocalPaths = PublishedBusinessSite.splitLines(siteGalleryPathsText)
+
+        do {
+            try await BusinessSitePublishService.shared.queuePublish(
+                draft: siteDraft,
+                profile: profile,
+                business: business,
+                context: modelContext
+            )
+        } catch {
+            siteAlertMessage = error.localizedDescription
+            showSiteAlert = true
+        }
+    }
+
     // MARK: - PayPal.me helpers
 
     private var paypalMeBinding: Binding<String> {
@@ -525,6 +746,33 @@ struct BusinessProfileView: View {
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var websiteStatusPill: some View {
+        let meta = websiteStatusMeta
+
+        return Text(meta.label)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(meta.color.opacity(0.15))
+            .foregroundStyle(meta.color)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var websiteStatusMeta: (label: String, color: Color) {
+        switch siteDraft?.status ?? .draft {
+        case .draft:
+            return ("Draft", .secondary)
+        case .queued:
+            return ("Queued", .orange)
+        case .publishing:
+            return ("Publishing", SBWTheme.brandBlue)
+        case .published:
+            return ("Published", SBWTheme.brandGreen)
+        case .error:
+            return ("Error", .red)
+        }
     }
 
     @MainActor

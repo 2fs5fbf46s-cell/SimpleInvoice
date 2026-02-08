@@ -11,6 +11,7 @@ enum FolderService {
             let newRoot = Folder(
                 id: UUID(),
                 businessID: businessID,
+                folderKey: "root:\(businessID.uuidString)",
                 name: "Files",
                 relativePath: "Files",
                 parentFolderID: nil,
@@ -71,6 +72,20 @@ enum FolderService {
             predicate: #Predicate<Folder> { folder in
                 folder.businessID == businessID &&
                 folder.relativePath == relativePath
+            }
+        )
+        return try context.fetch(descriptor).first
+    }
+
+    static func fetchFolder(
+        businessID: UUID,
+        folderKey: String,
+        context: ModelContext
+    ) throws -> Folder? {
+        let descriptor = FetchDescriptor<Folder>(
+            predicate: #Predicate<Folder> { folder in
+                folder.businessID == businessID &&
+                folder.folderKey == folderKey
             }
         )
         return try context.fetch(descriptor).first

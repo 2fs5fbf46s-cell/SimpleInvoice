@@ -5,6 +5,7 @@ import SwiftData
 final class Folder {
     var id: UUID = Foundation.UUID()
     var businessID: UUID = Foundation.UUID()
+    var folderKey: String = ""
 
     var name: String = ""
     var relativePath: String = ""
@@ -19,6 +20,7 @@ final class Folder {
     init(
         id: UUID = Foundation.UUID(),
         businessID: UUID,
+        folderKey: String = "",
         name: String,
         relativePath: String,
         parentFolderID: UUID? = nil,
@@ -27,6 +29,7 @@ final class Folder {
     ) {
         self.id = id
         self.businessID = businessID
+        self.folderKey = folderKey
         self.name = name
         self.relativePath = relativePath
         self.parentFolderID = parentFolderID

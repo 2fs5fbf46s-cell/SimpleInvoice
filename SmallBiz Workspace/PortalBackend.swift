@@ -126,6 +126,16 @@ struct EstimateStatusResponseDTO: Decodable {
     let updatedAt: String?
 }
 
+struct PublicSiteUpsertPayload: Encodable {
+    let appName: String
+    let heroUrl: String?
+    let services: [String]
+    let aboutUs: String
+    let team: [String]
+    let galleryUrls: [String]
+    let updatedAtMs: Int
+}
+
 // MARK: - Booking Admin DTOs
 
 struct BookingRequestDTO: Decodable, Identifiable, Equatable {
@@ -614,6 +624,106 @@ final class PortalBackend {
             URLQueryItem(name: "mode", value: mode)
         ]
         return comps.url!
+    }
+
+    func publicSiteURL(handle: String) -> URL {
+        let normalized = PublishedBusinessSite.normalizeHandle(handle)
+        let safeHandle = normalized.isEmpty ? handle : normalized
+        var comps = URLComponents(string: "https://biz.smallbizworkspace.com")!
+        comps.path = "/\(safeHandle)"
+        return comps.url!
+    }
+
+    // MARK: - Public Site Admin
+
+    private struct PublicSiteAssetUploadResponseDTO: Decodable {
+        let ok: Bool?
+        let url: String?
+        let error: String?
+    }
+
+    private struct PublicSiteUpsertResponseDTO: Decodable {
+        let ok: Bool?
+        let error: String?
+    }
+
+    func uploadSiteAssetToBlob(
+        businessId: String,
+        handle: String,
+        kind: String,
+        fileName: String,
+        data: Data
+    ) async throws -> String {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/public-site/asset-upload")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "handle": PublishedBusinessSite.normalizeHandle(handle),
+            "kind": kind,
+            "fileName": fileName,
+            "base64": data.base64EncodedString()
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (bodyData, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        let decoded = try decoder().decode(PublicSiteAssetUploadResponseDTO.self, from: bodyData)
+        if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
+        guard decoded.ok == true, let url = decoded.url, !url.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return url
+    }
+
+    func upsertPublicSite(
+        businessId: String,
+        handle: String,
+        payload: PublicSiteUpsertPayload
+    ) async throws -> Bool {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/public-site/upsert")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let normalizedHandle = PublishedBusinessSite.normalizeHandle(handle)
+        let body: [String: Any] = [
+            "businessId": businessId,
+            "handle": normalizedHandle,
+            "appName": payload.appName,
+            "heroUrl": payload.heroUrl ?? NSNull(),
+            "services": payload.services,
+            "aboutUs": payload.aboutUs,
+            "team": payload.team,
+            "galleryUrls": payload.galleryUrls,
+            "updatedAtMs": payload.updatedAtMs
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (bodyData, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        if let decoded = try? decoder().decode(PublicSiteUpsertResponseDTO.self, from: bodyData) {
+            if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
+            return decoded.ok ?? true
+        }
+
+        return true
     }
 
     // MARK: - Back-compat builders (used by other views)

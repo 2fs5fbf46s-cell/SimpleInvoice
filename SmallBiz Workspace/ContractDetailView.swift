@@ -50,6 +50,7 @@ struct ContractDetailView: View {
 
     // Job picker
     @State private var showJobPicker = false
+    @State private var showAdvancedOptions = false
     @State private var lastAutoRenderedBody: String = ""
     @State private var pendingTemplateRerender = false
 
@@ -80,21 +81,17 @@ struct ContractDetailView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            SBWTheme.headerWash()
-
-            Form {
-                headerSection
-                jobSection
-                bodySection
-                statusSection
-                portalSection
-                attachmentsSection
-                exportSection
-            }
-            .scrollContentBackground(.hidden)
+        List {
+            essentialsSection
+            jobsSection
+            statusSection
+            portalSection
+            contractBodySection
+            advancedOptionsSection
         }
+        .listStyle(.plain)
+        .listRowSeparator(.hidden)
+        .safeAreaInset(edge: .top, spacing: 0) { pinnedHeader }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
@@ -112,18 +109,23 @@ struct ContractDetailView: View {
         // Job picker
         .sheet(isPresented: $showJobPicker) {
             NavigationStack {
-                JobPickerView(
+                JobsPickerView(
                     jobs: jobs,
-                    selected: Binding(
-                        get: { contract.job },
+                    selectedJobIDs: Binding(
+                        get: { linkedJobIDs },
                         set: { newValue in
-                            contract.job = newValue
-                            rerenderBodyFromTemplate()
-                            try? modelContext.save()
+                            setLinkedJobs(from: newValue)
+                        }
+                    ),
+                    primaryJobID: Binding(
+                        get: { contract.job?.id },
+                        set: { newValue in
+                            guard let newValue else { return }
+                            setPrimaryJob(to: newValue)
                         }
                     )
                 )
-                .navigationTitle("Select Job")
+                .navigationTitle("Select Jobs")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -240,6 +242,7 @@ struct ContractDetailView: View {
         .onAppear {
             lastStatusRaw = contract.statusRaw
             lastAutoRenderedBody = contract.renderedBody
+            syncLinkedJobsOnAppear()
             Task {
                 try? DocumentFileIndexService.upsertContractPDF(
                     contract: contract,
@@ -251,6 +254,7 @@ struct ContractDetailView: View {
         .onChange(of: contract.title) { _, _ in scheduleSave() }
         .onChange(of: contract.renderedBody) { _, _ in scheduleSave() }
         .onChange(of: contract.job?.id) { _, _ in
+            syncLinkedJobIDsFromPrimary()
             rerenderBodyFromTemplate()
         }
 
@@ -356,42 +360,97 @@ private extension ContractDetailView {
 // MARK: - Sections
 
 private extension ContractDetailView {
+    var pinnedHeader: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(navTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(secondaryHeaderText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            statusPill(text: contract.statusRaw.uppercased())
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            SBWTheme.brandGradient
+                .opacity(0.12)
+                .overlay(Color(.systemBackground).opacity(0.85))
+        )
+        .overlay(alignment: .bottom) { Divider().opacity(0.35) }
+    }
 
-    var headerSection: some View {
-        Section("Template Info") {
+    var essentialsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Essentials")
+                .font(.headline)
+
+            TextField("Title", text: $contract.title)
+                .onChange(of: contract.title) { _, _ in scheduleSave() }
+
             LabeledContent("Template", value: contract.templateName.isEmpty ? "—" : contract.templateName)
             LabeledContent("Category", value: contract.templateCategory.isEmpty ? "General" : contract.templateCategory)
         }
+        .sbwContractCardRow()
     }
 
-    var jobSection: some View {
-        Section("Job / Project") {
-            HStack {
-                Text("Job")
-                Spacer()
-                Text(contract.job?.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                     ? (contract.job?.title ?? "")
-                     : "None")
-                    .foregroundStyle(contract.job == nil ? .secondary : .primary)
-                    .lineLimit(1)
+    var jobsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Jobs")
+                .font(.headline)
+
+            if linkedJobsResolved.isEmpty {
+                Text("No jobs linked")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(linkedJobsResolved) { job in
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(job.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled Job" : job.title)
+                                .lineLimit(1)
+                            Text(job.status.uppercased())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if contract.job?.id == job.id {
+                            Text("Primary")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.vertical, 3)
+                                .padding(.horizontal, 8)
+                                .background(Capsule().fill(SBWTheme.cardStroke.opacity(0.35)))
+                        }
+                    }
+                }
             }
 
-            Button("Select Job") { showJobPicker = true }
+            Button("Manage Jobs") { showJobPicker = true }
+                .buttonStyle(.bordered)
 
-            if contract.job != nil {
+            if !linkedJobsResolved.isEmpty {
                 Button(role: .destructive) {
                     contract.job = nil
+                    contract.linkedJobIDsCSV = ""
                     rerenderBodyFromTemplate()
                     try? modelContext.save()
                 } label: {
-                    Text("Clear Job")
+                    Text("Clear Linked Jobs")
                 }
             }
         }
+        .sbwContractCardRow()
     }
 
     var portalSection: some View {
-        Section("Client Portal") {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Client Portal")
+                .font(.headline)
+
             let portalEnabled = contract.client?.portalEnabled == true
             let hasClient = contract.client != nil
             let canOpenPortal = hasClient && portalEnabled
@@ -424,28 +483,40 @@ private extension ContractDetailView {
                 .tint(SBWTheme.brandBlue)
             }
         }
+        .sbwContractCardRow()
     }
 
-    var bodySection: some View {
-        Section("Contract Body") {
+    var contractBodySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Contract Body")
+                .font(.headline)
+
             TextEditor(text: $contract.renderedBody)
                 .frame(minHeight: 260)
                 .font(.body)
         }
+        .sbwContractCardRow()
     }
 
     var statusSection: some View {
-        Section("Status") {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Status")
+                .font(.headline)
+
             Picker("Status", selection: $contract.statusRaw) {
                 ForEach(ContractStatus.allCases, id: \.self) { s in
                     Text(s.rawValue.capitalized).tag(s.rawValue)
                 }
             }
         }
+        .sbwContractCardRow()
     }
 
-    var attachmentsSection: some View {
-        Section("Attachments") {
+    var attachmentsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Attachments")
+                .font(.subheadline.weight(.semibold))
+
             if attachments.isEmpty {
                 Text("No attachments yet")
                     .foregroundStyle(.secondary)
@@ -488,10 +559,14 @@ private extension ContractDetailView {
                 }
             }
         }
+        .sbwContractCardRow()
     }
 
-    var exportSection: some View {
-        Section("Export / Share") {
+    var exportCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Export / Share")
+                .font(.subheadline.weight(.semibold))
+
             Button { previewPDF() } label: {
                 Label("Preview PDF", systemImage: "doc.richtext")
             }
@@ -505,6 +580,66 @@ private extension ContractDetailView {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
         }
+        .sbwContractCardRow()
+    }
+
+    var advancedOptionsSection: some View {
+        DisclosureGroup(isExpanded: $showAdvancedOptions) {
+            VStack(spacing: 12) {
+                attachmentsCard
+                exportCard
+            }
+            .padding(.top, 10)
+        } label: {
+            HStack {
+                Text("Advanced Options")
+                    .font(.headline)
+                Spacer()
+                Text(showAdvancedOptions ? "Hide" : "Show")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sbwContractCardRow()
+    }
+}
+
+private extension ContractDetailView {
+    var linkedJobIDs: [UUID] {
+        parseJobIDs(contract.linkedJobIDsCSV)
+    }
+
+    var linkedJobsResolved: [Job] {
+        let ids = Set(linkedJobIDs)
+        let selected = jobs.filter { ids.contains($0.id) }
+        if selected.isEmpty, let primary = contract.job {
+            return [primary]
+        }
+        return selected.sorted { $0.startDate > $1.startDate }
+    }
+
+    var secondaryHeaderText: String {
+        if let client = contract.client?.name.trimmingCharacters(in: .whitespacesAndNewlines), !client.isEmpty {
+            return client
+        }
+        let template = contract.templateName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return template.isEmpty ? "Contract" : template
+    }
+
+    func statusPill(text: String) -> some View {
+        let colors = SBWTheme.chip(forStatus: text)
+        return Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .background(Capsule().fill(colors.bg))
+            .foregroundStyle(colors.fg)
+    }
+
+    func parseJobIDs(_ csv: String) -> [UUID] {
+        csv
+            .split(separator: ",")
+            .compactMap { UUID(uuidString: String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 }
 
@@ -555,6 +690,62 @@ private extension ContractDetailView {
     @MainActor
     private func openContractPortalTapped() {
         Task { await openContractInClientPortal() }
+    }
+
+    func syncLinkedJobsOnAppear() {
+        var ids = Set(linkedJobIDs)
+        if let primaryID = contract.job?.id {
+            ids.insert(primaryID)
+        }
+        let resolved = jobs.filter { ids.contains($0.id) }
+        if contract.job == nil, let first = resolved.sorted(by: { $0.startDate > $1.startDate }).first {
+            contract.job = first
+            ids.insert(first.id)
+        }
+        contract.linkedJobIDsCSV = ids.map(\.uuidString).joined(separator: ",")
+    }
+
+    func syncLinkedJobIDsFromPrimary() {
+        guard let id = contract.job?.id else { return }
+        var ids = Set(linkedJobIDs)
+        ids.insert(id)
+        contract.linkedJobIDsCSV = ids.map(\.uuidString).joined(separator: ",")
+        scheduleSave()
+    }
+
+    func setPrimaryJob(to jobID: UUID) {
+        guard let picked = jobs.first(where: { $0.id == jobID }) else { return }
+        contract.job = picked
+        var ids = Set(linkedJobIDs)
+        ids.insert(jobID)
+        contract.linkedJobIDsCSV = ids.map(\.uuidString).joined(separator: ",")
+        rerenderBodyFromTemplate()
+        scheduleSave()
+    }
+
+    func setLinkedJobs(from ids: [UUID]) {
+        let unique = Array(Set(ids))
+        let selectedJobs = jobs.filter { unique.contains($0.id) }
+            .sorted { $0.startDate > $1.startDate }
+
+        if let current = contract.job, selectedJobs.contains(where: { $0.id == current.id }) {
+            contract.job = current
+        } else {
+            contract.job = selectedJobs.first
+        }
+
+        if contract.job == nil {
+            contract.linkedJobIDsCSV = ""
+        } else {
+            var finalIDs = Set(unique)
+            if let primaryID = contract.job?.id {
+                finalIDs.insert(primaryID)
+            }
+            contract.linkedJobIDsCSV = finalIDs.map(\.uuidString).joined(separator: ",")
+        }
+
+        rerenderBodyFromTemplate()
+        scheduleSave()
     }
 
     func scheduleSave() {
@@ -707,8 +898,6 @@ private extension ContractDetailView {
         return url
     }
 
-    var contractFolderKey: String { "contract:\(contract.id.uuidString)" }
-
     func attachmentURLsForContract() -> [URL] {
         attachments.compactMap { a in
             guard let file = a.file else { return nil }
@@ -746,10 +935,14 @@ private extension ContractDetailView {
                 let didStart = url.startAccessingSecurityScopedResource()
                 defer { if didStart { url.stopAccessingSecurityScopedResource() } }
 
-                let fileId = UUID()
+                let folder = try resolveAttachmentFolder(kind: .attachments)
+
                 let ext = url.pathExtension.lowercased()
                 let uti = (UTType(filenameExtension: ext)?.identifier) ?? "public.data"
-                let (rel, size) = try AppFileStore.importFile(from: url, fileId: fileId)
+                let (rel, size) = try AppFileStore.importFile(
+                    from: url,
+                    toRelativeFolderPath: folder.relativePath
+                )
 
                 let item = FileItem(
                     displayName: url.deletingPathExtension().lastPathComponent,
@@ -758,8 +951,8 @@ private extension ContractDetailView {
                     fileExtension: ext,
                     uti: uti,
                     byteCount: size,
-                    folderKey: contractFolderKey,
-                    folder: nil
+                    folderKey: folder.id.uuidString,
+                    folder: folder
                 )
                 modelContext.insert(item)
 
@@ -775,8 +968,12 @@ private extension ContractDetailView {
 
     func importAndAttachFromPhotos(data: Data, suggestedFileName: String) {
         do {
-            let fileId = UUID()
-            let (rel, size) = try AppFileStore.importData(data, fileId: fileId, preferredFileName: suggestedFileName)
+            let folder = try resolveAttachmentFolder(kind: .photos)
+            let (rel, size) = try AppFileStore.importData(
+                data,
+                toRelativeFolderPath: folder.relativePath,
+                preferredFileName: suggestedFileName
+            )
             let ext = (suggestedFileName as NSString).pathExtension.lowercased()
             let uti = UTType(filenameExtension: ext)?.identifier ?? "public.jpeg"
 
@@ -787,8 +984,8 @@ private extension ContractDetailView {
                 fileExtension: ext,
                 uti: uti,
                 byteCount: size,
-                folderKey: contractFolderKey,
-                folder: nil
+                folderKey: folder.id.uuidString,
+                folder: folder
             )
             modelContext.insert(file)
 
@@ -800,13 +997,25 @@ private extension ContractDetailView {
             attachError = error.localizedDescription
         }
     }
+
+    func resolveAttachmentFolder(kind: FolderDestinationKind) throws -> Folder {
+        let business = try fetchBusiness(for: contract.businessID)
+        return try WorkspaceProvisioningService.resolveFolder(
+            business: business,
+            client: contract.resolvedClient,
+            job: contract.job,
+            kind: kind,
+            context: modelContext
+        )
+    }
 }
 
 // MARK: - Inline Job Picker
 
-private struct JobPickerView: View {
+private struct JobsPickerView: View {
     let jobs: [Job]
-    @Binding var selected: Job?
+    @Binding var selectedJobIDs: [UUID]
+    @Binding var primaryJobID: UUID?
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText: String = ""
@@ -814,33 +1023,59 @@ private struct JobPickerView: View {
     private var filtered: [Job] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty { return jobs }
-        return jobs.filter { $0.title.lowercased().contains(q) || $0.status.lowercased().contains(q) }
+        return jobs.filter {
+            $0.title.lowercased().contains(q) || $0.status.lowercased().contains(q)
+        }
+    }
+
+    private var selectedSet: Set<UUID> {
+        Set(selectedJobIDs)
     }
 
     var body: some View {
         List {
-            Button {
-                selected = nil
-                dismiss()
-            } label: {
-                HStack {
-                    Text("None")
-                    Spacer()
-                    if selected == nil {
-                        Image(systemName: "checkmark").foregroundStyle(.tint)
+            if selectedJobIDs.isEmpty {
+                Text("No linked jobs")
+                    .foregroundStyle(.secondary)
+            } else {
+                Section("Linked Jobs") {
+                    ForEach(jobs.filter { selectedSet.contains($0.id) }) { job in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(job.title.isEmpty ? "Untitled Job" : job.title)
+                                Text(job.status.capitalized)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if primaryJobID == job.id {
+                                Text("Primary")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            primaryJobID = job.id
+                        }
+                    }
+                    Button(role: .destructive) {
+                        selectedJobIDs = []
+                        primaryJobID = nil
+                    } label: {
+                        Text("Clear All")
                     }
                 }
             }
 
-            Section("Jobs") {
+            Section("All Jobs") {
                 if filtered.isEmpty {
                     Text("No jobs found.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(filtered) { job in
                         Button {
-                            selected = job
-                            dismiss()
+                            toggle(job.id)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -850,16 +1085,62 @@ private struct JobPickerView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if selected?.id == job.id {
-                                    Image(systemName: "checkmark")
+                                if selectedSet.contains(job.id) {
+                                    Image(systemName: "checkmark.circle.fill")
                                         .foregroundStyle(.tint)
                                 }
                             }
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
         }
         .searchable(text: $searchText, prompt: "Search jobs")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") { dismiss() }
+            }
+        }
+    }
+
+    private func toggle(_ id: UUID) {
+        var set = Set(selectedJobIDs)
+        if set.contains(id) {
+            set.remove(id)
+            if primaryJobID == id {
+                primaryJobID = set.first
+            }
+        } else {
+            set.insert(id)
+            if primaryJobID == nil {
+                primaryJobID = id
+            }
+        }
+        selectedJobIDs = Array(set)
+    }
+}
+
+private struct SBWContractCardRow: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(SBWTheme.cardStroke, lineWidth: 1)
+            )
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+    }
+}
+
+private extension View {
+    func sbwContractCardRow() -> some View {
+        modifier(SBWContractCardRow())
     }
 }

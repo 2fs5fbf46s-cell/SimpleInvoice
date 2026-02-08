@@ -27,6 +27,12 @@ struct MoreView: View {
                 destination: AnyView(BusinessProfileView())
             ),
             MoreItem(
+                title: "Website",
+                systemImage: "globe",
+                keyword: "Website",
+                destination: AnyView(WebsiteCustomizationView())
+            ),
+            MoreItem(
                 title: "Client Portal",
                 systemImage: "person.2.badge.gearshape",
                 keyword: "Client Portal",

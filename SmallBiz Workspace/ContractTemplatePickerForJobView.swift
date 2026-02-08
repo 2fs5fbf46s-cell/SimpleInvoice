@@ -169,6 +169,7 @@ struct ContractTemplatePickerForJobView: View {
 
         // ✅ Link to Job hub
         draft.job = job
+        draft.linkedJobIDsCSV = job.id.uuidString
 
         modelContext.insert(draft)
 

@@ -16,7 +16,17 @@ enum DocumentFileIndexService {
             context: context
         )
 
-        let relativePath = invoicePDFRelativePath(invoiceID: invoice.id)
+        let business = try fetchBusiness(for: invoice.businessID, context: context)
+        let folderKind: FolderDestinationKind = invoice.documentType == "estimate" ? .estimates : .invoices
+        let destination = try WorkspaceProvisioningService.resolveFolder(
+            business: business,
+            client: invoice.client,
+            job: invoice.job,
+            kind: folderKind,
+            context: context
+        )
+
+        let relativePath = "\(destination.relativePath)/\(invoice.id.uuidString).pdf"
         _ = try AppFileStore.writeData(pdfData, toRelativePath: relativePath)
 
         if invoice.pdfRelativePath != relativePath {
@@ -40,7 +50,19 @@ enum DocumentFileIndexService {
             business: business
         )
 
-        let relativePath = contractPDFRelativePath(contractID: contract.id)
+        _ = business // preserved for API compatibility
+        let resolvedClient = contract.resolvedClient
+        let businessID = resolvedClient?.businessID ?? contract.businessID
+        let resolvedBusiness = try fetchBusiness(for: businessID, context: context)
+        let destination = try WorkspaceProvisioningService.resolveFolder(
+            business: resolvedBusiness,
+            client: resolvedClient,
+            job: contract.job,
+            kind: .contracts,
+            context: context
+        )
+
+        let relativePath = "\(destination.relativePath)/\(contract.id.uuidString).pdf"
         _ = try AppFileStore.writeData(pdfData, toRelativePath: relativePath)
 
         if contract.pdfRelativePath != relativePath {
@@ -55,21 +77,16 @@ enum DocumentFileIndexService {
 
     @MainActor
     static func upsertInvoicePDF(invoice: Invoice, context: ModelContext) throws {
-        guard let job = invoice.job else { return }
         let pdfRel = invoice.pdfRelativePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pdfRel.isEmpty else { return }
 
-        let jobFolder = try WorkspaceProvisioningService.ensureJobWorkspace(
-            job: job,
-            context: context
-        )
-
-        let invoicesFolderRel = pathAppending(jobFolder.relativePath, "invoices")
-        let destFolder = try fetchOrCreateJobSubfolder(
-            businessID: job.businessID,
-            relativePath: invoicesFolderRel,
-            name: "Invoices",
-            parentID: jobFolder.id,
+        let business = try fetchBusiness(for: invoice.businessID, context: context)
+        let folderKind: FolderDestinationKind = invoice.documentType == "estimate" ? .estimates : .invoices
+        let destination = try WorkspaceProvisioningService.resolveFolder(
+            business: business,
+            client: invoice.client,
+            job: invoice.job,
+            kind: folderKind,
             context: context
         )
 
@@ -79,29 +96,24 @@ enum DocumentFileIndexService {
             displayName: fileName.replacingOccurrences(of: ".pdf", with: ""),
             originalFileName: fileName,
             byteCount: 0,
-            folder: destFolder,
-            jobID: job.id,
+            folder: destination,
             context: context
         )
     }
 
     @MainActor
     static func upsertContractPDF(contract: Contract, context: ModelContext) throws {
-        guard let job = contract.job else { return }
         let pdfRel = contract.pdfRelativePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pdfRel.isEmpty else { return }
 
-        let jobFolder = try WorkspaceProvisioningService.ensureJobWorkspace(
-            job: job,
-            context: context
-        )
-
-        let contractsFolderRel = pathAppending(jobFolder.relativePath, "contracts")
-        let destFolder = try fetchOrCreateJobSubfolder(
-            businessID: job.businessID,
-            relativePath: contractsFolderRel,
-            name: "Contracts",
-            parentID: jobFolder.id,
+        let resolvedClient = contract.resolvedClient
+        let businessID = resolvedClient?.businessID ?? contract.businessID
+        let resolvedBusiness = try fetchBusiness(for: businessID, context: context)
+        let destination = try WorkspaceProvisioningService.resolveFolder(
+            business: resolvedBusiness,
+            client: resolvedClient,
+            job: contract.job,
+            kind: .contracts,
             context: context
         )
 
@@ -111,8 +123,7 @@ enum DocumentFileIndexService {
             displayName: fileName.replacingOccurrences(of: ".pdf", with: ""),
             originalFileName: fileName,
             byteCount: 0,
-            folder: destFolder,
-            jobID: job.id,
+            folder: destination,
             context: context
         )
     }
@@ -132,44 +143,12 @@ enum DocumentFileIndexService {
 
     // MARK: - Private
 
-    private static func fetchOrCreateJobSubfolder(
-        businessID: UUID,
-        relativePath: String,
-        name: String,
-        parentID: UUID,
-        context: ModelContext
-    ) throws -> Folder {
-        if let existing = try FolderService.fetchFolder(
-            businessID: businessID,
-            relativePath: relativePath,
-            context: context
-        ) {
-            if existing.parentFolderID != parentID {
-                existing.parentFolderID = parentID
-                existing.updatedAt = .now
-                try context.save()
-            }
-            return existing
-        }
-
-        let folder = Folder(
-            businessID: businessID,
-            name: name,
-            relativePath: relativePath,
-            parentFolderID: parentID
-        )
-        context.insert(folder)
-        try context.save()
-        return folder
-    }
-
     private static func upsertFileItem(
         relativePath: String,
         displayName: String,
         originalFileName: String,
         byteCount: Int64,
         folder: Folder,
-        jobID: UUID,
         context: ModelContext
     ) throws {
         let descriptor = FetchDescriptor<FileItem>(
@@ -180,7 +159,7 @@ enum DocumentFileIndexService {
 
         let ext = "pdf"
         let uti = UTType.pdf.identifier
-        let folderKey = "job:\(jobID.uuidString)"
+        let folderKey = folder.id.uuidString
 
         if let existing = try context.fetch(descriptor).first {
             existing.displayName = displayName
@@ -216,15 +195,21 @@ enum DocumentFileIndexService {
 
     private static func fetchContracts(for job: Job, context: ModelContext) throws -> [Contract] {
         let all = try context.fetch(FetchDescriptor<Contract>())
-        return all.filter { $0.job?.id == job.id }
+        return all.filter {
+            if $0.job?.id == job.id { return true }
+            if $0.invoice?.job?.id == job.id { return true }
+            if $0.estimate?.job?.id == job.id { return true }
+            return false
+        }
     }
 
-    private static func invoicePDFRelativePath(invoiceID: UUID) -> String {
-        "files/docs/invoices/\(invoiceID.uuidString).pdf"
-    }
-
-    private static func contractPDFRelativePath(contractID: UUID) -> String {
-        "files/docs/contracts/\(contractID.uuidString).pdf"
+    private static func fetchBusiness(for businessID: UUID, context: ModelContext) throws -> Business {
+        if let match = try context.fetch(
+            FetchDescriptor<Business>(predicate: #Predicate { $0.id == businessID })
+        ).first {
+            return match
+        }
+        return try ActiveBusinessProvider.getOrCreateActiveBusiness(in: context)
     }
 
     private static func makeInvoiceFileName(invoice: Invoice) -> String {
@@ -245,11 +230,4 @@ enum DocumentFileIndexService {
         return "\(safe).pdf"
     }
 
-    private static func pathAppending(_ base: String, _ component: String) -> String {
-        let trimmedBase = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let trimmedComponent = component.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if trimmedBase.isEmpty { return trimmedComponent }
-        if trimmedComponent.isEmpty { return trimmedBase }
-        return "\(trimmedBase)/\(trimmedComponent)"
-    }
 }

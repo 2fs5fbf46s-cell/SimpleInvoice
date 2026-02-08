@@ -16,23 +16,26 @@ enum AppFileStoreError: Error {
 struct AppFileStore {
     static let baseFolderName = "SmallBizWorkspace"
     static let filesFolderName = "files"
+    private static let baseOverrideEnv = "SBW_FILESTORE_BASE_URL"
 
     static func appSupportBaseURL() throws -> URL {
+        if let override = ProcessInfo.processInfo.environment[baseOverrideEnv], !override.isEmpty {
+            let overrideURL = URL(fileURLWithPath: override, isDirectory: true)
+            try ensureDirectory(at: overrideURL)
+            return overrideURL
+        }
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw AppFileStoreError.cannotAccessApplicationSupport
         }
+        try ensureDirectory(at: appSupport)
         let base = appSupport.appendingPathComponent(baseFolderName, isDirectory: true)
-        if !FileManager.default.fileExists(atPath: base.path) {
-            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        }
+        try ensureDirectory(at: base)
         return base
     }
 
     static func filesRootURL() throws -> URL {
         let root = try appSupportBaseURL().appendingPathComponent(filesFolderName, isDirectory: true)
-        if !FileManager.default.fileExists(atPath: root.path) {
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        }
+        try ensureDirectory(at: root)
         return root
     }
 
@@ -41,9 +44,7 @@ struct AppFileStore {
     static func importFile(from sourceURL: URL, fileId: UUID, preferredFileName: String? = nil) throws -> (String, Int64) {
         let root = try filesRootURL()
         let container = root.appendingPathComponent(fileId.uuidString, isDirectory: true)
-        if !FileManager.default.fileExists(atPath: container.path) {
-            try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
-        }
+        try ensureDirectory(at: container)
 
         let name = (preferredFileName?.isEmpty == false ? preferredFileName! : sourceURL.lastPathComponent)
         let destURL = container.appendingPathComponent(name, isDirectory: false)
@@ -70,6 +71,35 @@ struct AppFileStore {
         return (rel, size)
     }
 
+    static func importFile(
+        from sourceURL: URL,
+        toRelativeFolderPath folderRelativePath: String,
+        preferredFileName: String? = nil
+    ) throws -> (String, Int64) {
+        let base = try appSupportBaseURL()
+        let folderPath = folderRelativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let folderURL = base.appendingPathComponent(folderPath, isDirectory: true)
+        try ensureDirectory(at: folderURL)
+
+        let name = (preferredFileName?.isEmpty == false ? preferredFileName! : sourceURL.lastPathComponent)
+        let destURL = folderURL.appendingPathComponent(name, isDirectory: false)
+        let finalURL = uniqueURLIfNeeded(destURL)
+
+        do {
+            if FileManager.default.fileExists(atPath: finalURL.path) {
+                try FileManager.default.removeItem(at: finalURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: finalURL)
+        } catch {
+            throw AppFileStoreError.copyFailed
+        }
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: finalURL.path)
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        let rel = finalURL.path.replacingOccurrences(of: base.path + "/", with: "")
+        return (rel, size)
+    }
+
     static func absoluteURL(forRelativePath rel: String) throws -> URL {
         return try appSupportBaseURL().appendingPathComponent(rel, isDirectory: false)
     }
@@ -80,9 +110,7 @@ struct AppFileStore {
         let base = try appSupportBaseURL()
         let destURL = base.appendingPathComponent(rel, isDirectory: false)
         let parent = destURL.deletingLastPathComponent()
-        if !FileManager.default.fileExists(atPath: parent.path) {
-            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-        }
+        try ensureDirectory(at: parent)
 
         try data.write(to: destURL, options: .atomic)
 
@@ -105,9 +133,7 @@ struct AppFileStore {
         let root = try filesRootURL()
         let container = root.appendingPathComponent(fileId.uuidString, isDirectory: true)
 
-        if !FileManager.default.fileExists(atPath: container.path) {
-            try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
-        }
+        try ensureDirectory(at: container)
 
         let destURL = container.appendingPathComponent(preferredFileName, isDirectory: false)
         let finalURL = uniqueURLIfNeeded(destURL)
@@ -118,6 +144,26 @@ struct AppFileStore {
         let size = (attrs[.size] as? NSNumber)?.int64Value ?? Int64(data.count)
 
         let base = try appSupportBaseURL()
+        let rel = finalURL.path.replacingOccurrences(of: base.path + "/", with: "")
+        return (rel, size)
+    }
+
+    static func importData(
+        _ data: Data,
+        toRelativeFolderPath folderRelativePath: String,
+        preferredFileName: String
+    ) throws -> (String, Int64) {
+        let base = try appSupportBaseURL()
+        let folderPath = folderRelativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let folderURL = base.appendingPathComponent(folderPath, isDirectory: true)
+        try ensureDirectory(at: folderURL)
+
+        let destURL = folderURL.appendingPathComponent(preferredFileName, isDirectory: false)
+        let finalURL = uniqueURLIfNeeded(destURL)
+        try data.write(to: finalURL, options: .atomic)
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: finalURL.path)
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? Int64(data.count)
         let rel = finalURL.path.replacingOccurrences(of: base.path + "/", with: "")
         return (rel, size)
     }
@@ -139,5 +185,38 @@ struct AppFileStore {
             i += 1
         }
         return candidate
+    }
+
+    private static func ensureDirectory(at url: URL) throws {
+        if url.path.isEmpty || url.path == "/" {
+            return
+        }
+
+        let fm = FileManager.default
+        let parent = url.deletingLastPathComponent()
+        if parent.path != url.path && !parent.path.isEmpty && parent.path != "/" {
+            try ensureDirectory(at: parent)
+        }
+
+        var isDirectory: ObjCBool = false
+        let exists = fm.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        if exists {
+            if !isDirectory.boolValue {
+                try fm.removeItem(at: url)
+            } else {
+                return
+            }
+        }
+
+        do {
+            try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            // A concurrent caller may have created the folder between the existence check and create call.
+            var postCreateIsDirectory: ObjCBool = false
+            if fm.fileExists(atPath: url.path, isDirectory: &postCreateIsDirectory), postCreateIsDirectory.boolValue {
+                return
+            }
+            throw error
+        }
     }
 }

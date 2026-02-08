@@ -23,6 +23,8 @@ struct FolderBrowserView: View {
 
     @State private var renamingFolder: Folder? = nil
     @State private var renameText: String = ""
+    @State private var renamingFile: FileItem? = nil
+    @State private var renameFileText: String = ""
 
     // Import
     @State private var showFileImporter = false
@@ -211,6 +213,19 @@ struct FolderBrowserView: View {
                 renamingFolder = nil
             }
         }
+        .alert("Rename File", isPresented: Binding(
+            get: { renamingFile != nil },
+            set: { if !$0 { renamingFile = nil } }
+        )) {
+            TextField("New file name", text: $renameFileText)
+            Button("Cancel", role: .cancel) { renamingFile = nil }
+            Button("Save") {
+                if let file = renamingFile {
+                    renameFile(file, newName: renameFileText)
+                }
+                renamingFile = nil
+            }
+        }
 
         // Bulk delete confirmation
         .confirmationDialog("Delete selected items?", isPresented: $confirmBulkDelete) {
@@ -252,6 +267,10 @@ struct FolderBrowserView: View {
                         onOpen: { openPreview(for: item) },
                         onZip: { exportZipForFiles([item]) },
                         onMove: { selection = [item.id]; showMoveSheet = true },
+                        onRename: {
+                            renamingFile = item
+                            renameFileText = item.originalFileName
+                        },
                         onDelete: { deleteFile(item) }
                     )
                     .tag(item.id)
@@ -555,6 +574,45 @@ struct FolderBrowserView: View {
     private func deleteOffsets(_ offsets: IndexSet, from list: [FileItem]) {
         for idx in offsets where idx < list.count {
             deleteFile(list[idx])
+        }
+    }
+
+    private func renameFile(_ item: FileItem, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let sanitized = trimmed
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+
+        do {
+            let oldURL = try AppFileStore.absoluteURL(forRelativePath: item.relativePath)
+            let newURL = oldURL.deletingLastPathComponent().appendingPathComponent(sanitized, isDirectory: false)
+
+            if oldURL.path != newURL.path {
+                if FileManager.default.fileExists(atPath: newURL.path) {
+                    importError = "A file with that name already exists."
+                    return
+                }
+                try FileManager.default.moveItem(at: oldURL, to: newURL)
+            }
+
+            let base = try AppFileStore.appSupportBaseURL()
+            let newRel = newURL.path.replacingOccurrences(of: base.path + "/", with: "")
+            let ext = (sanitized as NSString).pathExtension.lowercased()
+            let displayName = (sanitized as NSString).deletingPathExtension
+
+            item.relativePath = newRel
+            item.originalFileName = sanitized
+            item.displayName = displayName.isEmpty ? sanitized : displayName
+            item.fileExtension = ext
+            item.uti = UTType(filenameExtension: ext)?.identifier ?? "public.data"
+            item.updatedAt = .now
+
+            try modelContext.save()
+            refreshToken = UUID()
+        } catch {
+            importError = error.localizedDescription
         }
     }
 
