@@ -353,7 +353,8 @@ struct ClientPortalPreviewView: View {
             let pdfData = InvoicePDFService.makePDFData(
                 invoice: inv,
                 profiles: profiles,
-                context: modelContext
+                context: modelContext,
+                businesses: fetchBusinesses()
             )
             let prefix = (inv.documentType == "estimate") ? "Estimate" : "Invoice"
             let safeNumber = inv.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -416,6 +417,15 @@ struct ClientPortalPreviewView: View {
             return try modelContext.fetch(FetchDescriptor<BusinessProfile>())
         } catch {
             print("profiles fetch error: \(error)")
+            return []
+        }
+    }
+
+    private func fetchBusinesses() -> [Business] {
+        do {
+            return try modelContext.fetch(FetchDescriptor<Business>())
+        } catch {
+            print("business fetch error: \(error)")
             return []
         }
     }

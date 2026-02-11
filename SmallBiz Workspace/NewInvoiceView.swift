@@ -92,6 +92,11 @@ struct NewInvoiceView: View {
             client: selectedClient
         )
 
+        if let preferredRaw = selectedClient?.preferredInvoiceTemplateKey,
+           let preferred = InvoiceTemplateKey.from(preferredRaw) {
+            invoice.invoiceTemplateKeyOverride = preferred.rawValue
+        }
+
 
         let newItem = LineItem(
             itemDescription: "Service",

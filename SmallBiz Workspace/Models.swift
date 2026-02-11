@@ -158,6 +158,7 @@ final class Client {
     var id: UUID = Foundation.UUID()
     var businessID: UUID = UUID()
     var portalEnabled: Bool = true
+    var preferredInvoiceTemplateKey: String? = nil
     var name: String = ""
     var email: String = ""
     var phone: String = ""
@@ -177,12 +178,14 @@ final class Client {
 
     init(
         businessID: UUID = UUID(),
+        preferredInvoiceTemplateKey: String? = nil,
         name: String = "",
         email: String = "",
         phone: String = "",
         address: String = ""
     ) {
         self.businessID = businessID
+        self.preferredInvoiceTemplateKey = preferredInvoiceTemplateKey
         self.name = name
         self.email = email
         self.phone = phone
@@ -218,6 +221,7 @@ final class Invoice {
     var sourceBookingRequestId: String? = nil
 
     var pdfRelativePath: String = ""
+    var invoiceTemplateKeyOverride: String? = nil
 
 
     // ✅ Single-side relationship stays plain (inverse declared on Client.invoices)
@@ -263,6 +267,7 @@ final class Invoice {
         documentType: String = "invoice",
         sourceBookingRequestId: String? = nil,
         pdfRelativePath: String = "",
+        invoiceTemplateKeyOverride: String? = nil,
         client: Client? = nil,
         job: Job? = nil,
         items: [LineItem] = []
@@ -282,6 +287,7 @@ final class Invoice {
         self.documentType = documentType
         self.sourceBookingRequestId = sourceBookingRequestId
         self.pdfRelativePath = pdfRelativePath
+        self.invoiceTemplateKeyOverride = invoiceTemplateKeyOverride
         self.client = client
         self.job = job
 

@@ -10,13 +10,14 @@ enum DocumentFileIndexService {
         profiles: [BusinessProfile],
         context: ModelContext
     ) throws -> URL {
+        let business = try fetchBusiness(for: invoice.businessID, context: context)
         let pdfData = InvoicePDFService.makePDFData(
             invoice: invoice,
             profiles: profiles,
-            context: context
+            context: context,
+            businesses: [business]
         )
 
-        let business = try fetchBusiness(for: invoice.businessID, context: context)
         let folderKind: FolderDestinationKind = invoice.documentType == "estimate" ? .estimates : .invoices
         let destination = try WorkspaceProvisioningService.resolveFolder(
             business: business,

@@ -72,10 +72,12 @@ struct ClientEditView: View {
     @State private var clientFolderSheetItem: ClientFolderSheetItem? = nil
     @State private var clientFolder: Folder? = nil
     @State private var workspaceError: String? = nil
+    @State private var showTemplatePicker = false
 
 
     @Query private var businessClients: [Client]
     @Query private var clientJobs: [Job]
+    @Query private var businesses: [Business]
 
     // ✅ Flow A/B: Navigate into a job created from this screen
     @State private var navigateToJob: Job? = nil
@@ -119,6 +121,7 @@ struct ClientEditView: View {
             clientEssentialsSection
             clientAddressSection
             clientPortalSection
+            clientInvoiceTemplateSection
             linkedItemsSection
             clientFilesSection
             advancedOptionsSection
@@ -191,6 +194,29 @@ struct ClientEditView: View {
             }
             .sheet(isPresented: $showSendPortalSheet) {
                 sendPortalSheetView
+            }
+            .sheet(isPresented: $showTemplatePicker) {
+                NavigationStack {
+                    InvoiceTemplatePickerSheet(
+                        mode: .clientPreferred,
+                        businessDefault: resolvedBusinessDefaultTemplateKey(),
+                        currentEffective: clientEffectiveTemplateKey(),
+                        currentSelection: InvoiceTemplateKey.from(client.preferredInvoiceTemplateKey),
+                        onSelectTemplate: { selected in
+                            client.preferredInvoiceTemplateKey = selected.rawValue
+                            saveNow()
+                        },
+                        onUseBusinessDefault: {
+                            client.preferredInvoiceTemplateKey = nil
+                            saveNow()
+                        }
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showTemplatePicker = false }
+                        }
+                    }
+                }
             }
         .sheet(isPresented: $showingContactPicker) {
             ContactPicker(isPresented: $showingContactPicker) { contact in
@@ -572,6 +598,58 @@ struct ClientEditView: View {
                 .foregroundStyle(.secondary)
         }
         .sbwCardRow()
+    }
+
+    private var clientInvoiceTemplateSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Invoices")
+                .font(.headline)
+
+            Button {
+                showTemplatePicker = true
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Preferred Invoice Template")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(clientTemplateSummaryText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .sbwCardRow()
+    }
+
+    private func resolvedBusinessDefaultTemplateKey() -> InvoiceTemplateKey {
+        let business = businesses.first(where: { $0.id == client.businessID }) ?? businesses.first
+        if let raw = business?.defaultInvoiceTemplateKey,
+           let key = InvoiceTemplateKey.from(raw) {
+            return key
+        }
+        return .modern_clean
+    }
+
+    private func clientEffectiveTemplateKey() -> InvoiceTemplateKey {
+        if let preferred = InvoiceTemplateKey.from(client.preferredInvoiceTemplateKey) {
+            return preferred
+        }
+        return resolvedBusinessDefaultTemplateKey()
+    }
+
+    private var clientTemplateSummaryText: String {
+        if let preferred = InvoiceTemplateKey.from(client.preferredInvoiceTemplateKey) {
+            return "Preferred: \(preferred.displayName)"
+        }
+        let businessDefault = resolvedBusinessDefaultTemplateKey().displayName
+        return "Default (Business): \(businessDefault)"
     }
 
     // MARK: - Jobs (Client -> Job -> ...)

@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 import UIKit
+import UserNotifications
 
 struct BusinessProfileView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
@@ -31,6 +32,12 @@ struct BusinessProfileView: View {
     @State private var showPayPalSafari = false
     @State private var paypalOnboardingURL: URL?
     @State private var awaitingPayPalReturn = false
+    @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var notificationMessage: String?
+    @State private var showInvoiceTemplateSheet = false
+    @State private var isSendingTestPush = false
+    @State private var showNotificationAdvanced = false
+    
 
     @State private var showAdvancedOptions = false
     @FocusState private var paypalMeFocused: Bool
@@ -69,6 +76,7 @@ struct BusinessProfileView: View {
                     }
                 }
                 Task { await refreshPayPalStatus() }
+                Task { await refreshNotificationStatus() }
             }
     }
 
@@ -134,10 +142,34 @@ struct BusinessProfileView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     handlePayPalReturnIfNeeded()
+                    Task { await refreshNotificationStatus() }
                 }
             }
 
         let withSheets = withContextRefresh
+            .sheet(isPresented: $showInvoiceTemplateSheet) {
+                NavigationStack {
+                    InvoiceTemplatePickerSheet(
+                        mode: .businessDefault,
+                        businessDefault: businessDefaultTemplate,
+                        currentEffective: businessDefaultTemplate,
+                        currentSelection: businessDefaultTemplate,
+                        onSelectTemplate: { selected in
+                            guard let business else { return }
+                            business.defaultInvoiceTemplateKey = selected.rawValue
+                            try? modelContext.save()
+                        },
+                        onUseBusinessDefault: {
+                            // No-op for business mode.
+                        }
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showInvoiceTemplateSheet = false }
+                        }
+                    }
+                }
+            }
             .sheet(isPresented: $showPayPalSafari) {
                 if let url = paypalOnboardingURL {
                     SafariView(url: url) {
@@ -189,7 +221,9 @@ struct BusinessProfileView: View {
             essentialsCard(profile)
             brandingCard(profile)
             defaultsCard(profile)
+            invoicesCard
             paymentsCard
+            notificationsCard
             advancedOptionsCard(profile)
 
             Text("This info will appear on your invoice PDFs.")
@@ -311,6 +345,42 @@ struct BusinessProfileView: View {
 
             TextField("Default Terms & Conditions", text: Bindable(profile).defaultTerms, axis: .vertical)
                 .lineLimit(4...10)
+        }
+        .sbwCardRow()
+    }
+
+    private var businessDefaultTemplate: InvoiceTemplateKey {
+        guard let business,
+              let key = InvoiceTemplateKey.from(business.defaultInvoiceTemplateKey) else {
+            return .modern_clean
+        }
+        return key
+    }
+
+    private var invoicesCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            cardHeader("Invoices", subtitle: "Default document styling")
+
+            Button {
+                showInvoiceTemplateSheet = true
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Default Invoice Template")
+                            .foregroundStyle(.primary)
+                        Text(businessDefaultTemplate.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
         }
         .sbwCardRow()
     }
@@ -479,6 +549,64 @@ struct BusinessProfileView: View {
                 }
 
                 Text("Paste a full PayPal.me link or just your handle (no @).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sbwCardRow()
+    }
+
+    private var notificationsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            cardHeader("Notifications", subtitle: "Push and local reminders")
+
+            Text("Status: \(notificationStatusLabel)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Button("Enable Notifications") {
+                Task { await enableNotificationsTapped() }
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                Task { await enablePushNotificationsTapped() }
+            } label: {
+                Label("Register for Push", systemImage: "bolt.horizontal.circle")
+            }
+            .buttonStyle(.bordered)
+
+            #if DEBUG
+            DisclosureGroup("Advanced", isExpanded: $showNotificationAdvanced) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button {
+                        Task { await testLocalNotificationTapped() }
+                    } label: {
+                        Label("Test Local Notification", systemImage: "bell")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        Task { await sendTestPushTapped() }
+                    } label: {
+                        if isSendingTestPush {
+                            HStack {
+                                ProgressView()
+                                Text("Sending…")
+                            }
+                        } else {
+                            Label("Send Test Push", systemImage: "paperplane")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isSendingTestPush)
+                }
+                .padding(.top, 8)
+            }
+            #endif
+
+            if let notificationMessage, !notificationMessage.isEmpty {
+                Text(notificationMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -773,6 +901,93 @@ struct BusinessProfileView: View {
         case .error:
             return ("Error", .red)
         }
+    }
+
+    private var notificationStatusLabel: String {
+        switch notificationAuthorizationStatus {
+        case .notDetermined:
+            return "Not Determined"
+        case .denied:
+            return "Denied"
+        case .authorized, .provisional, .ephemeral:
+            return "Authorized"
+        @unknown default:
+            return "Not Determined"
+        }
+    }
+
+    @MainActor
+    private func refreshNotificationStatus() async {
+        notificationAuthorizationStatus = await NotificationManager.shared.getAuthorizationStatus()
+    }
+
+    @MainActor
+    private func enableNotificationsTapped() async {
+        let granted = await NotificationManager.shared.requestAuthorization()
+        await refreshNotificationStatus()
+        if granted {
+            await refreshLocalRemindersNow()
+            notificationMessage = "Notifications enabled. Local reminders synced."
+        } else {
+            notificationMessage = "Notifications were not enabled."
+        }
+    }
+
+    @MainActor
+    private func testLocalNotificationTapped() async {
+        let status = await NotificationManager.shared.getAuthorizationStatus()
+        if status == .denied {
+            notificationMessage = "Notification permission is denied. Enable it in Settings."
+            notificationAuthorizationStatus = status
+            return
+        }
+        if status == .notDetermined {
+            _ = await NotificationManager.shared.requestAuthorization()
+        }
+        await NotificationManager.shared.scheduleTestLocalNotification()
+        await refreshNotificationStatus()
+        notificationMessage = "Test notification scheduled for ~5 seconds."
+    }
+
+    @MainActor
+    private func enablePushNotificationsTapped() async {
+        let granted = await NotificationManager.shared.requestAuthorization()
+        await refreshNotificationStatus()
+        let canRegister = granted || [.authorized, .provisional, .ephemeral].contains(notificationAuthorizationStatus)
+        guard canRegister else {
+            notificationMessage = "Push registration skipped because notifications are not authorized."
+            return
+        }
+        UIApplication.shared.registerForRemoteNotifications()
+        await refreshLocalRemindersNow()
+        notificationMessage = "Requested APNs registration. Local reminders synced."
+    }
+
+    @MainActor
+    private func sendTestPushTapped() async {
+        guard !isSendingTestPush else { return }
+        guard let businessId = activeBiz.activeBusinessID else {
+            notificationMessage = "No active business selected."
+            return
+        }
+
+        isSendingTestPush = true
+        defer { isSendingTestPush = false }
+
+        do {
+            try await PortalBackend.shared.sendTestPush(businessId: businessId.uuidString)
+            notificationMessage = "Test push request sent. Check this device."
+        } catch {
+            notificationMessage = "Failed to send test push: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func refreshLocalRemindersNow() async {
+        await LocalReminderScheduler.shared.refreshReminders(
+            modelContext: modelContext,
+            activeBusinessID: activeBiz.activeBusinessID
+        )
     }
 
     @MainActor

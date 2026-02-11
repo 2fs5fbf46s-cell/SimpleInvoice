@@ -15,6 +15,12 @@ struct MoreView: View {
     private var items: [MoreItem] {
         [
             MoreItem(
+                title: "Notifications",
+                systemImage: "bell.badge",
+                keyword: "Notifications",
+                destination: AnyView(NotificationsView())
+            ),
+            MoreItem(
                 title: "Booking Portal",
                 systemImage: "calendar.badge.clock",
                 keyword: "Booking Portal",

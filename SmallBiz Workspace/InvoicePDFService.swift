@@ -10,6 +10,24 @@ enum InvoicePDFService {
         return profiles.first
     }
 
+    static func resolvedBusiness(for invoice: Invoice, businesses: [Business]) -> Business? {
+        if let match = businesses.first(where: { $0.id == invoice.businessID }) {
+            return match
+        }
+        return businesses.first
+    }
+
+    static func effectiveInvoiceTemplateKey(invoice: Invoice, business: Business?) -> InvoiceTemplateKey {
+        if let override = InvoiceTemplateKey.from(invoice.invoiceTemplateKeyOverride) {
+            return override
+        }
+        if let business,
+           let key = InvoiceTemplateKey.from(business.defaultInvoiceTemplateKey) {
+            return key
+        }
+        return .modern_clean
+    }
+
     @MainActor
     static func lockBusinessSnapshotIfNeeded(
         invoice: Invoice,
@@ -33,13 +51,20 @@ enum InvoicePDFService {
     static func makePDFData(
         invoice: Invoice,
         profiles: [BusinessProfile],
-        context: ModelContext?
+        context: ModelContext?,
+        businesses: [Business] = []
     ) -> Data {
         let snapshot = lockBusinessSnapshotIfNeeded(
             invoice: invoice,
             profiles: profiles,
             context: context
         )
-        return InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)
+        let business = resolvedBusiness(for: invoice, businesses: businesses)
+        let templateKey = effectiveInvoiceTemplateKey(invoice: invoice, business: business)
+        return InvoicePDFGenerator.makePDFData(
+            invoice: invoice,
+            business: snapshot,
+            templateKey: templateKey
+        )
     }
 }

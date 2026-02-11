@@ -293,6 +293,11 @@ struct BookingDetailView: View {
                 items: []
             )
 
+            if let preferredRaw = client.preferredInvoiceTemplateKey,
+               let preferred = InvoiceTemplateKey.from(preferredRaw) {
+                invoice.invoiceTemplateKeyOverride = preferred.rawValue
+            }
+
             modelContext.insert(invoice)
             try modelContext.save()
             navigateToInvoice = invoice

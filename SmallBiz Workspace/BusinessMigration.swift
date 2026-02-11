@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 1
+    static let currentVersion = 3
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -73,9 +73,35 @@ enum BusinessMigration {
             }
         }
 
+        // 6️⃣ Backfill invoice template keys (CloudKit-safe String values)
+        for business in try modelContext.fetch(FetchDescriptor<Business>()) {
+            let key = business.defaultInvoiceTemplateKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if InvoiceTemplateKey.from(key) == nil {
+                business.defaultInvoiceTemplateKey = InvoiceTemplateKey.modern_clean.rawValue
+            }
+        }
+
+        let allInvoices = try modelContext.fetch(FetchDescriptor<Invoice>())
+        for invoice in allInvoices {
+            if let overrideRaw = invoice.invoiceTemplateKeyOverride?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !overrideRaw.isEmpty,
+               InvoiceTemplateKey.from(overrideRaw) == nil {
+                invoice.invoiceTemplateKeyOverride = nil
+            }
+        }
+
+        let allClients = try modelContext.fetch(FetchDescriptor<Client>())
+        for client in allClients {
+            if let preferredRaw = client.preferredInvoiceTemplateKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !preferredRaw.isEmpty,
+               InvoiceTemplateKey.from(preferredRaw) == nil {
+                client.preferredInvoiceTemplateKey = nil
+            }
+        }
+
         try modelContext.save()
 
-        // 6️⃣ Mark migration complete
+        // 7️⃣ Mark migration complete
         defaults.set(currentVersion, forKey: key)
 
         print("✅ Business migration v\(currentVersion) completed")
