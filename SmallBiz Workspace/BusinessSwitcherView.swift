@@ -12,8 +12,11 @@ import SwiftData
 struct BusinessSwitcherView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+
     @Query private var businesses: [Business]
     @Query private var profiles: [BusinessProfile]
+
+    // These queries are used for cascade-delete.
     @Query private var clients: [Client]
     @Query private var invoices: [Invoice]
     @Query private var jobs: [Job]
@@ -30,8 +33,12 @@ struct BusinessSwitcherView: View {
     @Query private var portalAuditEvents: [PortalAuditEvent]
 
     @State private var newBusinessName: String = ""
+
     @State private var pendingDelete: Business? = nil
     @State private var showCannotDeleteAlert = false
+
+    @State private var pendingRename: Business? = nil
+    @State private var renameBusinessName: String = ""
 
     var body: some View {
         Form {
@@ -49,24 +56,7 @@ struct BusinessSwitcherView: View {
                     Text("No businesses yet").foregroundStyle(.secondary)
                 } else {
                     ForEach(businesses) { b in
-                        Button {
-                            activeBiz.setActiveBusiness(b.id)
-                        } label: {
-                            HStack {
-                                Text(b.name)
-                                Spacer()
-                                if b.id == activeBiz.activeBusinessID {
-                                    Image(systemName: "checkmark.circle.fill")
-                                }
-                            }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                requestDelete(b)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        businessRow(b)
                     }
                 }
             }
@@ -106,6 +96,80 @@ struct BusinessSwitcherView: View {
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: {
             Text("This will delete all data for this business.")
+        }
+        .alert("Rename Business", isPresented: Binding(
+            get: { pendingRename != nil },
+            set: { if !$0 { pendingRename = nil } }
+        )) {
+            TextField("Business name", text: $renameBusinessName)
+
+            Button("Cancel", role: .cancel) {
+                pendingRename = nil
+            }
+
+            Button("Save") {
+                if let biz = pendingRename {
+                    renameBusiness(biz, newName: renameBusinessName)
+                }
+                pendingRename = nil
+            }
+        } message: {
+            Text("This updates the business name across the app.")
+        }
+    }
+
+    // MARK: - Row
+
+    @ViewBuilder
+    private func businessRow(_ b: Business) -> some View {
+        let isActive = (b.id == activeBiz.activeBusinessID)
+
+        Button {
+            activeBiz.setActiveBusiness(b.id)
+        } label: {
+            HStack {
+                Text(b.name)
+                Spacer()
+                if isActive {
+                    Image(systemName: "checkmark.circle.fill")
+                }
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                pendingRename = b
+                renameBusinessName = b.name
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.blue)
+
+            Button(role: .destructive) {
+                requestDelete(b)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    // MARK: - Rename
+
+    private func renameBusiness(_ business: Business, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        // Update Business
+        business.name = trimmed
+
+        // Keep BusinessProfile in sync (recommended)
+        if let profile = profiles.first(where: { $0.businessID == business.id }) {
+            profile.name = trimmed
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to rename business: \(error)")
         }
     }
 

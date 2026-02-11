@@ -136,6 +136,137 @@ struct PublicSiteUpsertPayload: Encodable {
     let updatedAtMs: Int
 }
 
+struct PushRegistrationResponseDTO: Decodable {
+    let ok: Bool?
+    let error: String?
+}
+
+struct SendTestPushResponseDTO: Decodable {
+    let ok: Bool?
+    let error: String?
+}
+
+struct AppNotificationDTO: Decodable, Identifiable {
+    let notificationId: String
+    let businessId: String
+    let title: String
+    let body: String
+    let eventType: String
+    let deepLink: String?
+    let createdAtMs: Int
+    let readAtMs: Int?
+    let rawDataJson: String?
+
+    var id: String { notificationId }
+
+    private enum CodingKeys: String, CodingKey {
+        case notificationId
+        case id
+        case businessId
+        case businessID
+        case title
+        case body
+        case message
+        case eventType
+        case event
+        case deepLink
+        case deeplink
+        case createdAtMs
+        case createdAt
+        case readAtMs
+        case readAt
+        case rawDataJson
+        case rawData
+        case data
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        func decodeString(_ key: CodingKeys) -> String? {
+            if let v = try? c.decodeIfPresent(String.self, forKey: key) {
+                let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            if let v = try? c.decodeIfPresent(Int.self, forKey: key) { return String(v) }
+            if let v = try? c.decodeIfPresent(Double.self, forKey: key) { return String(v) }
+            return nil
+        }
+
+        func decodeFirstString(_ keys: [CodingKeys], fallback: String = "") -> String {
+            for key in keys {
+                if let value = decodeString(key) { return value }
+            }
+            return fallback
+        }
+
+        func decodeInt(_ key: CodingKeys) -> Int? {
+            if let v = try? c.decodeIfPresent(Int.self, forKey: key) { return v }
+            if let v = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(v) }
+            if let v = decodeString(key), let intVal = Int(v) { return intVal }
+            if let v = decodeString(key), let dblVal = Double(v) { return Int(dblVal) }
+            return nil
+        }
+
+        func decodeFirstInt(_ keys: [CodingKeys], fallback: Int = 0) -> Int {
+            for key in keys {
+                if let value = decodeInt(key) { return value }
+            }
+            return fallback
+        }
+
+        let generatedId = UUID().uuidString
+        self.notificationId = decodeFirstString([.notificationId, .id], fallback: generatedId)
+        self.businessId = decodeFirstString([.businessId, .businessID])
+        self.title = decodeFirstString([.title], fallback: "Notification")
+        self.body = decodeFirstString([.body, .message])
+        self.eventType = decodeFirstString([.eventType, .event], fallback: "generic")
+        let deepLinkValue = decodeFirstString([.deepLink, .deeplink])
+        self.deepLink = deepLinkValue.isEmpty ? nil : deepLinkValue
+        self.createdAtMs = decodeFirstInt([.createdAtMs, .createdAt], fallback: Int(Date().timeIntervalSince1970 * 1000))
+        let read = decodeFirstInt([.readAtMs, .readAt], fallback: 0)
+        self.readAtMs = read > 0 ? read : nil
+
+        if let raw = decodeString(.rawDataJson) {
+            self.rawDataJson = raw
+        } else if let raw = decodeString(.rawData) {
+            self.rawDataJson = raw
+        } else if let dataObj = try? c.decodeIfPresent([String: String].self, forKey: .data),
+                  let encoded = try? JSONEncoder().encode(dataObj),
+                  let json = String(data: encoded, encoding: .utf8) {
+            self.rawDataJson = json
+        } else {
+            self.rawDataJson = nil
+        }
+    }
+}
+
+struct FetchNotificationsResponseDTO: Decodable {
+    let items: [AppNotificationDTO]
+    let unreadCount: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case items
+        case notifications
+        case unreadCount
+        case unread
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let direct = try? c.decode([AppNotificationDTO].self, forKey: .items) {
+            items = direct
+        } else if let alt = try? c.decode([AppNotificationDTO].self, forKey: .notifications) {
+            items = alt
+        } else {
+            items = []
+        }
+        unreadCount = (try? c.decodeIfPresent(Int.self, forKey: .unreadCount))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: .unread))
+            ?? 0
+    }
+}
+
 // MARK: - Booking Admin DTOs
 
 struct BookingRequestDTO: Decodable, Identifiable, Equatable {
@@ -1532,6 +1663,187 @@ final class PortalBackend {
             return dto
         }
         return fallbackSettings
+    }
+
+    // MARK: - Notification Inbox
+
+    func fetchNotifications(businessId: UUID) async throws -> (items: [AppNotificationDTO], unreadCount: Int) {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/notifications"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "businessId", value: businessId.uuidString)
+        ]
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        if let wrapped = try? decoder().decode(FetchNotificationsResponseDTO.self, from: data) {
+            return (wrapped.items, wrapped.unreadCount)
+        }
+        if let array = try? decoder().decode([AppNotificationDTO].self, from: data) {
+            return (array, array.filter { $0.readAtMs == nil }.count)
+        }
+        throw PortalBackendError.decode(body: raw)
+    }
+
+    func markNotificationRead(businessId: UUID, notificationId: String) async throws {
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent("/api/notifications/read")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        req.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "businessId": businessId.uuidString,
+                "notificationId": notificationId
+            ],
+            options: []
+        )
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+    }
+
+    func markAllNotificationsRead(businessId: UUID) async throws {
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent("/api/notifications/read-all")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        req.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "businessId": businessId.uuidString
+            ],
+            options: []
+        )
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+    }
+
+    // MARK: - Push registration
+
+    func registerPushToken(
+        businessId: String,
+        deviceToken: String,
+        environment: String
+    ) async throws {
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent("/api/push/register")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "deviceToken": deviceToken,
+            "platform": "ios",
+            "environment": environment
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        if data.isEmpty { return }
+        if let decoded = try? decoder().decode(PushRegistrationResponseDTO.self, from: data) {
+            if let error = decoded.error, !error.isEmpty {
+                throw PortalBackendError.http(http.statusCode, body: error)
+            }
+            if decoded.ok == false {
+                throw PortalBackendError.http(http.statusCode, body: raw)
+            }
+        }
+    }
+
+    // MARK: - Push test
+
+    /// Sends a test push notification to all registered devices for a business.
+    /// Backend route: POST /api/push/test
+    // MARK: - Push test (matches backend /api/push/send)
+
+    /// Sends a test push notification to all registered devices for a business.
+    /// Backend route: POST /api/push/send
+    @MainActor
+    func sendTestPush(
+        businessId: String,
+        title: String = "Portal test push",
+        body: String = "This is a push smoke test.",
+        data: [String: Any]? = nil
+    ) async throws {
+
+        let adminKey = try requireAdminKey()
+
+        let url = baseURL.appendingPathComponent("/api/push/send")
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        var payload: [String: Any] = [
+            "businessId": businessId,
+            "title": title,
+            "body": body,
+            "data": [
+                "source": "ios-app",
+                "businessId": businessId,
+                "sentAtMs": Int(Date().timeIntervalSince1970 * 1000)
+            ]
+        ]
+
+        // Optional extra custom data
+        if let data, !data.isEmpty {
+            payload["data"] = data
+        }
+
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: respData, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+
+        // Some deployments return no JSON
+        guard !respData.isEmpty else { return }
+
+        if let decoded = try? decoder().decode(SendTestPushResponseDTO.self, from: respData) {
+            if let error = decoded.error, !error.isEmpty {
+                throw PortalBackendError.http(http.statusCode, body: error)
+            }
+            if decoded.ok == false {
+                throw PortalBackendError.http(http.statusCode, body: raw)
+            }
+        }
     }
 
     // MARK: - Booking Admin (scaffold)

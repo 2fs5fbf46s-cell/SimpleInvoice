@@ -1,9 +1,11 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 @main
 struct SmallBizWorkspaceApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     @StateObject private var lock = AppLockManager()
     @StateObject private var activeBiz = ActiveBusinessStore()
@@ -22,11 +24,13 @@ struct SmallBizWorkspaceApp: App {
             .onOpenURL { url in
                 PortalReturnRouter.shared.handle(url)
                 EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: Self.container.mainContext)
+                NotificationRouter.shared.handleIncomingURL(url)
             }
             .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
                 guard let url = userActivity.webpageURL else { return }
                 PortalReturnRouter.shared.handle(url)
                 EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: Self.container.mainContext)
+                NotificationRouter.shared.handleIncomingURL(url)
             }
 
             // ✅ Xcode 26.2: onChange closure expects ONE argument
@@ -49,13 +53,27 @@ struct SmallBizWorkspaceApp: App {
                 Task { await EstimatePortalSyncService.sync(context: context) }
                 BusinessSitePublishService.shared.startMonitoring(context: context)
                 Task { await BusinessSitePublishService.shared.syncQueuedSites(context: context) }
+                Task { await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID) }
+                Task { await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID) }
                 startEstimatePolling(context: context)
+            }
+            .onChange(of: activeBiz.activeBusinessID) { _, newBusinessID in
+                let context = Self.container.mainContext
+                Task {
+                    await LocalReminderScheduler.shared.refreshReminders(
+                        modelContext: context,
+                        activeBusinessID: newBusinessID
+                    )
+                    await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: newBusinessID)
+                }
             }
             .task {
                 let context = Self.container.mainContext
                 await EstimatePortalSyncService.sync(context: context)
                 BusinessSitePublishService.shared.startMonitoring(context: context)
                 await BusinessSitePublishService.shared.syncQueuedSites(context: context)
+                await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
+                await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID)
                 if scenePhase == .active {
                     startEstimatePolling(context: context)
                 }
@@ -106,7 +124,8 @@ struct SmallBizWorkspaceApp: App {
             ContractAttachment.self,
 
             Job.self,
-            Blockout.self
+            Blockout.self,
+            AppNotification.self
         ])
 
         do {

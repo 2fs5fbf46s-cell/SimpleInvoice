@@ -18,6 +18,15 @@ final class PublishedBusinessSite {
     var aboutUs: String = ""
     var teamMembers: [String] = []
 
+    // MARK: - Team Members (V2)
+    /// Backward compatible V2 storage (JSON) so the live site can render name/title/photo.
+    /// `teamMembers` remains as legacy fallback.
+    var teamMembersV2Json: String = "[]"
+
+    /// Draft-only: local file paths for team photos keyed by member id.
+    /// Publish pipeline should upload these and fill `photoUrl`.
+    var teamPhotoLocalPathByIdJson: String = "{}"
+
     var galleryLocalPaths: [String] = []
     var galleryRemoteUrls: [String] = []
 
@@ -41,6 +50,8 @@ final class PublishedBusinessSite {
         services: [String] = [],
         aboutUs: String = "",
         teamMembers: [String] = [],
+        teamMembersV2Json: String = "[]",
+        teamPhotoLocalPathByIdJson: String = "{}",
         galleryLocalPaths: [String] = [],
         galleryRemoteUrls: [String] = [],
         updatedAt: Date = Foundation.Date(),
@@ -60,6 +71,8 @@ final class PublishedBusinessSite {
         self.services = services
         self.aboutUs = aboutUs
         self.teamMembers = teamMembers
+        self.teamMembersV2Json = teamMembersV2Json
+        self.teamPhotoLocalPathByIdJson = teamPhotoLocalPathByIdJson
         self.galleryLocalPaths = galleryLocalPaths
         self.galleryRemoteUrls = galleryRemoteUrls
         self.updatedAt = updatedAt
@@ -71,6 +84,68 @@ final class PublishedBusinessSite {
 
     var status: PublishStatus {
         PublishStatus(rawValue: publishStatus) ?? .draft
+    }
+
+    // MARK: - Team Members V2 (Computed)
+
+    struct TeamMemberV2: Codable, Identifiable, Equatable {
+        var id: String
+        var name: String
+        var title: String
+        var photoUrl: String?
+
+        init(id: String = UUID().uuidString, name: String = "", title: String = "", photoUrl: String? = nil) {
+            self.id = id
+            self.name = name
+            self.title = title
+            self.photoUrl = photoUrl
+        }
+    }
+
+    /// Preferred team representation for publishing + website rendering.
+    /// Stored as JSON to avoid SwiftData array-of-custom-type limitations.
+    var teamMembersV2: [TeamMemberV2] {
+        get {
+            let raw = teamMembersV2Json.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty, let data = raw.data(using: .utf8) else { return [] }
+            return (try? JSONDecoder().decode([TeamMemberV2].self, from: data)) ?? []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let s = String(data: data, encoding: .utf8) {
+                teamMembersV2Json = s
+            } else {
+                teamMembersV2Json = "[]"
+            }
+        }
+    }
+
+    /// Draft-only photo local path map: memberId -> file path.
+    var teamPhotoLocalPathById: [String: String] {
+        get {
+            let raw = teamPhotoLocalPathByIdJson.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty, let data = raw.data(using: .utf8) else { return [:] }
+            return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let s = String(data: data, encoding: .utf8) {
+                teamPhotoLocalPathByIdJson = s
+            } else {
+                teamPhotoLocalPathByIdJson = "{}"
+            }
+        }
+    }
+
+    /// One-way helper: if V2 is empty but legacy names exist, create V2 rows.
+    /// Call this when loading the draft into the customization UI.
+    func migrateLegacyTeamMembersIfNeeded() {
+        if !teamMembersV2.isEmpty { return }
+        let legacy = teamMembers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !legacy.isEmpty else { return }
+        teamMembersV2 = legacy.map { TeamMemberV2(name: $0, title: "", photoUrl: nil) }
     }
 
     static func normalizeHandle(_ raw: String) -> String {

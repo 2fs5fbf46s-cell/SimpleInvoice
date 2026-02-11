@@ -39,7 +39,7 @@ struct WebsiteCustomizationView: View {
                     appNameCard
                     Divider().padding(.horizontal, 12)
 
-                    if let draft {
+                    if draft != nil {
                         rowButton(icon: "photo", title: "Hero Image", description: "This image will be used in the first section of your website landing page") {
                             route = .hero
                         }
@@ -698,8 +698,15 @@ private struct WebsiteTeamView: View {
     let draft: PublishedBusinessSite
     let onSave: () -> Void
 
-    @State private var showingAddPrompt = false
-    @State private var newMember = ""
+    // NOTE: PublishedBusinessSite currently stores team members as `[String]`.
+    // This UI is a richer editor (name/title/photo), but for now we persist only the Name
+    // back into `draft.teamMembers` for backward compatibility with the website.
+    @State private var members: [EditableTeamMember] = []
+    @State private var didLoad = false
+
+    // Per-member photo picker selection state
+    @State private var pickerSelection: [UUID: PhotosPickerItem?] = [:]
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
@@ -711,72 +718,238 @@ private struct WebsiteTeamView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
-                pageDescription("Edit and manage team members to be displayed on your website landing page")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        pageDescription("Edit and manage team members to be displayed on your website landing page")
 
-                if draft.teamMembers.isEmpty {
-                    Text("No Team Member Added")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(Array(draft.teamMembers.enumerated()), id: \.offset) { idx, member in
-                            HStack {
-                                Text(member)
-                                    .font(.system(size: 17))
-                                Spacer()
-                                Button(role: .destructive) {
-                                    draft.teamMembers.remove(at: idx)
-                                    onSave()
-                                } label: {
-                                    Image(systemName: "minus.circle")
+                        if members.isEmpty {
+                            Text("No Team Member Added")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 40)
+                                .padding(.bottom, 10)
+                        } else {
+                            ForEach(Array(members.enumerated()), id: \.element.id) { idx, _ in
+                                teamMemberBlock(index: idx)
+                                Divider().padding(.horizontal, 12)
+                            }
+                        }
+
+                        Button {
+                            let new = EditableTeamMember()
+                            members.append(new)
+                            persistNamesToDraft()
+                            // Scroll to newly created member
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    proxy.scrollTo(new.id, anchor: .top)
                                 }
                             }
-                            .padding(.horizontal, 16)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 20, weight: .regular))
+                                Text("Add Team Member")
+                                    .font(.system(size: 18, weight: .semibold))
+                            }
+                            .foregroundStyle(SBWTheme.brandBlue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(red: 0.86, green: 0.90, blue: 0.98))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
-                    }
-                    .padding(.top, 12)
-                }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
 
-                Button {
-                    newMember = ""
-                    showingAddPrompt = true
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .regular))
-                        Text("Add Team Member")
-                            .font(.system(size: 18, weight: .semibold))
+                        Spacer(minLength: 24)
                     }
-                    .foregroundStyle(SBWTheme.brandBlue)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color(red: 0.86, green: 0.90, blue: 0.98))
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 30)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.top, 32)
-
-                Spacer()
             }
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
         }
         .navigationTitle("Our Team")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Add Team Member", isPresented: $showingAddPrompt) {
-            TextField("Team member name", text: $newMember)
-            Button("Cancel", role: .cancel) {}
-            Button("Add") {
-                let trimmed = newMember.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
-                draft.teamMembers.append(trimmed)
-                onSave()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") {
+                    persistNamesToDraft()
+                    dismiss()
+                }
+                .fontWeight(.semibold)
+                .foregroundStyle(SBWTheme.brandBlue)
             }
+        }
+        .onAppear {
+            guard !didLoad else { return }
+            didLoad = true
+            // Seed from persisted names
+            let seeded = draft.teamMembers
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { EditableTeamMember(name: String($0.prefix(35))) }
+            members = seeded
+        }
+        .onDisappear {
+            persistNamesToDraft()
+        }
+    }
+
+    private func teamMemberBlock(index: Int) -> some View {
+        // Safe indexing
+        guard members.indices.contains(index) else { return AnyView(EmptyView()) }
+        let memberID = members[index].id
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    SectionTitle(icon: "person", text: "Team Member # \(index + 1)")
+                    Spacer()
+                    Button(role: .destructive) {
+                        if members.indices.contains(index) {
+                            let removedId = members[index].id
+                            members.remove(at: index)
+                            pickerSelection.removeValue(forKey: removedId)
+                            persistNamesToDraft()
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.secondary)
+                            .padding(8)
+                            .background(Color(.tertiarySystemFill))
+                            .clipShape(Circle())
+                    }
+                    .padding(.trailing, 12)
+                    .padding(.top, 10)
+                }
+
+                // Photo tile (UI-only for now; persisted path is kept in view state)
+                PhotosPicker(
+                    selection: Binding(
+                        get: { pickerSelection[memberID] ?? nil },
+                        set: { pickerSelection[memberID] = $0 }
+                    ),
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.tertiarySystemFill))
+                            .frame(height: 140)
+
+                        if let path = members[index].photoLocalPath,
+                           let image = UIImage(contentsOfFile: path) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(height: 140)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        } else {
+                            VStack(spacing: 8) {
+                                Image(systemName: "plus.square")
+                                    .font(.system(size: 26))
+                                    .foregroundStyle(Color.secondary.opacity(0.55))
+                                Text("Add Photo")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(Color.secondary.opacity(0.55))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .buttonStyle(.plain)
+                .onChange(of: pickerSelection[memberID] ?? nil) { _, newValue in
+                    Task {
+                        guard let newValue,
+                              let data = try? await newValue.loadTransferable(type: Data.self),
+                              let path = try? writeTemporaryImage(data: data, prefix: "public-site-team")
+                        else { return }
+
+                        await MainActor.run {
+                            guard members.indices.contains(index) else { return }
+                            members[index].photoLocalPath = path
+                            // UI-only for now; name persistence remains intact.
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    // Name
+                    Text("Name")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    TextField("Your full name", text: Binding(
+                        get: { members[index].name },
+                        set: {
+                            members[index].name = String($0.prefix(35))
+                            persistNamesToDraft()
+                        }
+                    ))
+                    .font(.system(size: 16))
+                    Underline()
+                    HStack {
+                        Spacer()
+                        Text("\(members[index].name.count) / 35")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 10))
+                    }
+
+                    // Work Title
+                    Text("Work Title")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    TextField("Work title", text: Binding(
+                        get: { members[index].title },
+                        set: { members[index].title = String($0.prefix(35)) }
+                    ))
+                    .font(.system(size: 16))
+                    Underline()
+                    HStack {
+                        Spacer()
+                        Text("\(members[index].title.count) / 35")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 10))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+            }
+            .id(memberID)
+            .padding(.top, 8)
+        )
+    }
+
+    private func persistNamesToDraft() {
+        // Persist ONLY names for now to remain compatible with existing website rendering.
+        let names = members
+            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        draft.teamMembers = names
+        onSave()
+    }
+
+    private struct EditableTeamMember: Identifiable, Equatable {
+        let id: UUID
+        var name: String
+        var title: String
+        var photoLocalPath: String?
+
+        init(id: UUID = UUID(), name: String = "", title: String = "", photoLocalPath: String? = nil) {
+            self.id = id
+            self.name = name
+            self.title = title
+            self.photoLocalPath = photoLocalPath
         }
     }
 }

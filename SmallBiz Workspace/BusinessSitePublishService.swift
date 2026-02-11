@@ -9,28 +9,42 @@ final class BusinessSitePublishService {
     private var monitor: NWPathMonitor?
     private var isNetworkReachable = true
     private var inFlightSiteIDs: Set<UUID> = []
+    private var syncContext: ModelContext?
 
     private init() {}
 
+    @MainActor
+    private static func handleNetworkUpdateOnMain(isReachable: Bool) {
+        BusinessSitePublishService.shared.handleNetworkPathUpdate(isReachable: isReachable)
+    }
+
     func startMonitoring(context: ModelContext) {
         guard monitor == nil else { return }
+        self.syncContext = context
 
         let monitor = NWPathMonitor()
         let queue = DispatchQueue(label: "BusinessSitePublishService.Network")
-        monitor.pathUpdateHandler = { [weak self] path in
+        monitor.pathUpdateHandler = { path in
+            let satisfied = (path.status == .satisfied)
+            // NWPathMonitor callback is @Sendable in Swift 6; avoid capturing non-Sendable values here.
             Task { @MainActor in
-                guard let self else { return }
-                let becameReachable = !self.isNetworkReachable && path.status == .satisfied
-                self.isNetworkReachable = path.status == .satisfied
-
-                if becameReachable {
-                    await self.syncQueuedSites(context: context)
-                }
+                BusinessSitePublishService.handleNetworkUpdateOnMain(isReachable: satisfied)
             }
         }
 
         monitor.start(queue: queue)
         self.monitor = monitor
+    }
+
+    private func handleNetworkPathUpdate(isReachable: Bool) {
+        let becameReachable = !self.isNetworkReachable && isReachable
+        self.isNetworkReachable = isReachable
+
+        if becameReachable, let ctx = self.syncContext {
+            Task { @MainActor in
+                await self.syncQueuedSites(context: ctx)
+            }
+        }
     }
 
     func draft(for businessID: UUID, context: ModelContext) -> PublishedBusinessSite {

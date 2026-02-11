@@ -13,6 +13,7 @@ struct InvoiceDetailView: View {
     @Environment(\.dismissToDashboard) private var dismissToDashboard
     @Bindable var invoice: Invoice
     @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
 
     // Jobs (for picker)
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
@@ -88,6 +89,7 @@ struct InvoiceDetailView: View {
     @State private var createdContract: Contract? = nil
     
     @State private var showPortal = false
+    @State private var showTemplatePicker = false
 
     @ObservedObject private var portalReturn = PortalReturnRouter.shared
 
@@ -241,6 +243,29 @@ struct InvoiceDetailView: View {
 
         // Sheets
         .sheet(isPresented: $showingItemPicker) { itemPickerSheet }
+        .sheet(isPresented: $showTemplatePicker) {
+            NavigationStack {
+                InvoiceTemplatePickerSheet(
+                    mode: .invoiceOverride,
+                    businessDefault: resolvedBusinessDefaultTemplateKey(),
+                    currentEffective: effectiveTemplateKeyForInvoice(),
+                    currentSelection: InvoiceTemplateKey.from(invoice.invoiceTemplateKeyOverride),
+                    onSelectTemplate: { selected in
+                        invoice.invoiceTemplateKeyOverride = selected.rawValue
+                        try? modelContext.save()
+                    },
+                    onUseBusinessDefault: {
+                        invoice.invoiceTemplateKeyOverride = nil
+                        try? modelContext.save()
+                    }
+                )
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { showTemplatePicker = false }
+                    }
+                }
+            }
+        }
         .sheet(item: $previewItem) { previewSheet(url: $0.url) }
         .sheet(isPresented: $showingMail) { mailSheet }
 
@@ -488,6 +513,10 @@ struct InvoiceDetailView: View {
 
                 Divider()
 
+                templateSelectionRow
+
+                Divider()
+
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Job / Project")
                         .font(.caption)
@@ -525,6 +554,41 @@ struct InvoiceDetailView: View {
             }
             .sbwCardRow()
         }
+    }
+
+    private var templateSelectionRow: some View {
+        Button {
+            showTemplatePicker = true
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text("Template: \(effectiveTemplateKeyForInvoice().displayName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if isTemplateOverrideActive {
+                            Text("Override Active")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.18))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Text(templateSummaryText)
+                        .foregroundStyle(.primary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var LineItemsSection: some View {
@@ -1355,12 +1419,12 @@ struct InvoiceDetailView: View {
             uploadingPortalPDF = true
             portalPDFNotice = nil
 
-            let snapshot = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+            let pdfData = InvoicePDFService.makePDFData(
                 invoice: invoice,
                 profiles: profiles,
-                context: modelContext
+                context: modelContext,
+                businesses: businesses
             )
-            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)
             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
             let fallbackID = String(describing: invoice.id)
@@ -1497,6 +1561,8 @@ struct InvoiceDetailView: View {
             Button { openJobWorkspaceFolder() } label: { Image(systemName: "folder") }
 
             Button { previewPDF() } label: { Image(systemName: "doc.richtext") }
+            Button { showTemplatePicker = true } label: { Image(systemName: "paintpalette") }
+                .accessibilityLabel("Template")
 
             Menu {
                 Button {
@@ -1504,12 +1570,12 @@ struct InvoiceDetailView: View {
                         uploadingPortalPDF = true
                         portalPDFNotice = nil
                         do {
-                            let snapshot = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                            let pdfData = InvoicePDFService.makePDFData(
                                 invoice: invoice,
                                 profiles: profiles,
-                                context: modelContext
+                                context: modelContext,
+                                businesses: businesses
                             )
-                            let pdfData = InvoicePDFGenerator.makePDFData(invoice: invoice, business: snapshot)
                             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
                             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
                             let fallbackID = String(describing: invoice.id)
@@ -1632,6 +1698,40 @@ struct InvoiceDetailView: View {
     }
 
     // MARK: - Helpers
+
+    private func resolvedBusiness() -> Business? {
+        if let match = businesses.first(where: { $0.id == invoice.businessID }) {
+            return match
+        }
+        return businesses.first
+    }
+
+    private func resolvedBusinessDefaultTemplateKey() -> InvoiceTemplateKey {
+        guard let business = resolvedBusiness(),
+              let key = InvoiceTemplateKey.from(business.defaultInvoiceTemplateKey) else {
+            return .modern_clean
+        }
+        return key
+    }
+
+    private func effectiveTemplateKeyForInvoice() -> InvoiceTemplateKey {
+        if let override = InvoiceTemplateKey.from(invoice.invoiceTemplateKeyOverride) {
+            return override
+        }
+        return resolvedBusinessDefaultTemplateKey()
+    }
+
+    private var isTemplateOverrideActive: Bool {
+        InvoiceTemplateKey.from(invoice.invoiceTemplateKeyOverride) != nil
+    }
+
+    private var templateSummaryText: String {
+        if isTemplateOverrideActive {
+            return "Applies to this invoice only"
+        }
+        let businessDefault = resolvedBusinessDefaultTemplateKey().displayName
+        return "Using business default: \(businessDefault)"
+    }
 
     @MainActor
     private func ensureSnapshotForFinalizedInvoiceIfNeeded() async {
@@ -1779,7 +1879,8 @@ struct InvoiceDetailView: View {
             let pdfData = InvoicePDFService.makePDFData(
                 invoice: invoice,
                 profiles: profiles,
-                context: modelContext
+                context: modelContext,
+                businesses: businesses
             )
 
             mailAttachment = pdfData
@@ -1918,7 +2019,8 @@ struct InvoiceDetailView: View {
         let pdfData = InvoicePDFService.makePDFData(
             invoice: invoice,
             profiles: profiles,
-            context: modelContext
+            context: modelContext,
+            businesses: businesses
         )
         let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
         let filename = "\(prefix)-\(invoice.invoiceNumber)-\(suffix)-\(Date().timeIntervalSince1970)"
