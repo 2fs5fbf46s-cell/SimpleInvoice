@@ -67,8 +67,6 @@ struct InvoiceDetailView: View {
     @State private var openingPortal = false
     @State private var uploadingPortalPDF = false
     @State private var portalPDFNotice: String? = nil
-    @State private var portalAutoSyncInFlight = false
-    @State private var portalAutoSyncError: String? = nil
     @State private var navigateToClientSettings: Client? = nil
     @State private var selectedLineItem: LineItem? = nil
     @State private var selectedLinkedContract: Contract? = nil
@@ -200,7 +198,6 @@ struct InvoiceDetailView: View {
             try? modelContext.save()
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
             Task { await indexInvoiceIfPossible() }
-            Task { await indexEstimateForDirectoryIfNeeded() }
         }
         .onChange(of: invoice.invoiceNumber) { _, _ in
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
@@ -727,16 +724,16 @@ struct InvoiceDetailView: View {
                 HStack(spacing: 8) {
                     Text(portalSyncStatusText)
                         .font(.caption)
-                        .foregroundStyle(portalAutoSyncError == nil ? Color.secondary : Color.red)
+                        .foregroundStyle(invoice.portalLastUploadError == nil ? Color.secondary : Color.red)
                     Spacer()
-                    if (invoice.portalNeedsUpload || portalAutoSyncError != nil) && canOpenPortal {
+                    if shouldShowPortalRetryButton && canOpenPortal {
                         Button("Retry") {
                             triggerInvoicePortalAutoSync()
                         }
                         .font(.caption.weight(.semibold))
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(portalAutoSyncInFlight)
+                        .disabled(invoice.portalUploadInFlight)
                     }
                 }
 
@@ -748,9 +745,6 @@ struct InvoiceDetailView: View {
                             portalNotice = nil
 
                             do {
-                                if invoice.portalNeedsUpload {
-                                    showNotice("Pending upload—latest changes may not be in portal yet.")
-                                }
                                 let url = try await buildPortalLink(mode: nil)
                                 portalURL = url
                                 showPortal = true
@@ -791,9 +785,6 @@ struct InvoiceDetailView: View {
                                 portalNotice = nil
 
                                 do {
-                                    if invoice.portalNeedsUpload {
-                                        showNotice("Pending upload—latest changes may not be in portal yet.")
-                                    }
                                     let url = try await buildPortalLink(mode: nil)
                                     UIPasteboard.general.string = url.absoluteString
                                     showNotice("Client link copied")
@@ -815,9 +806,6 @@ struct InvoiceDetailView: View {
                                 portalNotice = nil
 
                                 do {
-                                    if invoice.portalNeedsUpload {
-                                        showNotice("Pending upload—latest changes may not be in portal yet.")
-                                    }
                                     let url = try await buildPortalLink(mode: nil)
                                     shareItems = [url]
                                     showNotice("Sharing link…")
@@ -840,9 +828,6 @@ struct InvoiceDetailView: View {
                                     portalNotice = nil
 
                                     do {
-                                        if invoice.portalNeedsUpload {
-                                            showNotice("Pending upload—latest changes may not be in portal yet.")
-                                        }
                                         let url = try await buildPortalLink(mode: nil)
                                         portalURL = url
                                         showPortal = true
@@ -877,9 +862,28 @@ struct InvoiceDetailView: View {
                     .tint(SBWTheme.brandBlue)
                 }
 
+                if PortalAutoSyncService.isEligible(invoice: invoice) {
+                    if invoice.portalUploadInFlight {
+                        Text("Uploading latest changes in the background…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if invoice.portalNeedsUpload {
+                        Text("Pending upload—tap Done to sync latest changes.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 if let portalNotice {
                     Text(portalNotice)
                         .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+
+                if let message = invoice.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !message.isEmpty {
+                    Text(message)
+                        .foregroundStyle(.red)
                         .font(.caption)
                 }
 
@@ -1443,13 +1447,6 @@ struct InvoiceDetailView: View {
 
         let businessName = resolvedPortalBusinessName()
 
-        if invoice.documentType == "estimate",
-           invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "draft" {
-            invoice.estimateStatus = "sent"
-            try? modelContext.save()
-            await ensureSnapshotForFinalizedInvoiceIfNeeded()
-        }
-
         let token = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice, businessName: businessName)
 
         let modeValue = (mode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
@@ -1469,10 +1466,6 @@ struct InvoiceDetailView: View {
                 token: token,
                 mode: modeValue
             )
-        }
-
-        if invoice.documentType == "estimate" {
-            await indexEstimateForDirectoryIfNeeded()
         }
 
         return url
@@ -1764,20 +1757,6 @@ struct InvoiceDetailView: View {
     @MainActor
     private func indexInvoiceIfPossible() async {
         try? DocumentFileIndexService.upsertInvoicePDF(invoice: invoice, context: modelContext)
-
-        guard invoice.documentType == "invoice" else { return }
-        guard let client = invoice.client else { return }
-        guard client.portalEnabled else { return }
-
-        // Require a “real” invoice number as the finalize signal
-        let num = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !num.isEmpty else { return }
-
-        do {
-            try await PortalBackend.shared.indexInvoiceForDirectory(invoice: invoice, client: client)
-        } catch {
-            print("Index invoice failed:", error)
-        }
     }
 
     private func fetchBusiness(for businessID: UUID) throws -> Business {
@@ -1969,10 +1948,14 @@ struct InvoiceDetailView: View {
     }
 
     private var portalSyncStatusText: String {
-        if portalAutoSyncInFlight {
+        if !PortalAutoSyncService.isEligible(invoice: invoice) {
+            return "Portal: Not eligible"
+        }
+        if invoice.portalUploadInFlight {
             return "Portal: Uploading..."
         }
-        if let portalAutoSyncError, !portalAutoSyncError.isEmpty {
+        if let message = invoice.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
             return "Portal: Upload failed"
         }
         if invoice.portalNeedsUpload {
@@ -1981,14 +1964,20 @@ struct InvoiceDetailView: View {
         return "Portal: Up to date"
     }
 
+    private var shouldShowPortalRetryButton: Bool {
+        if let message = invoice.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
+            return true
+        }
+        return invoice.portalNeedsUpload
+    }
+
     private func handleDoneTapped() {
-        portalAutoSyncError = nil
         PortalAutoSyncService.markInvoiceNeedsUploadIfChanged(
             invoice: invoice,
             business: resolvedBusiness()
         )
         forceSaveNow()
-        Task { await indexInvoiceIfPossible() }
         triggerInvoicePortalAutoSync()
         dismiss()
     }
@@ -1996,19 +1985,17 @@ struct InvoiceDetailView: View {
     private func triggerInvoicePortalAutoSync() {
         guard PortalAutoSyncService.isEligible(invoice: invoice) else { return }
         let invoiceID = invoice.id
-        portalAutoSyncInFlight = true
         Task {
             let result = await PortalAutoSyncService.uploadInvoice(
                 invoiceId: invoiceID,
                 context: modelContext
             )
             await MainActor.run {
-                portalAutoSyncInFlight = false
                 switch result {
                 case .failed(let message):
-                    portalAutoSyncError = message
+                    invoice.portalLastUploadError = message
                 case .uploaded, .skippedUnchanged:
-                    portalAutoSyncError = nil
+                    invoice.portalLastUploadError = nil
                 case .ineligible:
                     break
                 }
@@ -2075,19 +2062,6 @@ struct InvoiceDetailView: View {
     private func refreshInvoicePortalState() async {
         await refreshInvoicePaidStatusFromPortal()
         await refreshEstimateStatusFromPortal(estimate: invoice)
-    }
-
-    @MainActor
-    private func indexEstimateForDirectoryIfNeeded() async {
-        guard invoice.documentType == "estimate" else { return }
-        let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard ["sent", "accepted", "declined"].contains(status) else { return }
-
-        do {
-            try await PortalBackend.shared.indexEstimateForDirectory(estimate: invoice)
-        } catch {
-            print("Estimate directory index failed:", error.localizedDescription)
-        }
     }
 
     @MainActor

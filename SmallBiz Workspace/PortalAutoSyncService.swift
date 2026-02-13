@@ -36,56 +36,88 @@ enum PortalAutoSyncService {
             return .ineligible
         }
         guard isEligible(invoice: invoice) else {
+            invoice.portalUploadInFlight = false
+            invoice.portalLastUploadError = nil
+            try? context.save()
             return .ineligible
         }
 
         let business = fetchBusiness(id: invoice.businessID, context: context)
         let currentHash = invoiceHash(invoice: invoice, business: business)
 
-        if invoice.portalLastUploadedHash == currentHash {
-            invoice.portalNeedsUpload = false
+        if invoice.portalLastUploadedHash == currentHash && invoice.portalNeedsUpload == false {
+            invoice.portalUploadInFlight = false
+            invoice.portalLastUploadError = nil
             try? context.save()
             return .skippedUnchanged
         }
 
+        invoice.portalUploadInFlight = true
+        invoice.portalLastUploadError = nil
+        try? context.save()
+
         do {
-            let profiles = fetchProfiles(businessID: invoice.businessID, context: context)
-            let businesses: [Business] = business.map { [$0] } ?? []
-            let pdfData = InvoicePDFService.makePDFData(
-                invoice: invoice,
-                profiles: profiles,
-                context: context,
-                businesses: businesses
-            )
+            let existingBlobUrl = invoice.portalLastUploadedBlobUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let canReuseBlob = !existingBlobUrl.isEmpty && invoice.portalLastUploadedHash == currentHash
 
-            let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
-            let trimmed = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-            let fallback = String(invoice.id.uuidString.suffix(8))
-            let namePart = trimmed.isEmpty ? fallback : trimmed.replacingOccurrences(of: "/", with: "-")
-            let fileName = "\(prefix)-\(namePart).pdf"
+            let blobUrl: String
+            if canReuseBlob {
+                blobUrl = existingBlobUrl
+            } else {
+                let profiles = fetchProfiles(businessID: invoice.businessID, context: context)
+                let businesses: [Business] = business.map { [$0] } ?? []
+                let pdfData = InvoicePDFService.makePDFData(
+                    invoice: invoice,
+                    profiles: profiles,
+                    context: context,
+                    businesses: businesses
+                )
 
-            _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
-                businessId: invoice.businessID.uuidString,
-                invoiceId: invoice.id.uuidString,
-                fileName: fileName,
-                pdfData: pdfData
-            )
+                let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
+                let trimmed = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                let fallback = String(invoice.id.uuidString.suffix(8))
+                let namePart = trimmed.isEmpty ? fallback : trimmed.replacingOccurrences(of: "/", with: "-")
+                let fileName = "\(prefix)-\(namePart).pdf"
+
+                let blob = try await PortalBackend.shared.uploadInvoicePDFToBlob(
+                    businessId: invoice.businessID.uuidString,
+                    invoiceId: invoice.id.uuidString,
+                    fileName: fileName,
+                    pdfData: pdfData
+                )
+                blobUrl = blob.url
+                invoice.portalLastUploadedBlobUrl = blob.url
+                invoice.portalLastUploadedHash = currentHash
+                try? context.save()
+            }
 
             if invoice.documentType == "estimate" {
-                try await PortalBackend.shared.indexEstimateForDirectory(estimate: invoice)
+                try await PortalBackend.shared.indexEstimateForDirectory(
+                    estimate: invoice,
+                    pdfUrl: blobUrl
+                )
             } else {
-                try await PortalBackend.shared.indexInvoiceForPortalDirectory(invoice: invoice)
+                try await PortalBackend.shared.indexInvoiceForPortalDirectory(
+                    invoice: invoice,
+                    pdfUrl: blobUrl
+                )
             }
 
             invoice.portalNeedsUpload = false
+            invoice.portalUploadInFlight = false
             invoice.portalLastUploadedAtMs = nowMs()
             invoice.portalLastUploadedHash = currentHash
+            invoice.portalLastUploadedBlobUrl = blobUrl
+            invoice.portalLastUploadError = nil
             try context.save()
             return .uploaded
         } catch {
+            let message = truncatedErrorMessage(error)
+            invoice.portalUploadInFlight = false
             invoice.portalNeedsUpload = true
+            invoice.portalLastUploadError = message
             try? context.save()
-            return .failed(error.localizedDescription)
+            return .failed(message)
         }
     }
 
@@ -98,12 +130,16 @@ enum PortalAutoSyncService {
             return .ineligible
         }
         guard isEligible(contract: contract) else {
+            contract.portalUploadInFlight = false
+            contract.portalLastUploadError = nil
+            try? context.save()
             return .ineligible
         }
 
         let currentHash = contractHash(contract: contract)
-        if contract.portalLastUploadedHash == currentHash {
-            contract.portalNeedsUpload = false
+        if contract.portalLastUploadedHash == currentHash && contract.portalNeedsUpload == false {
+            contract.portalUploadInFlight = false
+            contract.portalLastUploadError = nil
             try? context.save()
             return .skippedUnchanged
         }
@@ -111,6 +147,13 @@ enum PortalAutoSyncService {
         guard let client = contract.resolvedClient else {
             return .ineligible
         }
+        if contract.client == nil {
+            contract.client = client
+        }
+
+        contract.portalUploadInFlight = true
+        contract.portalLastUploadError = nil
+        try? context.save()
 
         do {
             let businessProfile = fetchProfile(businessID: client.businessID, context: context)
@@ -130,14 +173,19 @@ enum PortalAutoSyncService {
             try DocumentFileIndexService.upsertContractPDF(contract: contract, context: context)
 
             contract.portalNeedsUpload = false
+            contract.portalUploadInFlight = false
             contract.portalLastUploadedAtMs = nowMs()
             contract.portalLastUploadedHash = currentHash
+            contract.portalLastUploadError = nil
             try context.save()
             return .uploaded
         } catch {
+            let message = truncatedErrorMessage(error)
+            contract.portalUploadInFlight = false
             contract.portalNeedsUpload = true
+            contract.portalLastUploadError = message
             try? context.save()
-            return .failed(error.localizedDescription)
+            return .failed(message)
         }
     }
 
@@ -184,6 +232,7 @@ enum PortalAutoSyncService {
         pieces.append("terms=\(invoice.termsAndConditions)")
         pieces.append("paymentTerms=\(invoice.paymentTerms)")
         pieces.append("templateOverride=\(invoice.invoiceTemplateKeyOverride ?? "")")
+        pieces.append("pdfRelativePath=\(invoice.pdfRelativePath)")
 
         let effectiveTemplate = InvoicePDFService.effectiveInvoiceTemplateKey(invoice: invoice, business: business)
         pieces.append("effectiveTemplate=\(effectiveTemplate.rawValue)")
@@ -207,6 +256,7 @@ enum PortalAutoSyncService {
         pieces.append("signedBy=\(contract.signedByName)")
         pieces.append("template=\(contract.templateName)")
         pieces.append("templateCategory=\(contract.templateCategory)")
+        pieces.append("pdfRelativePath=\(contract.pdfRelativePath)")
         return digest(pieces.joined(separator: "\n"))
     }
 
@@ -222,6 +272,18 @@ enum PortalAutoSyncService {
 
     private static func nowMs() -> Int64 {
         ms(Date())
+    }
+
+    private static func truncatedErrorMessage(_ error: any Error) -> String {
+        let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty {
+            return "Upload failed."
+        }
+        if text.count <= 240 {
+            return text
+        }
+        let index = text.index(text.startIndex, offsetBy: 240)
+        return String(text[..<index])
     }
 
     // MARK: - Fetch helpers

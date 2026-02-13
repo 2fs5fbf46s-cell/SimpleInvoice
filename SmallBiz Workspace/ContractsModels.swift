@@ -33,7 +33,9 @@ final class Contract {
 
     var pdfRelativePath: String = ""
     var portalNeedsUpload: Bool = true
+    var portalUploadInFlight: Bool = false
     var portalLastUploadedAtMs: Int64? = nil
+    var portalLastUploadError: String? = nil
     var portalLastUploadedHash: String? = nil
 
     /// Store status as String for SwiftData
@@ -83,7 +85,9 @@ final class Contract {
         renderedBody: String = "",
         pdfRelativePath: String = "",
         portalNeedsUpload: Bool = true,
+        portalUploadInFlight: Bool = false,
         portalLastUploadedAtMs: Int64? = nil,
+        portalLastUploadError: String? = nil,
         portalLastUploadedHash: String? = nil,
         statusRaw: String = ContractStatus.draft.rawValue,
         client: Client? = nil,
@@ -99,7 +103,9 @@ final class Contract {
         self.renderedBody = renderedBody
         self.pdfRelativePath = pdfRelativePath
         self.portalNeedsUpload = portalNeedsUpload
+        self.portalUploadInFlight = portalUploadInFlight
         self.portalLastUploadedAtMs = portalLastUploadedAtMs
+        self.portalLastUploadError = portalLastUploadError
         self.portalLastUploadedHash = portalLastUploadedHash
         self.statusRaw = statusRaw
         self.client = client

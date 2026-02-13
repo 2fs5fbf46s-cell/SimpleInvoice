@@ -63,8 +63,6 @@ struct ContractDetailView: View {
     @State private var portalURL: URL? = nil
     @State private var showPortal = false
     @State private var portalError: String? = nil
-    @State private var portalAutoSyncInFlight = false
-    @State private var portalAutoSyncError: String? = nil
     @State private var navigateToClientSettings: Client? = nil
 
     // Status transition tracking (index once when it transitions TO "sent")
@@ -305,7 +303,7 @@ private extension ContractDetailView {
         }
 
         ToolbarItem(placement: .topBarTrailing) {
-            let portalDisabled = (openingPortal || contract.client?.portalEnabled == false)
+            let portalDisabled = (openingPortal || contract.resolvedClient?.portalEnabled == false)
 
             Button(action: openContractPortalTapped) {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -418,23 +416,24 @@ private extension ContractDetailView {
             Text("Client Portal")
                 .font(.headline)
 
-            let portalEnabled = contract.client?.portalEnabled == true
-            let hasClient = contract.client != nil
+            let portalClient = contract.resolvedClient
+            let portalEnabled = portalClient?.portalEnabled == true
+            let hasClient = portalClient != nil
             let canOpenPortal = hasClient && portalEnabled
 
             HStack(spacing: 8) {
                 Text(contractPortalSyncStatusText)
                     .font(.caption)
-                    .foregroundStyle(portalAutoSyncError == nil ? Color.secondary : Color.red)
+                    .foregroundStyle(contract.portalLastUploadError == nil ? Color.secondary : Color.red)
                 Spacer()
-                if (contract.portalNeedsUpload || portalAutoSyncError != nil) && canOpenPortal {
+                if shouldShowContractPortalRetryButton && canOpenPortal {
                     Button("Retry") {
                         triggerContractPortalAutoSync()
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(portalAutoSyncInFlight)
+                    .disabled(contract.portalUploadInFlight)
                 }
             }
 
@@ -444,6 +443,10 @@ private extension ContractDetailView {
                     .foregroundStyle(.secondary)
             } else if !portalEnabled {
                 Text("Client portal is disabled for this client.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if contract.portalUploadInFlight {
+                Text("Uploading latest changes in the background…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if contract.portalNeedsUpload {
@@ -460,7 +463,7 @@ private extension ContractDetailView {
             .disabled(openingPortal || !canOpenPortal)
             .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
 
-            if let client = contract.client, !portalEnabled {
+            if let client = portalClient, !portalEnabled {
                 Button {
                     navigateToClientSettings = client
                 } label: {
@@ -468,6 +471,13 @@ private extension ContractDetailView {
                 }
                 .buttonStyle(.bordered)
                 .tint(SBWTheme.brandBlue)
+            }
+
+            if let message = contract.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !message.isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .sbwContractCardRow()
@@ -662,6 +672,11 @@ private extension ContractDetailView {
         openingPortal = true
         portalError = nil
 
+        if contract.client == nil, let resolved = contract.resolvedClient {
+            contract.client = resolved
+            try? modelContext.save()
+        }
+
         do {
             let token = try await PortalBackend.shared.createContractPortalToken(contract: contract)
             let url = PortalBackend.shared.portalContractURL(contractId: contract.id.uuidString, token: token)
@@ -760,10 +775,14 @@ private extension ContractDetailView {
     }
 
     var contractPortalSyncStatusText: String {
-        if portalAutoSyncInFlight {
+        if !PortalAutoSyncService.isEligible(contract: contract) {
+            return "Portal: Not eligible"
+        }
+        if contract.portalUploadInFlight {
             return "Portal: Uploading..."
         }
-        if let portalAutoSyncError, !portalAutoSyncError.isEmpty {
+        if let message = contract.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
             return "Portal: Upload failed"
         }
         if contract.portalNeedsUpload {
@@ -772,8 +791,15 @@ private extension ContractDetailView {
         return "Portal: Up to date"
     }
 
+    var shouldShowContractPortalRetryButton: Bool {
+        if let message = contract.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
+            return true
+        }
+        return contract.portalNeedsUpload
+    }
+
     func handleDoneTapped() {
-        portalAutoSyncError = nil
         PortalAutoSyncService.markContractNeedsUploadIfChanged(contract: contract)
         forceSaveNow()
         triggerContractPortalAutoSync()
@@ -783,19 +809,17 @@ private extension ContractDetailView {
     func triggerContractPortalAutoSync() {
         guard PortalAutoSyncService.isEligible(contract: contract) else { return }
         let contractID = contract.id
-        portalAutoSyncInFlight = true
         Task {
             let result = await PortalAutoSyncService.uploadContract(
                 contractId: contractID,
                 context: modelContext
             )
             await MainActor.run {
-                portalAutoSyncInFlight = false
                 switch result {
                 case .failed(let message):
-                    portalAutoSyncError = message
+                    contract.portalLastUploadError = message
                 case .uploaded, .skippedUnchanged:
-                    portalAutoSyncError = nil
+                    contract.portalLastUploadError = nil
                 case .ineligible:
                     break
                 }

@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 4
+    static let currentVersion = 6
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -91,6 +91,12 @@ enum BusinessMigration {
 
             // Existing invoices should not enqueue uploads until user edits/saves again.
             invoice.portalNeedsUpload = false
+            invoice.portalUploadInFlight = false
+            invoice.portalLastUploadError = nil
+            if let blobUrl = invoice.portalLastUploadedBlobUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+               blobUrl.isEmpty {
+                invoice.portalLastUploadedBlobUrl = nil
+            }
 
             if let lastMs = invoice.portalLastUploadedAtMs, lastMs < 0 {
                 invoice.portalLastUploadedAtMs = nil
@@ -114,6 +120,8 @@ enum BusinessMigration {
         for contract in allContracts {
             // Existing contracts should not enqueue uploads until user edits/saves again.
             contract.portalNeedsUpload = false
+            contract.portalUploadInFlight = false
+            contract.portalLastUploadError = nil
 
             if let lastMs = contract.portalLastUploadedAtMs, lastMs < 0 {
                 contract.portalLastUploadedAtMs = nil
