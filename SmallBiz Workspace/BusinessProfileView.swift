@@ -402,6 +402,16 @@ struct BusinessProfileView: View {
                         BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
                     }
 
+                TextField("Custom Domain (optional, example.com)", text: websiteDomainBinding(siteDraft))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .onSubmit {
+                        let normalized = PublishedBusinessSite.normalizePublicSiteDomain(siteDraft.publicSiteDomain ?? "")
+                        siteDraft.publicSiteDomain = normalized.isEmpty ? nil : normalized
+                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                    }
+
                 TextField("Display Name", text: websiteAppNameBinding(siteDraft))
 
                 TextField("About Us", text: websiteAboutBinding(siteDraft), axis: .vertical)
@@ -736,6 +746,17 @@ struct BusinessProfileView: View {
         )
     }
 
+    private func websiteDomainBinding(_ draft: PublishedBusinessSite) -> Binding<String> {
+        Binding(
+            get: { draft.publicSiteDomain ?? "" },
+            set: { newValue in
+                let normalized = PublishedBusinessSite.normalizePublicSiteDomain(newValue)
+                draft.publicSiteDomain = normalized.isEmpty ? nil : normalized
+                BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
+            }
+        )
+    }
+
     private func websiteAboutBinding(_ draft: PublishedBusinessSite) -> Binding<String> {
         Binding(
             get: { draft.aboutUs },
@@ -783,7 +804,10 @@ struct BusinessProfileView: View {
 
         siteDraft.handle = normalized
         BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-        sitePreviewURL = PortalBackend.shared.publicSiteURL(handle: normalized)
+        sitePreviewURL = PortalBackend.shared.publicSiteURL(
+            handle: normalized,
+            customDomain: siteDraft.publicSiteDomain
+        )
         showSitePreviewSafari = true
     }
 

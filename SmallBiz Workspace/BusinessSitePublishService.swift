@@ -74,6 +74,8 @@ final class BusinessSitePublishService {
         }
 
         draft.handle = normalizedHandle
+        let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(draft.publicSiteDomain ?? "")
+        draft.publicSiteDomain = normalizedDomain.isEmpty ? nil : normalizedDomain
         draft.appName = resolvedAppName(draft: draft, profile: profile, business: business)
         draft.services = draft.services.isEmpty ? PublishedBusinessSite.splitLines(profile.catalogCategoriesText) : draft.services
         if draft.aboutUs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -109,6 +111,8 @@ final class BusinessSitePublishService {
 
     func saveDraftEdits(_ draft: PublishedBusinessSite, context: ModelContext) {
         draft.handle = PublishedBusinessSite.normalizeHandle(draft.handle)
+        let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(draft.publicSiteDomain ?? "")
+        draft.publicSiteDomain = normalizedDomain.isEmpty ? nil : normalizedDomain
         draft.updatedAt = .now
         if draft.publishStatus == PublishStatus.published.rawValue {
             draft.publishStatus = PublishStatus.draft.rawValue
@@ -165,6 +169,29 @@ final class BusinessSitePublishService {
                 handle: site.handle,
                 payload: payload
             )
+
+            if let domain = site.publicSiteDomain?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !domain.isEmpty {
+                do {
+                    try await PortalBackend.shared.upsertPublicSiteDomainMapping(
+                        domain: domain,
+                        businessId: site.businessID.uuidString,
+                        handle: site.handle
+                    )
+                } catch {
+                    #if DEBUG
+                    print("⚠️ Public site domain mapping failed: \(error.localizedDescription)")
+                    #endif
+                    if site.status == .error {
+                        let warning = "domain mapping failed: \(error.localizedDescription)"
+                        if let existing = site.lastPublishError, !existing.isEmpty {
+                            site.lastPublishError = "\(existing)\n\(warning)"
+                        } else {
+                            site.lastPublishError = warning
+                        }
+                    }
+                }
+            }
 
             site.publishStatus = PublishStatus.published.rawValue
             site.lastPublishedAt = .now

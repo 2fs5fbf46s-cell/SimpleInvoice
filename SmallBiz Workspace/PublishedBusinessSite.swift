@@ -7,6 +7,7 @@ final class PublishedBusinessSite {
     var businessID: UUID = UUID()
 
     var handle: String = ""
+    var publicSiteDomain: String? = nil
     var appName: String = ""
 
     var heroImageLocalPath: String? = nil
@@ -42,6 +43,7 @@ final class PublishedBusinessSite {
         id: UUID = UUID(),
         businessID: UUID,
         handle: String = "",
+        publicSiteDomain: String? = nil,
         appName: String = "",
         heroImageLocalPath: String? = nil,
         heroImageRemoteUrl: String? = nil,
@@ -63,6 +65,8 @@ final class PublishedBusinessSite {
         self.id = id
         self.businessID = businessID
         self.handle = PublishedBusinessSite.normalizeHandle(handle)
+        let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(publicSiteDomain ?? "")
+        self.publicSiteDomain = normalizedDomain.isEmpty ? nil : normalizedDomain
         self.appName = appName
         self.heroImageLocalPath = heroImageLocalPath
         self.heroImageRemoteUrl = heroImageRemoteUrl
@@ -165,6 +169,25 @@ final class PublishedBusinessSite {
 
         let parts = mapped.split(separator: "-").filter { !$0.isEmpty }
         return parts.joined(separator: "-")
+    }
+
+    static func normalizePublicSiteDomain(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return "" }
+
+        let withoutProtocol: String
+        if trimmed.hasPrefix("https://") {
+            withoutProtocol = String(trimmed.dropFirst("https://".count))
+        } else if trimmed.hasPrefix("http://") {
+            withoutProtocol = String(trimmed.dropFirst("http://".count))
+        } else {
+            withoutProtocol = trimmed
+        }
+
+        let hostAndMaybePath = withoutProtocol.split(separator: "/").first.map(String.init) ?? ""
+        let withoutPort = hostAndMaybePath.split(separator: ":").first.map(String.init) ?? ""
+        let normalized = withoutPort.trimmingCharacters(in: CharacterSet(charactersIn: "./"))
+        return normalized
     }
 
     static func splitLines(_ raw: String) -> [String] {
