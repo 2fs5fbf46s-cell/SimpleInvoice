@@ -774,6 +774,17 @@ final class PortalBackend {
     }
 
     func publicSiteURL(handle: String) -> URL {
+        publicSiteURL(handle: handle, customDomain: nil)
+    }
+
+    func publicSiteURL(handle: String, customDomain: String?) -> URL {
+        let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(customDomain ?? "")
+        if !normalizedDomain.isEmpty {
+            var comps = URLComponents(string: "https://\(normalizedDomain)")!
+            comps.path = "/"
+            return comps.url!
+        }
+
         let normalized = PublishedBusinessSite.normalizeHandle(handle)
         let safeHandle = normalized.isEmpty ? handle : normalized
         var comps = URLComponents(string: "https://biz.smallbizworkspace.com")!
@@ -792,6 +803,12 @@ final class PortalBackend {
     private struct PublicSiteUpsertResponseDTO: Decodable {
         let ok: Bool?
         let error: String?
+    }
+
+    private struct PublicSiteDomainUpsertBody: Encodable {
+        let domain: String
+        let businessId: String
+        let handle: String
     }
 
     func uploadPublicSiteAssetToBlob(
@@ -915,6 +932,53 @@ final class PortalBackend {
         }
 
         return true
+    }
+
+    func upsertPublicSiteDomainMapping(domain: String, businessId: String, handle: String) async throws {
+        let adminKey = try requireAdminKey()
+        let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(domain)
+        let normalizedHandle = PublishedBusinessSite.normalizeHandle(handle)
+
+        guard !normalizedDomain.isEmpty else {
+            throw PortalBackendError.decode(body: "Domain is required.")
+        }
+        guard !normalizedHandle.isEmpty else {
+            throw PortalBackendError.decode(body: "Handle is required.")
+        }
+
+        let endpointPath = "/api/public-site/domain/upsert"
+        let endpoint = baseURL.appendingPathComponent(endpointPath)
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let body = PublicSiteDomainUpsertBody(
+            domain: normalizedDomain,
+            businessId: businessId,
+            handle: normalizedHandle
+        )
+        req.httpBody = try JSONEncoder().encode(body)
+
+        let (bodyData, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: endpointPath)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw, path: endpointPath)
+        }
+
+        if bodyData.isEmpty { return }
+        if let decoded = try? decoder().decode(PublicSiteUpsertResponseDTO.self, from: bodyData) {
+            if let err = decoded.error, !err.isEmpty {
+                throw PortalBackendError.http(http.statusCode, body: err, path: endpointPath)
+            }
+            if decoded.ok == false {
+                throw PortalBackendError.http(http.statusCode, body: raw, path: endpointPath)
+            }
+        }
     }
 
     // MARK: - Back-compat builders (used by other views)

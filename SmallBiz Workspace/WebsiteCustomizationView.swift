@@ -212,6 +212,29 @@ struct WebsiteCustomizationView: View {
                     Rectangle()
                         .fill(Color.secondary.opacity(0.45))
                         .frame(height: 1)
+
+                    Text("Custom Domain (optional)")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11))
+                        .padding(.top, 8)
+
+                    TextField("example.com", text: Binding(
+                        get: { draft?.publicSiteDomain ?? "" },
+                        set: { value in
+                            let normalized = PublishedBusinessSite.normalizePublicSiteDomain(value)
+                            draft?.publicSiteDomain = normalized.isEmpty ? nil : normalized
+                            saveDraft()
+                        }
+                    ))
+                    .font(.system(size: 16, weight: .regular))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .padding(.bottom, 4)
+
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.45))
+                        .frame(height: 1)
                 }
             }
             .padding(.horizontal, 14)
@@ -332,7 +355,10 @@ struct WebsiteCustomizationView: View {
 
         draft.handle = normalized
         saveDraft()
-        previewURL = PortalBackend.shared.publicSiteURL(handle: normalized)
+        previewURL = PortalBackend.shared.publicSiteURL(
+            handle: normalized,
+            customDomain: draft.publicSiteDomain
+        )
         showPreviewSafari = true
     }
 
