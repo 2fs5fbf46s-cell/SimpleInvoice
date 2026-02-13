@@ -63,6 +63,8 @@ struct ContractDetailView: View {
     @State private var portalURL: URL? = nil
     @State private var showPortal = false
     @State private var portalError: String? = nil
+    @State private var portalAutoSyncInFlight = false
+    @State private var portalAutoSyncError: String? = nil
     @State private var navigateToClientSettings: Client? = nil
 
     // Status transition tracking (index once when it transitions TO "sent")
@@ -264,42 +266,8 @@ struct ContractDetailView: View {
             lastStatusRaw = newValue
 
             scheduleSave()
-
-            guard old != "sent", newValue == "sent" else { return }
-
-            Task {
-                do {
-                    // 1) Upload PDF -> Blob (writes contractPdfUrl + contractPdfFileName into KV)
-                    guard let client = contract.client else { return }
-
-                    let fileName: String = {
-                        let t = contract.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        return (t.isEmpty ? "Contract" : t).replacingOccurrences(of: "/", with: "-") + ".pdf"
-                    }()
-
-                    // Generate PDF (on-device)
-                    let pdfData = ContractPDFGenerator.makePDFData(contract: contract, business: profiles.first)
-
-                    // Upload to backend -> Blob -> KV
-                    _ = try await PortalBackend.shared.uploadContractPDFToBlob(
-                        businessId: client.businessID.uuidString,
-                        contractId: contract.id.uuidString,
-                        fileName: fileName,
-                        pdfData: pdfData
-                    )
-
-                    // 2) Index contract into directory (so directory token passes NOT_IN_DIRECTORY)
-                    try await PortalBackend.shared.indexContractForPortalDirectory(contract: contract)
-
-                    // 3) Index into Job workspace (FileItem + folder link)
-                    try DocumentFileIndexService.upsertContractPDF(
-                        contract: contract,
-                        context: modelContext
-                    )
-
-                } catch {
-                    print("Portal contract upload/index failed:", error.localizedDescription)
-                }
+            if old != newValue {
+                contract.portalNeedsUpload = true
             }
         }
 
@@ -329,8 +297,7 @@ private extension ContractDetailView {
 
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                forceSaveNow()
-                dismiss()
+                handleDoneTapped()
             } label: {
                 Image(systemName: "checkmark")
             }
@@ -455,12 +422,32 @@ private extension ContractDetailView {
             let hasClient = contract.client != nil
             let canOpenPortal = hasClient && portalEnabled
 
+            HStack(spacing: 8) {
+                Text(contractPortalSyncStatusText)
+                    .font(.caption)
+                    .foregroundStyle(portalAutoSyncError == nil ? Color.secondary : Color.red)
+                Spacer()
+                if (contract.portalNeedsUpload || portalAutoSyncError != nil) && canOpenPortal {
+                    Button("Retry") {
+                        triggerContractPortalAutoSync()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(portalAutoSyncInFlight)
+                }
+            }
+
             if !hasClient {
                 Text("Assign a client to enable portal access.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if !portalEnabled {
                 Text("Client portal is disabled for this client.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if contract.portalNeedsUpload {
+                Text("Pending upload—tap Done to sync latest changes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -769,6 +756,50 @@ private extension ContractDetailView {
             try modelContext.save()
         } catch {
             print("Force save failed: \(error)")
+        }
+    }
+
+    var contractPortalSyncStatusText: String {
+        if portalAutoSyncInFlight {
+            return "Portal: Uploading..."
+        }
+        if let portalAutoSyncError, !portalAutoSyncError.isEmpty {
+            return "Portal: Upload failed"
+        }
+        if contract.portalNeedsUpload {
+            return "Portal: Pending upload"
+        }
+        return "Portal: Up to date"
+    }
+
+    func handleDoneTapped() {
+        portalAutoSyncError = nil
+        PortalAutoSyncService.markContractNeedsUploadIfChanged(contract: contract)
+        forceSaveNow()
+        triggerContractPortalAutoSync()
+        dismiss()
+    }
+
+    func triggerContractPortalAutoSync() {
+        guard PortalAutoSyncService.isEligible(contract: contract) else { return }
+        let contractID = contract.id
+        portalAutoSyncInFlight = true
+        Task {
+            let result = await PortalAutoSyncService.uploadContract(
+                contractId: contractID,
+                context: modelContext
+            )
+            await MainActor.run {
+                portalAutoSyncInFlight = false
+                switch result {
+                case .failed(let message):
+                    portalAutoSyncError = message
+                case .uploaded, .skippedUnchanged:
+                    portalAutoSyncError = nil
+                case .ineligible:
+                    break
+                }
+            }
         }
     }
 
