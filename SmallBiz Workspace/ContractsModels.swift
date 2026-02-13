@@ -32,6 +32,9 @@ final class Contract {
     var renderedBody: String = ""
 
     var pdfRelativePath: String = ""
+    var portalNeedsUpload: Bool = true
+    var portalLastUploadedAtMs: Int64? = nil
+    var portalLastUploadedHash: String? = nil
 
     /// Store status as String for SwiftData
     var statusRaw: String = ContractStatus.draft.rawValue
@@ -79,6 +82,9 @@ final class Contract {
         templateCategory: String = "",
         renderedBody: String = "",
         pdfRelativePath: String = "",
+        portalNeedsUpload: Bool = true,
+        portalLastUploadedAtMs: Int64? = nil,
+        portalLastUploadedHash: String? = nil,
         statusRaw: String = ContractStatus.draft.rawValue,
         client: Client? = nil,
         invoice: Invoice? = nil,
@@ -92,6 +98,9 @@ final class Contract {
         self.templateCategory = templateCategory
         self.renderedBody = renderedBody
         self.pdfRelativePath = pdfRelativePath
+        self.portalNeedsUpload = portalNeedsUpload
+        self.portalLastUploadedAtMs = portalLastUploadedAtMs
+        self.portalLastUploadedHash = portalLastUploadedHash
         self.statusRaw = statusRaw
         self.client = client
         self.invoice = invoice

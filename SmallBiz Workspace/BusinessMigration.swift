@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -88,6 +88,17 @@ enum BusinessMigration {
                InvoiceTemplateKey.from(overrideRaw) == nil {
                 invoice.invoiceTemplateKeyOverride = nil
             }
+
+            // Existing invoices should not enqueue uploads until user edits/saves again.
+            invoice.portalNeedsUpload = false
+
+            if let lastMs = invoice.portalLastUploadedAtMs, lastMs < 0 {
+                invoice.portalLastUploadedAtMs = nil
+            }
+            if let hash = invoice.portalLastUploadedHash?.trimmingCharacters(in: .whitespacesAndNewlines),
+               hash.isEmpty {
+                invoice.portalLastUploadedHash = nil
+            }
         }
 
         let allClients = try modelContext.fetch(FetchDescriptor<Client>())
@@ -96,6 +107,20 @@ enum BusinessMigration {
                !preferredRaw.isEmpty,
                InvoiceTemplateKey.from(preferredRaw) == nil {
                 client.preferredInvoiceTemplateKey = nil
+            }
+        }
+
+        let allContracts = try modelContext.fetch(FetchDescriptor<Contract>())
+        for contract in allContracts {
+            // Existing contracts should not enqueue uploads until user edits/saves again.
+            contract.portalNeedsUpload = false
+
+            if let lastMs = contract.portalLastUploadedAtMs, lastMs < 0 {
+                contract.portalLastUploadedAtMs = nil
+            }
+            if let hash = contract.portalLastUploadedHash?.trimmingCharacters(in: .whitespacesAndNewlines),
+               hash.isEmpty {
+                contract.portalLastUploadedHash = nil
             }
         }
 

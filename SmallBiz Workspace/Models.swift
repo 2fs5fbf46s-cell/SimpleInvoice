@@ -222,6 +222,9 @@ final class Invoice {
 
     var pdfRelativePath: String = ""
     var invoiceTemplateKeyOverride: String? = nil
+    var portalNeedsUpload: Bool = true
+    var portalLastUploadedAtMs: Int64? = nil
+    var portalLastUploadedHash: String? = nil
 
 
     // ✅ Single-side relationship stays plain (inverse declared on Client.invoices)
@@ -268,6 +271,9 @@ final class Invoice {
         sourceBookingRequestId: String? = nil,
         pdfRelativePath: String = "",
         invoiceTemplateKeyOverride: String? = nil,
+        portalNeedsUpload: Bool = true,
+        portalLastUploadedAtMs: Int64? = nil,
+        portalLastUploadedHash: String? = nil,
         client: Client? = nil,
         job: Job? = nil,
         items: [LineItem] = []
@@ -288,6 +294,9 @@ final class Invoice {
         self.sourceBookingRequestId = sourceBookingRequestId
         self.pdfRelativePath = pdfRelativePath
         self.invoiceTemplateKeyOverride = invoiceTemplateKeyOverride
+        self.portalNeedsUpload = portalNeedsUpload
+        self.portalLastUploadedAtMs = portalLastUploadedAtMs
+        self.portalLastUploadedHash = portalLastUploadedHash
         self.client = client
         self.job = job
 

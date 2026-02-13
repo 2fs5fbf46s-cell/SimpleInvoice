@@ -3,7 +3,10 @@ import SwiftData
 
 @Model
 final class AppNotification {
-    @Attribute(.unique) var id: String = UUID().uuidString
+    // CloudKit + SwiftData does NOT support @Attribute(.unique)
+    // Keep an id, but enforce uniqueness in code (fetch-before-insert) instead.
+    var id: String = UUID().uuidString
+
     var businessId: UUID = UUID()
     var title: String = ""
     var body: String = ""
@@ -14,7 +17,7 @@ final class AppNotification {
     var rawDataJson: String? = nil
 
     init(
-        id: String,
+        id: String = UUID().uuidString,
         businessId: UUID,
         title: String,
         body: String,
