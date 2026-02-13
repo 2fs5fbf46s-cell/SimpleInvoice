@@ -172,31 +172,35 @@ final class BusinessSitePublishService {
 
             if let domain = site.publicSiteDomain?.trimmingCharacters(in: .whitespacesAndNewlines),
                !domain.isEmpty {
+                var domainWarning: String?
                 do {
                     try await PortalBackend.shared.upsertPublicSiteDomainMapping(
                         domain: domain,
                         businessId: site.businessID.uuidString,
-                        handle: site.handle
+                        handle: site.handle,
+                        includeWww: site.includeWww
                     )
                 } catch {
                     #if DEBUG
                     print("⚠️ Public site domain mapping failed: \(error.localizedDescription)")
                     #endif
-                    if site.status == .error {
-                        let warning = "domain mapping failed: \(error.localizedDescription)"
-                        if let existing = site.lastPublishError, !existing.isEmpty {
-                            site.lastPublishError = "\(existing)\n\(warning)"
-                        } else {
-                            site.lastPublishError = warning
-                        }
+                    if case PortalBackendError.http(let code, _, _) = error, code == 409 {
+                        domainWarning = "This domain is already connected to another business."
+                    } else {
+                        domainWarning = "domain mapping failed: \(error.localizedDescription)"
                     }
+                }
+                if let domainWarning, !domainWarning.isEmpty {
+                    site.lastPublishError = domainWarning
                 }
             }
 
             site.publishStatus = PublishStatus.published.rawValue
             site.lastPublishedAt = .now
             site.needsSync = false
-            site.lastPublishError = nil
+            if site.lastPublishError?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+                site.lastPublishError = nil
+            }
             try? context.save()
         } catch {
             site.publishStatus = PublishStatus.error.rawValue
@@ -271,7 +275,7 @@ final class BusinessSitePublishService {
 
         var team = site.teamMembersV2
         if !team.isEmpty {
-            var localPathMap = site.teamPhotoLocalPathById
+            let localPathMap = site.teamPhotoLocalPathById
             for index in team.indices {
                 let memberID = team[index].id.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !memberID.isEmpty else { continue }

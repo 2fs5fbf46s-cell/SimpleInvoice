@@ -150,6 +150,16 @@ struct PublicSiteUpsertPayload: Encodable {
     let updatedAtMs: Int
 }
 
+struct DomainVerifyDTO: Decodable {
+    let ok: Bool
+    let mapped: Bool
+    let status: String
+    let handle: String?
+    let businessId: String?
+    let canonicalUrl: String?
+    let error: String?
+}
+
 struct PushRegistrationResponseDTO: Decodable {
     let ok: Bool?
     let error: String?
@@ -809,6 +819,7 @@ final class PortalBackend {
         let domain: String
         let businessId: String
         let handle: String
+        let includeWww: Bool
     }
 
     func uploadPublicSiteAssetToBlob(
@@ -934,7 +945,12 @@ final class PortalBackend {
         return true
     }
 
-    func upsertPublicSiteDomainMapping(domain: String, businessId: String, handle: String) async throws {
+    func upsertPublicSiteDomainMapping(
+        domain: String,
+        businessId: String,
+        handle: String,
+        includeWww: Bool
+    ) async throws {
         let adminKey = try requireAdminKey()
         let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(domain)
         let normalizedHandle = PublishedBusinessSite.normalizeHandle(handle)
@@ -956,7 +972,8 @@ final class PortalBackend {
         let body = PublicSiteDomainUpsertBody(
             domain: normalizedDomain,
             businessId: businessId,
-            handle: normalizedHandle
+            handle: normalizedHandle,
+            includeWww: includeWww
         )
         req.httpBody = try JSONEncoder().encode(body)
 
@@ -978,6 +995,67 @@ final class PortalBackend {
             if decoded.ok == false {
                 throw PortalBackendError.http(http.statusCode, body: raw, path: endpointPath)
             }
+        }
+    }
+
+    func verifyPublicSiteDomain(domain: String) async -> DomainVerifyDTO {
+        let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(domain)
+        guard !normalizedDomain.isEmpty else {
+            return DomainVerifyDTO(
+                ok: false,
+                mapped: false,
+                status: "unmapped",
+                handle: nil,
+                businessId: nil,
+                canonicalUrl: nil,
+                error: "INVALID_DOMAIN"
+            )
+        }
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/public-site/domain/verify"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "domain", value: normalizedDomain)]
+        guard let url = comps.url else {
+            return DomainVerifyDTO(
+                ok: false,
+                mapped: false,
+                status: "unmapped",
+                handle: nil,
+                businessId: nil,
+                canonicalUrl: nil,
+                error: "INVALID_URL"
+            )
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+
+        do {
+            let (data, _) = try await URLSession.shared.data(for: req)
+            if let decoded = try? decoder().decode(DomainVerifyDTO.self, from: data) {
+                return decoded
+            }
+            return DomainVerifyDTO(
+                ok: false,
+                mapped: false,
+                status: "unmapped",
+                handle: nil,
+                businessId: nil,
+                canonicalUrl: nil,
+                error: "INVALID_RESPONSE"
+            )
+        } catch {
+            return DomainVerifyDTO(
+                ok: false,
+                mapped: false,
+                status: "unmapped",
+                handle: nil,
+                businessId: nil,
+                canonicalUrl: nil,
+                error: error.localizedDescription
+            )
         }
     }
 

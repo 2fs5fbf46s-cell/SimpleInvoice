@@ -23,6 +23,11 @@ struct WebsiteCustomizationView: View {
     @State private var route: WebsiteRoute?
     @State private var showServicesSheet = false
     @State private var showAboutSheet = false
+    @State private var siteDomainStatus: String = "unmapped"
+    @State private var isCheckingSiteDomainStatus = false
+    @State private var siteDomainCheckTask: Task<Void, Never>?
+    @State private var siteDomainLastCheckedValue: String = ""
+    @State private var siteDomainLastCheckedAt: Date = .distantPast
 
     var body: some View {
         ZStack {
@@ -129,6 +134,9 @@ struct WebsiteCustomizationView: View {
         .onAppear {
             loadContext()
         }
+        .onDisappear {
+            siteDomainCheckTask?.cancel()
+        }
         .navigationDestination(item: $route) { target in
             guard let draft else { return AnyView(EmptyView()) }
             switch target {
@@ -224,6 +232,7 @@ struct WebsiteCustomizationView: View {
                             let normalized = PublishedBusinessSite.normalizePublicSiteDomain(value)
                             draft?.publicSiteDomain = normalized.isEmpty ? nil : normalized
                             saveDraft()
+                            scheduleSiteDomainStatusCheck(force: false, debounced: true)
                         }
                     ))
                     .font(.system(size: 16, weight: .regular))
@@ -235,6 +244,39 @@ struct WebsiteCustomizationView: View {
                     Rectangle()
                         .fill(Color.secondary.opacity(0.45))
                         .frame(height: 1)
+
+                    Toggle(
+                        "Also map www.\(draft?.publicSiteDomain ?? "domain")",
+                        isOn: Binding(
+                            get: { draft?.includeWww ?? false },
+                            set: { value in
+                                draft?.includeWww = value
+                                saveDraft()
+                            }
+                        )
+                    )
+                    .padding(.top, 8)
+
+                    Text("Recommended if you want both domain.com and www.domain.com to work.")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11))
+
+                    if !((draft?.publicSiteDomain ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                        HStack(spacing: 10) {
+                            Text("Status: \(siteDomainStatusLabel)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(siteDomainStatusColor)
+
+                            Spacer()
+
+                            Button(isCheckingSiteDomainStatus ? "Checking…" : "Check now") {
+                                scheduleSiteDomainStatusCheck(force: true, debounced: false)
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .disabled(isCheckingSiteDomainStatus)
+                        }
+                        .padding(.top, 4)
+                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -338,6 +380,7 @@ struct WebsiteCustomizationView: View {
 
         BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
         self.draft = draft
+        scheduleSiteDomainStatusCheck(force: false, debounced: true)
     }
 
     private func saveDraft() {
@@ -375,11 +418,64 @@ struct WebsiteCustomizationView: View {
                 business: business,
                 context: modelContext
             )
+            scheduleSiteDomainStatusCheck(force: true, debounced: false)
             alertMessage = "Website queued for publishing."
             showAlert = true
         } catch {
             alertMessage = error.localizedDescription
             showAlert = true
+        }
+    }
+
+    private var siteDomainStatusLabel: String {
+        switch siteDomainStatus {
+        case "active":
+            return "Active"
+        case "dns_pending":
+            return "DNS pending"
+        default:
+            return "Unmapped"
+        }
+    }
+
+    private var siteDomainStatusColor: Color {
+        switch siteDomainStatus {
+        case "active":
+            return SBWTheme.brandGreen
+        case "dns_pending":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
+
+    private func scheduleSiteDomainStatusCheck(force: Bool, debounced: Bool) {
+        siteDomainCheckTask?.cancel()
+        guard let domain = draft?.publicSiteDomain?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !domain.isEmpty else {
+            siteDomainStatus = "unmapped"
+            isCheckingSiteDomainStatus = false
+            return
+        }
+
+        if !force,
+           siteDomainLastCheckedValue == domain,
+           Date().timeIntervalSince(siteDomainLastCheckedAt) < 8 {
+            return
+        }
+
+        siteDomainCheckTask = Task {
+            if debounced {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            isCheckingSiteDomainStatus = true
+            let result = await PortalBackend.shared.verifyPublicSiteDomain(domain: domain)
+            guard !Task.isCancelled else { return }
+            siteDomainStatus = result.status
+            siteDomainLastCheckedValue = domain
+            siteDomainLastCheckedAt = .now
+            isCheckingSiteDomainStatus = false
         }
     }
 }

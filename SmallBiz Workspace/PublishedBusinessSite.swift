@@ -8,6 +8,7 @@ final class PublishedBusinessSite {
 
     var handle: String = ""
     var publicSiteDomain: String? = nil
+    var includeWww: Bool = false
     var appName: String = ""
 
     var heroImageLocalPath: String? = nil
@@ -44,6 +45,7 @@ final class PublishedBusinessSite {
         businessID: UUID,
         handle: String = "",
         publicSiteDomain: String? = nil,
+        includeWww: Bool = false,
         appName: String = "",
         heroImageLocalPath: String? = nil,
         heroImageRemoteUrl: String? = nil,
@@ -67,6 +69,7 @@ final class PublishedBusinessSite {
         self.handle = PublishedBusinessSite.normalizeHandle(handle)
         let normalizedDomain = PublishedBusinessSite.normalizePublicSiteDomain(publicSiteDomain ?? "")
         self.publicSiteDomain = normalizedDomain.isEmpty ? nil : normalizedDomain
+        self.includeWww = includeWww
         self.appName = appName
         self.heroImageLocalPath = heroImageLocalPath
         self.heroImageRemoteUrl = heroImageRemoteUrl
