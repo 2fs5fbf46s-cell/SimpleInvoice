@@ -23,6 +23,11 @@ struct BusinessProfileView: View {
     @State private var showSiteAlert = false
     @State private var showSitePreviewSafari = false
     @State private var sitePreviewURL: URL?
+    @State private var siteDomainStatus: String = "unmapped"
+    @State private var isCheckingSiteDomainStatus = false
+    @State private var siteDomainCheckTask: Task<Void, Never>?
+    @State private var siteDomainLastCheckedValue: String = ""
+    @State private var siteDomainLastCheckedAt: Date = .distantPast
 
     @State private var paypalStatus: PayPalStatus?
     @State private var isLoadingPayPalStatus = false
@@ -145,6 +150,9 @@ struct BusinessProfileView: View {
                     Task { await refreshNotificationStatus() }
                 }
             }
+            .onDisappear {
+                siteDomainCheckTask?.cancel()
+            }
 
         let withSheets = withContextRefresh
             .sheet(isPresented: $showInvoiceTemplateSheet) {
@@ -221,6 +229,7 @@ struct BusinessProfileView: View {
             essentialsCard(profile)
             brandingCard(profile)
             defaultsCard(profile)
+            websitePublishingCard(profile)
             invoicesCard
             paymentsCard
             notificationsCard
@@ -411,6 +420,28 @@ struct BusinessProfileView: View {
                         siteDraft.publicSiteDomain = normalized.isEmpty ? nil : normalized
                         BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
                     }
+
+                Toggle("Also map www.\(siteDraft.publicSiteDomain ?? "domain")", isOn: websiteIncludeWwwBinding(siteDraft))
+
+                Text("Recommended if you want both domain.com and www.domain.com to work.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if !(siteDraft.publicSiteDomain ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    HStack(spacing: 10) {
+                        Text("Status: \(siteDomainStatusLabel)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(siteDomainStatusColor)
+
+                        Spacer()
+
+                        Button(isCheckingSiteDomainStatus ? "Checking…" : "Check now") {
+                            scheduleSiteDomainStatusCheck(force: true, debounced: false)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .disabled(isCheckingSiteDomainStatus)
+                    }
+                }
 
                 TextField("Display Name", text: websiteAppNameBinding(siteDraft))
 
@@ -753,6 +784,17 @@ struct BusinessProfileView: View {
                 let normalized = PublishedBusinessSite.normalizePublicSiteDomain(newValue)
                 draft.publicSiteDomain = normalized.isEmpty ? nil : normalized
                 BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
+                scheduleSiteDomainStatusCheck(force: false, debounced: true)
+            }
+        )
+    }
+
+    private func websiteIncludeWwwBinding(_ draft: PublishedBusinessSite) -> Binding<Bool> {
+        Binding(
+            get: { draft.includeWww },
+            set: { newValue in
+                draft.includeWww = newValue
+                BusinessSitePublishService.shared.saveDraftEdits(draft, context: modelContext)
             }
         )
     }
@@ -791,6 +833,7 @@ struct BusinessProfileView: View {
         siteServicesText = PublishedBusinessSite.joinLines(draft.services)
         siteTeamText = PublishedBusinessSite.joinLines(draft.teamMembers)
         siteGalleryPathsText = PublishedBusinessSite.joinLines(draft.galleryLocalPaths)
+        scheduleSiteDomainStatusCheck(force: false, debounced: true)
     }
 
     private func previewWebsiteTapped() {
@@ -829,9 +872,62 @@ struct BusinessProfileView: View {
                 business: business,
                 context: modelContext
             )
+            scheduleSiteDomainStatusCheck(force: true, debounced: false)
         } catch {
             siteAlertMessage = error.localizedDescription
             showSiteAlert = true
+        }
+    }
+
+    private var siteDomainStatusLabel: String {
+        switch siteDomainStatus {
+        case "active":
+            return "Active"
+        case "dns_pending":
+            return "DNS pending"
+        default:
+            return "Unmapped"
+        }
+    }
+
+    private var siteDomainStatusColor: Color {
+        switch siteDomainStatus {
+        case "active":
+            return SBWTheme.brandGreen
+        case "dns_pending":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
+
+    private func scheduleSiteDomainStatusCheck(force: Bool, debounced: Bool) {
+        siteDomainCheckTask?.cancel()
+        guard let domain = siteDraft?.publicSiteDomain?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !domain.isEmpty else {
+            siteDomainStatus = "unmapped"
+            isCheckingSiteDomainStatus = false
+            return
+        }
+
+        if !force,
+           siteDomainLastCheckedValue == domain,
+           Date().timeIntervalSince(siteDomainLastCheckedAt) < 8 {
+            return
+        }
+
+        siteDomainCheckTask = Task {
+            if debounced {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            isCheckingSiteDomainStatus = true
+            let result = await PortalBackend.shared.verifyPublicSiteDomain(domain: domain)
+            guard !Task.isCancelled else { return }
+            siteDomainStatus = result.status
+            siteDomainLastCheckedValue = domain
+            siteDomainLastCheckedAt = .now
+            isCheckingSiteDomainStatus = false
         }
     }
 
