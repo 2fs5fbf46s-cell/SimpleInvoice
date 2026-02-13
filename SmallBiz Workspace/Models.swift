@@ -223,7 +223,10 @@ final class Invoice {
     var pdfRelativePath: String = ""
     var invoiceTemplateKeyOverride: String? = nil
     var portalNeedsUpload: Bool = true
+    var portalUploadInFlight: Bool = false
     var portalLastUploadedAtMs: Int64? = nil
+    var portalLastUploadError: String? = nil
+    var portalLastUploadedBlobUrl: String? = nil
     var portalLastUploadedHash: String? = nil
 
 
@@ -272,7 +275,10 @@ final class Invoice {
         pdfRelativePath: String = "",
         invoiceTemplateKeyOverride: String? = nil,
         portalNeedsUpload: Bool = true,
+        portalUploadInFlight: Bool = false,
         portalLastUploadedAtMs: Int64? = nil,
+        portalLastUploadError: String? = nil,
+        portalLastUploadedBlobUrl: String? = nil,
         portalLastUploadedHash: String? = nil,
         client: Client? = nil,
         job: Job? = nil,
@@ -295,7 +301,10 @@ final class Invoice {
         self.pdfRelativePath = pdfRelativePath
         self.invoiceTemplateKeyOverride = invoiceTemplateKeyOverride
         self.portalNeedsUpload = portalNeedsUpload
+        self.portalUploadInFlight = portalUploadInFlight
         self.portalLastUploadedAtMs = portalLastUploadedAtMs
+        self.portalLastUploadError = portalLastUploadError
+        self.portalLastUploadedBlobUrl = portalLastUploadedBlobUrl
         self.portalLastUploadedHash = portalLastUploadedHash
         self.client = client
         self.job = job

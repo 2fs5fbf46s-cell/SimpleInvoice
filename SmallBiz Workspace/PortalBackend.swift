@@ -553,7 +553,8 @@ final class PortalBackend {
                 "id": li.id.uuidString,
                 "name": li.itemDescription.isEmpty ? "Item" : li.itemDescription,
                 "description": "",
-                "quantity": qty,
+                "qty": qty,
+                "quantity": qty, // Back-compat for older portal renderers
                 "unitAmountCents": unitCents,
                 "amountCents": amountCents
             ])
@@ -566,7 +567,8 @@ final class PortalBackend {
                 "id": "discount",
                 "name": "Discount",
                 "description": "",
-                "quantity": 1,
+                "qty": 1,
+                "quantity": 1, // Back-compat for older portal renderers
                 "unitAmountCents": -discountCents,
                 "amountCents": -discountCents
             ])
@@ -878,7 +880,7 @@ final class PortalBackend {
     }
 
     @MainActor
-    func indexInvoiceForPortalDirectory(invoice: Invoice) async throws {
+    func indexInvoiceForPortalDirectory(invoice: Invoice, pdfUrl: String? = nil) async throws {
         guard let client = invoice.client else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice is not linked to a client."])
         }
@@ -894,17 +896,23 @@ final class PortalBackend {
             "clientId": client.id.uuidString,
             "scope": "invoice",
             "mode": "live",
+            "documentType": "invoice",
             "invoiceId": invoiceIdString(invoice),
             "invoiceNumber": invoice.invoiceNumber,
+            "issueDateMs": Int((invoice.issueDate.timeIntervalSince1970 * 1000).rounded()),
+            "dueDateMs": Int((invoice.dueDate.timeIntervalSince1970 * 1000).rounded()),
+            "clientName": client.name,
             "amountCents": totalCents,
             "subtotalCents": subtotalCents,
             "taxCents": taxCents,
             "lineItems": lineItems,
             "currency": "usd",
+            "paid": invoice.isPaid,
             "status": invoice.isPaid ? "paid" : "unpaid",
             "title": "Invoice \(invoice.invoiceNumber)",
             "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
-            "clientPortalEnabled": client.portalEnabled
+            "clientPortalEnabled": client.portalEnabled,
+            "pdfUrl": (pdfUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         ]
 
         _ = try await seedToken(payload: body)
@@ -939,7 +947,7 @@ final class PortalBackend {
 
     /// Indexes an estimate into the portal directory list.
     @MainActor
-    func indexEstimateForDirectory(estimate: Invoice) async throws {
+    func indexEstimateForDirectory(estimate: Invoice, pdfUrl: String? = nil) async throws {
         guard estimate.documentType == "estimate" else { return }
         guard let client = estimate.client else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Estimate is not linked to a client."])
@@ -965,15 +973,20 @@ final class PortalBackend {
             "estimateId": estimate.id.uuidString,
             "invoiceId": estimate.id.uuidString,
             "invoiceNumber": estimate.invoiceNumber,
+            "issueDateMs": Int((estimate.issueDate.timeIntervalSince1970 * 1000).rounded()),
+            "dueDateMs": Int((estimate.dueDate.timeIntervalSince1970 * 1000).rounded()),
+            "clientName": client.name,
             "amountCents": amountCents,
             "subtotalCents": subtotalCents,
             "taxCents": taxCents,
             "lineItems": lineItems,
             "currency": "usd",
+            "paid": estimate.isPaid,
             "status": normalizedStatus,
             "title": "Estimate \(estimate.invoiceNumber)",
             "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
-            "clientPortalEnabled": client.portalEnabled
+            "clientPortalEnabled": client.portalEnabled,
+            "pdfUrl": (pdfUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         ]
 
         _ = try await seedToken(payload: body)

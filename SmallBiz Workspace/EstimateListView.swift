@@ -214,6 +214,17 @@ struct EstimateListView: View {
 
                             ToolbarItem(placement: .topBarTrailing) {
                                 Button("Done") {
+                                    if let estimate = newEstimate {
+                                        PortalAutoSyncService.markInvoiceNeedsUploadIfChanged(invoice: estimate, business: nil)
+                                        try? modelContext.save()
+                                        let estimateID = estimate.id
+                                        Task {
+                                            _ = await PortalAutoSyncService.uploadEstimate(
+                                                estimateId: estimateID,
+                                                context: modelContext
+                                            )
+                                        }
+                                    }
                                     showingNewEstimate = false
                                 }
                                 .fontWeight(.semibold)
