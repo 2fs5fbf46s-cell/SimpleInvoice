@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import Network
+import UIKit
 
 @MainActor
 final class BusinessSitePublishService {
@@ -10,6 +11,10 @@ final class BusinessSitePublishService {
     private var isNetworkReachable = true
     private var inFlightSiteIDs: Set<UUID> = []
     private var syncContext: ModelContext?
+
+    private let maxPublicImageDimension: CGFloat = 1600
+    private let targetJPEGQuality: CGFloat = 0.72
+    private let maxUploadBytes: Int = 4_500_000
 
     private init() {}
 
@@ -26,7 +31,6 @@ final class BusinessSitePublishService {
         let queue = DispatchQueue(label: "BusinessSitePublishService.Network")
         monitor.pathUpdateHandler = { path in
             let satisfied = (path.status == .satisfied)
-            // NWPathMonitor callback is @Sendable in Swift 6; avoid capturing non-Sendable values here.
             Task { @MainActor in
                 BusinessSitePublishService.handleNetworkUpdateOnMain(isReachable: satisfied)
             }
@@ -112,6 +116,69 @@ final class BusinessSitePublishService {
         try? context.save()
     }
 
+    func publishPublicSite(site: PublishedBusinessSite, context: ModelContext) async {
+        site.publishStatus = PublishStatus.publishing.rawValue
+        site.lastPublishError = nil
+        site.updatedAt = .now
+        try? context.save()
+
+        do {
+            try await uploadAssetsIfNeeded(site: site)
+
+            let normalizedTeam = site.teamMembersV2
+                .map {
+                    PublishedBusinessSite.TeamMemberV2(
+                        id: $0.id,
+                        name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                        title: $0.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                        photoUrl: $0.photoUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                }
+                .filter { !$0.name.isEmpty }
+
+            site.teamMembersV2 = normalizedTeam
+            site.teamMembers = normalizedTeam.map { $0.name }
+
+            let teamV2Payload = normalizedTeam.map {
+                PublicSiteUpsertPayload.TeamMemberV2Payload(
+                    id: $0.id,
+                    name: $0.name,
+                    title: $0.title,
+                    photoUrl: $0.photoUrl
+                )
+            }
+
+            let payload = PublicSiteUpsertPayload(
+                appName: site.appName,
+                heroUrl: site.heroImageRemoteUrl,
+                aboutUrl: site.aboutImageRemoteUrl,
+                services: site.services,
+                aboutUs: site.aboutUs,
+                team: site.teamMembers,
+                teamV2: teamV2Payload,
+                galleryUrls: site.galleryRemoteUrls,
+                updatedAtMs: Int(site.updatedAt.timeIntervalSince1970 * 1000)
+            )
+
+            _ = try await PortalBackend.shared.upsertPublicSite(
+                businessId: site.businessID.uuidString,
+                handle: site.handle,
+                payload: payload
+            )
+
+            site.publishStatus = PublishStatus.published.rawValue
+            site.lastPublishedAt = .now
+            site.needsSync = false
+            site.lastPublishError = nil
+            try? context.save()
+        } catch {
+            site.publishStatus = PublishStatus.error.rawValue
+            site.lastPublishError = error.localizedDescription
+            site.needsSync = true
+            try? context.save()
+        }
+    }
+
     private func fetchDraft(for businessID: UUID, context: ModelContext) -> PublishedBusinessSite? {
         let all = (try? context.fetch(FetchDescriptor<PublishedBusinessSite>())) ?? []
         return all.first(where: { $0.businessID == businessID })
@@ -145,96 +212,194 @@ final class BusinessSitePublishService {
         inFlightSiteIDs.insert(siteID)
         defer { inFlightSiteIDs.remove(siteID) }
 
-        site.publishStatus = PublishStatus.publishing.rawValue
-        site.lastPublishError = nil
-        try? context.save()
-
-        do {
-            try await uploadAssetsIfNeeded(site: site)
-
-            let payload = PublicSiteUpsertPayload(
-                appName: site.appName,
-                heroUrl: site.heroImageRemoteUrl,
-                services: site.services,
-                aboutUs: site.aboutUs,
-                team: site.teamMembers,
-                galleryUrls: site.galleryRemoteUrls,
-                updatedAtMs: Int(site.updatedAt.timeIntervalSince1970 * 1000)
-            )
-
-            _ = try await PortalBackend.shared.upsertPublicSite(
-                businessId: site.businessID.uuidString,
-                handle: site.handle,
-                payload: payload
-            )
-
-            site.publishStatus = PublishStatus.published.rawValue
-            site.lastPublishedAt = .now
-            site.needsSync = false
-            site.lastPublishError = nil
-            try? context.save()
-        } catch {
-            site.publishStatus = PublishStatus.error.rawValue
-            site.lastPublishError = error.localizedDescription
-            site.needsSync = true
-            try? context.save()
-        }
+        await publishPublicSite(site: site, context: context)
     }
 
     private func uploadAssetsIfNeeded(site: PublishedBusinessSite) async throws {
-        if let localHeroPath = site.heroImageLocalPath,
-           !localHeroPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           site.heroImageRemoteUrl == nil,
-           let heroData = try? Data(contentsOf: URL(fileURLWithPath: localHeroPath)) {
-            let heroURL = try await PortalBackend.shared.uploadSiteAssetToBlob(
+        if let localHeroPath = normalizedLocalPath(site.heroImageLocalPath),
+           shouldUploadAsset(localPath: localHeroPath, remoteUrl: site.heroImageRemoteUrl) {
+            let heroData = try preparedAssetData(localPath: localHeroPath)
+            let heroURL = try await PortalBackend.shared.uploadPublicSiteAssetToBlob(
                 businessId: site.businessID.uuidString,
                 handle: site.handle,
                 kind: "hero",
-                fileName: URL(fileURLWithPath: localHeroPath).lastPathComponent,
+                fileName: uploadFileName(prefix: "hero", localPath: localHeroPath),
                 data: heroData
             )
             site.heroImageRemoteUrl = heroURL
         }
 
-        if let localAboutPath = site.aboutImageLocalPath,
-           !localAboutPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           site.aboutImageRemoteUrl == nil,
-           let aboutData = try? Data(contentsOf: URL(fileURLWithPath: localAboutPath)) {
-            let aboutURL = try await PortalBackend.shared.uploadSiteAssetToBlob(
+        if let localAboutPath = normalizedLocalPath(site.aboutImageLocalPath),
+           shouldUploadAsset(localPath: localAboutPath, remoteUrl: site.aboutImageRemoteUrl) {
+            let aboutData = try preparedAssetData(localPath: localAboutPath)
+            let aboutURL = try await PortalBackend.shared.uploadPublicSiteAssetToBlob(
                 businessId: site.businessID.uuidString,
                 handle: site.handle,
-                kind: "gallery",
-                fileName: URL(fileURLWithPath: localAboutPath).lastPathComponent,
+                kind: "asset",
+                fileName: uploadFileName(prefix: "about", localPath: localAboutPath),
                 data: aboutData
             )
             site.aboutImageRemoteUrl = aboutURL
-            if !site.galleryRemoteUrls.contains(aboutURL) {
-                site.galleryRemoteUrls.insert(aboutURL, at: 0)
-            }
         }
 
-        guard !site.galleryLocalPaths.isEmpty else { return }
+        var team = site.teamMembersV2
+        if !team.isEmpty {
+            var localPathMap = site.teamPhotoLocalPathById
+            for index in team.indices {
+                let memberID = team[index].id.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !memberID.isEmpty else { continue }
+                guard let localPath = normalizedLocalPath(localPathMap[memberID]) else { continue }
 
-        var remoteURLs = site.galleryRemoteUrls
-        let startIndex = min(remoteURLs.count, site.galleryLocalPaths.count)
+                if !shouldUploadAsset(localPath: localPath, remoteUrl: team[index].photoUrl) {
+                    continue
+                }
 
-        if startIndex < site.galleryLocalPaths.count {
-            for index in startIndex..<site.galleryLocalPaths.count {
-                let localPath = site.galleryLocalPaths[index]
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: localPath)) else { continue }
+                let data = try preparedAssetData(localPath: localPath)
+                let uploadedURL = try await PortalBackend.shared.uploadPublicSiteAssetToBlob(
+                    businessId: site.businessID.uuidString,
+                    handle: site.handle,
+                    kind: "asset",
+                    fileName: uploadFileName(prefix: "team-\(memberID)", localPath: localPath),
+                    data: data
+                )
+                team[index].photoUrl = uploadedURL
+            }
+            site.teamMembersV2 = team
+        }
 
-                let uploadedURL = try await PortalBackend.shared.uploadSiteAssetToBlob(
+        if !site.galleryLocalPaths.isEmpty {
+            var resolvedGalleryURLs: [String] = []
+            let existing = site.galleryRemoteUrls
+
+            for (index, rawPath) in site.galleryLocalPaths.enumerated() {
+                let localPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !localPath.isEmpty else { continue }
+
+                let candidateAtIndex: String? = index < existing.count ? existing[index] : nil
+                let matchingExisting = existing.first(where: { url in
+                    urlLooksCurrent(localPath: localPath, remoteUrl: url)
+                })
+
+                let chosenExisting = candidateAtIndex ?? matchingExisting
+                if !shouldUploadAsset(localPath: localPath, remoteUrl: chosenExisting) {
+                    if let chosenExisting, !chosenExisting.isEmpty {
+                        resolvedGalleryURLs.append(chosenExisting)
+                    }
+                    continue
+                }
+
+                let data = try preparedAssetData(localPath: localPath)
+                let uploadedURL = try await PortalBackend.shared.uploadPublicSiteAssetToBlob(
                     businessId: site.businessID.uuidString,
                     handle: site.handle,
                     kind: "gallery",
-                    fileName: URL(fileURLWithPath: localPath).lastPathComponent,
+                    fileName: uploadFileName(prefix: "gallery-\(index)", localPath: localPath),
                     data: data
                 )
-                remoteURLs.append(uploadedURL)
+                resolvedGalleryURLs.append(uploadedURL)
             }
+
+            site.galleryRemoteUrls = resolvedGalleryURLs
+        }
+    }
+
+    private func normalizedLocalPath(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private func shouldUploadAsset(localPath: String, remoteUrl: String?) -> Bool {
+        let remote = remoteUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if remote.isEmpty { return true }
+        return !urlLooksCurrent(localPath: localPath, remoteUrl: remote)
+    }
+
+    private func urlLooksCurrent(localPath: String, remoteUrl: String) -> Bool {
+        let fileName = URL(fileURLWithPath: localPath).lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fileName.isEmpty else { return false }
+        return remoteUrl.localizedCaseInsensitiveContains(fileName)
+    }
+
+    private func uploadFileName(prefix: String, localPath: String) -> String {
+        let original = URL(fileURLWithPath: localPath).lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if original.isEmpty {
+            return "\(prefix)-\(UUID().uuidString).jpg"
+        }
+        return "\(prefix)-\(original)"
+    }
+
+    private func preparedAssetData(localPath: String) throws -> Data {
+        let sourceURL = URL(fileURLWithPath: localPath)
+        let rawData = try Data(contentsOf: sourceURL)
+
+        if let image = UIImage(data: rawData) {
+            if let compressed = compressedImageData(from: image), compressed.count <= maxUploadBytes {
+                return compressed
+            }
+            if rawData.count <= maxUploadBytes {
+                return rawData
+            }
+            throw BusinessSitePublishError.assetTooLarge
         }
 
-        site.galleryRemoteUrls = remoteURLs
+        guard rawData.count <= maxUploadBytes else {
+            throw BusinessSitePublishError.assetTooLarge
+        }
+        return rawData
+    }
+
+    private func compressedImageData(from image: UIImage) -> Data? {
+        let resized = downscaled(image: image, maxDimension: maxPublicImageDimension)
+
+        var quality = targetJPEGQuality
+        var data = resized.jpegData(compressionQuality: quality)
+
+        while let encoded = data, encoded.count > maxUploadBytes, quality > 0.42 {
+            quality -= 0.08
+            data = resized.jpegData(compressionQuality: quality)
+        }
+
+        if let encoded = data, encoded.count <= maxUploadBytes {
+            return encoded
+        }
+
+        var shrinkScale: CGFloat = 0.9
+        var working = resized
+        while shrinkScale >= 0.6 {
+            let nextMax = max(700, max(working.size.width, working.size.height) * shrinkScale)
+            working = downscaled(image: working, maxDimension: nextMax)
+            data = working.jpegData(compressionQuality: max(0.45, quality))
+            if let encoded = data, encoded.count <= maxUploadBytes {
+                return encoded
+            }
+            shrinkScale -= 0.1
+        }
+
+        return data
+    }
+
+    private func downscaled(image: UIImage, maxDimension: CGFloat) -> UIImage {
+        let width = image.size.width
+        let height = image.size.height
+        let currentMax = max(width, height)
+        guard currentMax > maxDimension, currentMax > 0 else {
+            return image
+        }
+
+        let scaleRatio = maxDimension / currentMax
+        let targetSize = CGSize(width: floor(width * scaleRatio), height: floor(height * scaleRatio))
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
     }
 
     private func persistTemporaryAsset(
@@ -252,11 +417,14 @@ final class BusinessSitePublishService {
 
 enum BusinessSitePublishError: LocalizedError {
     case invalidHandle
+    case assetTooLarge
 
     var errorDescription: String? {
         switch self {
         case .invalidHandle:
             return "Add a website handle before publishing. Use letters, numbers, and dashes only."
+        case .assetTooLarge:
+            return "One or more images are too large to publish."
         }
     }
 }

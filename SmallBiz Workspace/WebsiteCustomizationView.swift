@@ -698,15 +698,15 @@ private struct WebsiteTeamView: View {
     let draft: PublishedBusinessSite
     let onSave: () -> Void
 
-    // NOTE: PublishedBusinessSite currently stores team members as `[String]`.
-    // This UI is a richer editor (name/title/photo), but for now we persist only the Name
-    // back into `draft.teamMembers` for backward compatibility with the website.
-    @State private var members: [EditableTeamMember] = []
+    @Environment(\.dismiss) private var dismiss
+
     @State private var didLoad = false
 
-    // Per-member photo picker selection state
-    @State private var pickerSelection: [UUID: PhotosPickerItem?] = [:]
-    @Environment(\.dismiss) private var dismiss
+    // V2 draft array (THIS is what we edit)
+    @State private var draftMembers: [PublishedBusinessSite.TeamMemberV2] = []
+
+    // Per-member PhotosPicker selection
+    @State private var pickerSelection: [String: PhotosPickerItem?] = [:]
 
     var body: some View {
         ZStack {
@@ -723,7 +723,7 @@ private struct WebsiteTeamView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         pageDescription("Edit and manage team members to be displayed on your website landing page")
 
-                        if members.isEmpty {
+                        if draftMembers.isEmpty {
                             Text("No Team Member Added")
                                 .font(.system(size: 18))
                                 .foregroundStyle(.secondary)
@@ -731,17 +731,16 @@ private struct WebsiteTeamView: View {
                                 .padding(.top, 40)
                                 .padding(.bottom, 10)
                         } else {
-                            ForEach(Array(members.enumerated()), id: \.element.id) { idx, _ in
+                            ForEach(draftMembers.indices, id: \.self) { idx in
                                 teamMemberBlock(index: idx)
                                 Divider().padding(.horizontal, 12)
                             }
                         }
 
                         Button {
-                            let new = EditableTeamMember()
-                            members.append(new)
-                            persistNamesToDraft()
-                            // Scroll to newly created member
+                            let new = PublishedBusinessSite.TeamMemberV2()
+                            draftMembers.append(new)
+                            persistToModel()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                 withAnimation(.easeInOut(duration: 0.25)) {
                                     proxy.scrollTo(new.id, anchor: .top)
@@ -779,7 +778,7 @@ private struct WebsiteTeamView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {
-                    persistNamesToDraft()
+                    persistToModel()
                     dismiss()
                 }
                 .fontWeight(.semibold)
@@ -789,22 +788,30 @@ private struct WebsiteTeamView: View {
         .onAppear {
             guard !didLoad else { return }
             didLoad = true
-            // Seed from persisted names
-            let seeded = draft.teamMembers
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .map { EditableTeamMember(name: String($0.prefix(35))) }
-            members = seeded
+
+            // If V2 is empty, migrate legacy names once.
+            draft.migrateLegacyTeamMembersIfNeeded()
+
+            // Load V2 list into local draft array
+            draftMembers = draft.teamMembersV2
+
+            // Ensure at least 1 row if you want (optional)
+            // if draftMembers.isEmpty { draftMembers = [PublishedBusinessSite.TeamMemberV2()] }
         }
         .onDisappear {
-            persistNamesToDraft()
+            persistToModel()
         }
     }
 
     private func teamMemberBlock(index: Int) -> some View {
-        // Safe indexing
-        guard members.indices.contains(index) else { return AnyView(EmptyView()) }
-        let memberID = members[index].id
+        guard draftMembers.indices.contains(index) else { return AnyView(EmptyView()) }
+        let memberId = draftMembers[index].id
+
+        let photoPath = draft.teamPhotoLocalPathById[memberId]
+        let selectedPicker = Binding<PhotosPickerItem?>(
+            get: { pickerSelection[memberId] ?? nil },
+            set: { pickerSelection[memberId] = $0 }
+        )
 
         return AnyView(
             VStack(alignment: .leading, spacing: 10) {
@@ -812,11 +819,17 @@ private struct WebsiteTeamView: View {
                     SectionTitle(icon: "person", text: "Team Member # \(index + 1)")
                     Spacer()
                     Button(role: .destructive) {
-                        if members.indices.contains(index) {
-                            let removedId = members[index].id
-                            members.remove(at: index)
-                            pickerSelection.removeValue(forKey: removedId)
-                            persistNamesToDraft()
+                        if draftMembers.indices.contains(index) {
+                            let removed = draftMembers[index].id
+                            draftMembers.remove(at: index)
+                            pickerSelection.removeValue(forKey: removed)
+
+                            // remove stored photo local path too
+                            var map = draft.teamPhotoLocalPathById
+                            map.removeValue(forKey: removed)
+                            draft.teamPhotoLocalPathById = map
+
+                            persistToModel()
                         }
                     } label: {
                         Image(systemName: "xmark")
@@ -830,22 +843,14 @@ private struct WebsiteTeamView: View {
                     .padding(.top, 10)
                 }
 
-                // Photo tile (UI-only for now; persisted path is kept in view state)
-                PhotosPicker(
-                    selection: Binding(
-                        get: { pickerSelection[memberID] ?? nil },
-                        set: { pickerSelection[memberID] = $0 }
-                    ),
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
+                PhotosPicker(selection: selectedPicker, matching: .images, photoLibrary: .shared()) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color(.tertiarySystemFill))
                             .frame(height: 140)
 
-                        if let path = members[index].photoLocalPath,
-                           let image = UIImage(contentsOfFile: path) {
+                        if let photoPath,
+                           let image = UIImage(contentsOfFile: photoPath) {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
@@ -867,7 +872,7 @@ private struct WebsiteTeamView: View {
                     .padding(.horizontal, 12)
                 }
                 .buttonStyle(.plain)
-                .onChange(of: pickerSelection[memberID] ?? nil) { _, newValue in
+                .onChange(of: pickerSelection[memberId] ?? nil) { _, newValue in
                     Task {
                         guard let newValue,
                               let data = try? await newValue.loadTransferable(type: Data.self),
@@ -875,49 +880,56 @@ private struct WebsiteTeamView: View {
                         else { return }
 
                         await MainActor.run {
-                            guard members.indices.contains(index) else { return }
-                            members[index].photoLocalPath = path
-                            // UI-only for now; name persistence remains intact.
+                            // Store local path in the model map keyed by memberId
+                            var map = draft.teamPhotoLocalPathById
+                            map[memberId] = path
+                            draft.teamPhotoLocalPathById = map
+
+                            // photoUrl stays nil until publish uploads it
+                            draftMembers[index].photoUrl = nil
+
+                            persistToModel()
                         }
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    // Name
                     Text("Name")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     TextField("Your full name", text: Binding(
-                        get: { members[index].name },
+                        get: { draftMembers[index].name },
                         set: {
-                            members[index].name = String($0.prefix(35))
-                            persistNamesToDraft()
+                            draftMembers[index].name = String($0.prefix(35))
+                            persistToModel()
                         }
                     ))
                     .font(.system(size: 16))
                     Underline()
                     HStack {
                         Spacer()
-                        Text("\(members[index].name.count) / 35")
+                        Text("\(draftMembers[index].name.count) / 35")
                             .foregroundStyle(.secondary)
                             .font(.system(size: 10))
                     }
 
-                    // Work Title
                     Text("Work Title")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     TextField("Work title", text: Binding(
-                        get: { members[index].title },
-                        set: { members[index].title = String($0.prefix(35)) }
+                        get: { draftMembers[index].title },
+                        set: {
+                            draftMembers[index].title = String($0.prefix(35))
+                            persistToModel()
+                        }
                     ))
                     .font(.system(size: 16))
                     Underline()
                     HStack {
                         Spacer()
-                        Text("\(members[index].title.count) / 35")
+                        Text("\(draftMembers[index].title.count) / 35")
                             .foregroundStyle(.secondary)
                             .font(.system(size: 10))
                     }
@@ -925,34 +937,30 @@ private struct WebsiteTeamView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
             }
-            .id(memberID)
+            .id(memberId)
             .padding(.top, 8)
         )
     }
 
-    private func persistNamesToDraft() {
-        // Persist ONLY names for now to remain compatible with existing website rendering.
-        let names = members
+    private func persistToModel() {
+        // 1) Write V2 JSON-backed array (the real source of truth)
+        draft.teamMembersV2 = draftMembers
+
+        // 2) Keep legacy list in sync for back-compat rendering (names only)
+        draft.teamMembers = draftMembers
             .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        draft.teamMembers = names
+
+        // 3) Mark dirty so publisher runs
+        draft.updatedAt = Date()
+        draft.needsSync = true
+
+        // 4) Save via the existing pipeline
         onSave()
     }
-
-    private struct EditableTeamMember: Identifiable, Equatable {
-        let id: UUID
-        var name: String
-        var title: String
-        var photoLocalPath: String?
-
-        init(id: UUID = UUID(), name: String = "", title: String = "", photoLocalPath: String? = nil) {
-            self.id = id
-            self.name = name
-            self.title = title
-            self.photoLocalPath = photoLocalPath
-        }
-    }
 }
+
+    
 
 private struct WebsiteGalleryView: View {
     let draft: PublishedBusinessSite

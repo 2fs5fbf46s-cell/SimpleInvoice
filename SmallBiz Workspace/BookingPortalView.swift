@@ -488,7 +488,7 @@ struct BookingPortalView: View {
                 #if DEBUG
                 print("[bookinglink] generate error", error)
                 #endif
-                if case PortalBackendError.http(let code, _) = error, code == 409, attempt < 10 {
+                if case PortalBackendError.http(let code, _, _) = error, code == 409, attempt < 10 {
                     continue
                 }
                 throw error

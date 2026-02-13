@@ -63,7 +63,7 @@ final class PortalPaymentsAPI {
         do {
             return try await createPayPalReferralPOST(businessId: businessId)
         } catch {
-            if case PortalBackendError.http(let code, _) = error, code == 405 {
+            if case PortalBackendError.http(let code, _, _) = error, code == 405 {
                 return try await createPayPalReferralGET(businessId: businessId)
             }
             throw error

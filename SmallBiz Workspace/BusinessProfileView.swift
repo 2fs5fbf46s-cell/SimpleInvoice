@@ -1001,7 +1001,7 @@ struct BusinessProfileView: View {
         do {
             paypalStatus = try await PortalPaymentsAPI.shared.fetchPayPalStatus(businessId: businessId)
         } catch {
-            if case PortalBackendError.http(let code, _) = error, code == 404 || code == 405 {
+            if case PortalBackendError.http(let code, _, _) = error, code == 404 || code == 405 {
                 paypalStatus = PayPalStatus(connected: false, merchantIdLast4: nil, merchantIdFull: nil)
                 return
             }
