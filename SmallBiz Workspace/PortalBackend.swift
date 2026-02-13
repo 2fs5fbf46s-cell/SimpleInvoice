@@ -9,7 +9,7 @@ import Foundation
 
 final class PortalConfig {
     static let shared = PortalConfig()
-    let baseURL = URL(string: "https://smallbizworkspace-portal-backend.vercel.app")!
+    let baseURL = URL(string: "https://portal.smallbizworkspace.com")!
     private init() {}
 }
 
@@ -46,7 +46,7 @@ enum PortalSecrets {
 enum PortalBackendError: Error {
     case missingAdminKey
     case badURL
-    case http(Int, body: String)
+    case http(Int, body: String, path: String = "")
     case decode(body: String)
 }
 
@@ -55,7 +55,12 @@ extension PortalBackendError: LocalizedError {
         switch self {
         case .missingAdminKey: return "Missing PORTAL_ADMIN_KEY (PortalSecrets.plist)."
         case .badURL: return "Invalid portal backend URL."
-        case .http(let code, let body): return "Portal backend HTTP \(code). \(body)"
+        case .http(let code, let body, let path):
+            let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedPath.isEmpty {
+                return "Portal backend HTTP \(code). \(body)"
+            }
+            return "Portal backend HTTP \(code) at \(trimmedPath). \(body)"
         case .decode(let body): return "Portal backend decode failed. \(body)"
         }
     }
@@ -127,11 +132,20 @@ struct EstimateStatusResponseDTO: Decodable {
 }
 
 struct PublicSiteUpsertPayload: Encodable {
+    struct TeamMemberV2Payload: Encodable {
+        let id: String
+        let name: String
+        let title: String
+        let photoUrl: String?
+    }
+
     let appName: String
     let heroUrl: String?
+    let aboutUrl: String?
     let services: [String]
     let aboutUs: String
     let team: [String]
+    let teamV2: [TeamMemberV2Payload]?
     let galleryUrls: [String]
     let updatedAtMs: Int
 }
@@ -780,7 +794,7 @@ final class PortalBackend {
         let error: String?
     }
 
-    func uploadSiteAssetToBlob(
+    func uploadPublicSiteAssetToBlob(
         businessId: String,
         handle: String,
         kind: String,
@@ -790,32 +804,67 @@ final class PortalBackend {
         let adminKey = try requireAdminKey()
 
         let endpoint = baseURL.appendingPathComponent("/api/public-site/asset-upload")
+        let boundary = "Boundary-\(UUID().uuidString)"
+
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+
+        appendField("businessId", businessId)
+        appendField("handle", PublishedBusinessSite.normalizeHandle(handle))
+        appendField("kind", kind)
+        appendField("fileName", fileName)
+
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
-
-        let payload: [String: Any] = [
-            "businessId": businessId,
-            "handle": PublishedBusinessSite.normalizeHandle(handle),
-            "kind": kind,
-            "fileName": fileName,
-            "base64": data.base64EncodedString()
-        ]
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+        req.httpBody = body
 
         let (bodyData, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
 
-        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
-        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: "/api/public-site/asset-upload")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/public-site/asset-upload")
+        }
 
         let decoded = try decoder().decode(PublicSiteAssetUploadResponseDTO.self, from: bodyData)
-        if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
+        if let err = decoded.error, !err.isEmpty {
+            throw PortalBackendError.http(http.statusCode, body: err, path: "/api/public-site/asset-upload")
+        }
         guard decoded.ok == true, let url = decoded.url, !url.isEmpty else {
             throw PortalBackendError.decode(body: raw)
         }
         return url
+    }
+
+    func uploadSiteAssetToBlob(
+        businessId: String,
+        handle: String,
+        kind: String,
+        fileName: String,
+        data: Data
+    ) async throws -> String {
+        try await uploadPublicSiteAssetToBlob(
+            businessId: businessId,
+            handle: handle,
+            kind: kind,
+            fileName: fileName,
+            data: data
+        )
     }
 
     func upsertPublicSite(
@@ -837,9 +886,18 @@ final class PortalBackend {
             "handle": normalizedHandle,
             "appName": payload.appName,
             "heroUrl": payload.heroUrl ?? NSNull(),
+            "aboutUrl": payload.aboutUrl ?? NSNull(),
             "services": payload.services,
             "aboutUs": payload.aboutUs,
             "team": payload.team,
+            "teamV2": payload.teamV2?.map { member -> [String: Any] in
+                [
+                    "id": member.id,
+                    "name": member.name,
+                    "title": member.title,
+                    "photoUrl": member.photoUrl ?? NSNull()
+                ]
+            } ?? [],
             "galleryUrls": payload.galleryUrls,
             "updatedAtMs": payload.updatedAtMs
         ]
@@ -1016,42 +1074,39 @@ final class PortalBackend {
         fileName: String,
         pdfData: Data
     ) async throws -> (url: String, fileName: String) {
-
         let adminKey = try requireAdminKey()
+        let endpointPath = "/api/portal/invoice/pdf-upload"
+        print("⬆️ Portal binary upload", "path:", endpointPath, "bytes:", pdfData.count)
 
-        print("⬆️ Uploading invoice PDF",
-              "businessId:", businessId,
-              "invoiceId:", invoiceId,
-              "fileName:", fileName,
-              "bytes:", pdfData.count)
-
-        let endpoint = baseURL.appendingPathComponent("/api/portal/invoice/pdf-upload")
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
-
-        let payload: [String: Any] = [
-            "businessId": businessId,
-            "invoiceId": invoiceId,
-            "fileName": fileName,
-            "pdfBase64": pdfData.base64EncodedString()
-        ]
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-
-        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
-        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
-
-        let decoded = try decoder().decode(PDFUploadResponseDTO.self, from: data)
-        if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
-        guard let url = decoded.url, !url.isEmpty else { throw PortalBackendError.decode(body: raw) }
-
-        print("✅ Uploaded invoice PDF:", url)
-
-        return (url: url, fileName: decoded.fileName ?? fileName)
+        do {
+            return try await uploadPDFBinary(
+                endpointPath: endpointPath,
+                queryItems: [
+                    URLQueryItem(name: "businessId", value: businessId),
+                    URLQueryItem(name: "invoiceId", value: invoiceId),
+                    URLQueryItem(name: "fileName", value: fileName)
+                ],
+                adminKey: adminKey,
+                pdfData: pdfData,
+                fallbackID: fileName
+            )
+        } catch let error as PortalBackendError {
+            if case .http(let code, _, _) = error, code == 400 || code == 415 {
+                print("↩️ Falling back to legacy JSON upload", "path:", endpointPath, "status:", code)
+                return try await uploadPDFLegacyJSON(
+                    endpointPath: endpointPath,
+                    payload: [
+                        "businessId": businessId,
+                        "invoiceId": invoiceId,
+                        "fileName": fileName,
+                        "pdfBase64": pdfData.base64EncodedString()
+                    ],
+                    adminKey: adminKey,
+                    fallbackID: fileName
+                )
+            }
+            throw error
+        }
     }
 
     // Back-compat convenience (mirrors uploadContractPDF naming)
@@ -1079,42 +1134,114 @@ final class PortalBackend {
         fileName: String,
         pdfData: Data
     ) async throws -> (url: String, fileName: String) {
-
         let adminKey = try requireAdminKey()
+        let endpointPath = "/api/portal/contract/pdf-upload"
+        print("⬆️ Portal binary upload", "path:", endpointPath, "bytes:", pdfData.count)
 
-        print("⬆️ Uploading contract PDF",
-              "businessId:", businessId,
-              "contractId:", contractId,
-              "fileName:", fileName,
-              "bytes:", pdfData.count)
+        do {
+            return try await uploadPDFBinary(
+                endpointPath: endpointPath,
+                queryItems: [
+                    URLQueryItem(name: "businessId", value: businessId),
+                    URLQueryItem(name: "contractId", value: contractId),
+                    URLQueryItem(name: "fileName", value: fileName)
+                ],
+                adminKey: adminKey,
+                pdfData: pdfData,
+                fallbackID: fileName
+            )
+        } catch let error as PortalBackendError {
+            if case .http(let code, _, _) = error, code == 400 || code == 415 {
+                print("↩️ Falling back to legacy JSON upload", "path:", endpointPath, "status:", code)
+                return try await uploadPDFLegacyJSON(
+                    endpointPath: endpointPath,
+                    payload: [
+                        "businessId": businessId,
+                        "contractId": contractId,
+                        "fileName": fileName,
+                        "pdfBase64": pdfData.base64EncodedString()
+                    ],
+                    adminKey: adminKey,
+                    fallbackID: fileName
+                )
+            }
+            throw error
+        }
+    }
 
-        let endpoint = baseURL.appendingPathComponent("/api/portal/contract/pdf-upload")
+    private func uploadPDFBinary(
+        endpointPath: String,
+        queryItems: [URLQueryItem],
+        adminKey: String,
+        pdfData: Data,
+        fallbackID: String
+    ) async throws -> (url: String, fileName: String) {
+        guard var comps = URLComponents(url: baseURL.appendingPathComponent(endpointPath), resolvingAgainstBaseURL: false) else {
+            throw PortalBackendError.badURL
+        }
+        comps.queryItems = queryItems
+        guard let endpoint = comps.url else {
+            throw PortalBackendError.badURL
+        }
+
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/pdf", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        req.httpBody = pdfData
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: endpointPath)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            print("⚠️ Portal upload failed", "path:", endpointPath, "status:", http.statusCode)
+            throw PortalBackendError.http(http.statusCode, body: raw, path: endpointPath)
+        }
+
+        let decoded = try decoder().decode(PDFUploadResponseDTO.self, from: data)
+        if let err = decoded.error, !err.isEmpty {
+            throw PortalBackendError.http(http.statusCode, body: err, path: endpointPath)
+        }
+        guard let url = decoded.url, !url.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return (url: url, fileName: decoded.fileName ?? fallbackID)
+    }
+
+    private func uploadPDFLegacyJSON(
+        endpointPath: String,
+        payload: [String: Any],
+        adminKey: String,
+        fallbackID: String
+    ) async throws -> (url: String, fileName: String) {
+        let endpoint = baseURL.appendingPathComponent(endpointPath)
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
-
-        let payload: [String: Any] = [
-            "businessId": businessId,
-            "contractId": contractId,
-            "fileName": fileName,
-            "pdfBase64": pdfData.base64EncodedString()
-        ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
-        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
-        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: endpointPath)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw, path: endpointPath)
+        }
 
         let decoded = try decoder().decode(PDFUploadResponseDTO.self, from: data)
-        if let err = decoded.error, !err.isEmpty { throw PortalBackendError.http(http.statusCode, body: err) }
-        guard let url = decoded.url, !url.isEmpty else { throw PortalBackendError.decode(body: raw) }
-
-        print("✅ Uploaded contract PDF:", decoded.url ?? "nil")
-
-        return (url: url, fileName: decoded.fileName ?? fileName)
+        if let err = decoded.error, !err.isEmpty {
+            throw PortalBackendError.http(http.statusCode, body: err, path: endpointPath)
+        }
+        guard let url = decoded.url, !url.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return (url: url, fileName: decoded.fileName ?? fallbackID)
     }
 
     // Back-compat (PortalService.swift was calling this name)
