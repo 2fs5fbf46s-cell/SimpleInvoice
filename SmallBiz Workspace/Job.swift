@@ -1,6 +1,14 @@
 import Foundation
 import SwiftData
 
+enum JobStage: String, Codable {
+    case lead
+    case booked
+    case inProgress
+    case completed
+    case archived
+}
+
 @Model
 final class Job {
     var id: UUID = Foundation.UUID()
@@ -18,7 +26,13 @@ final class Job {
     var longitude: Double? = nil
 
     var status: String = "scheduled"
+    var stageRaw: String = JobStage.completed.rawValue
     var sourceBookingRequestId: String? = nil
+
+    var stage: JobStage {
+        get { JobStage(rawValue: stageRaw) ?? .completed }
+        set { stageRaw = newValue.rawValue }
+    }
 
     /// ✅ New: workspace folder key (Folder.id.uuidString)
     var workspaceFolderKey: String? = nil
@@ -44,6 +58,7 @@ final class Job {
         latitude: Double? = nil,
         longitude: Double? = nil,
         status: String = "scheduled",
+        stageRaw: String = JobStage.completed.rawValue,
         sourceBookingRequestId: String? = nil,
         workspaceFolderKey: String? = nil
     ) {
@@ -58,6 +73,7 @@ final class Job {
         self.latitude = latitude
         self.longitude = longitude
         self.status = status
+        self.stageRaw = stageRaw
         self.sourceBookingRequestId = sourceBookingRequestId
         self.workspaceFolderKey = workspaceFolderKey
     }

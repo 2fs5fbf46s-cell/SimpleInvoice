@@ -257,6 +257,16 @@ struct JobDetailView: View {
                 Text("Canceled").tag("canceled")
             }
             .pickerStyle(.menu)
+
+            Picker("Stage", selection: $job.stageRaw) {
+                Text("Booked").tag(JobStage.booked.rawValue)
+                Text("In Progress").tag(JobStage.inProgress.rawValue)
+                Text("Completed").tag(JobStage.completed.rawValue)
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: job.stageRaw) { _, _ in
+                scheduleSave()
+            }
         }
         .sbwJobCardRow()
     }

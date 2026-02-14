@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 6
+    static let currentVersion = 7
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -132,9 +132,16 @@ enum BusinessMigration {
             }
         }
 
+        // 7️⃣ Job stage normalization:
+        // Existing jobs are test data; default all to completed during migration.
+        let allJobs = try modelContext.fetch(FetchDescriptor<Job>())
+        for job in allJobs {
+            job.stageRaw = JobStage.completed.rawValue
+        }
+
         try modelContext.save()
 
-        // 7️⃣ Mark migration complete
+        // 8️⃣ Mark migration complete
         defaults.set(currentVersion, forKey: key)
 
         print("✅ Business migration v\(currentVersion) completed")
