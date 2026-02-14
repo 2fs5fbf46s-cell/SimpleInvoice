@@ -312,6 +312,10 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
     let createdAtMs: Int?
     let approvedAtMs: Int?
     let declinedAtMs: Int?
+    let depositAmountCents: Int?
+    let depositInvoiceId: String?
+    let depositPaidAtMs: Int?
+    let finalInvoiceId: String?
 
     // Local-only for future workflow; not encoded/decoded.
     var isHandled: Bool = false
@@ -350,9 +354,17 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         case createdAtMs
         case approvedAtMs
         case declinedAtMs
+        case depositAmountCents
+        case depositInvoiceId
+        case depositPaidAtMs
+        case finalInvoiceId
         case createdAt
         case approvedAt
         case declinedAt
+        case depositAmount
+        case depositInvoiceID
+        case depositPaidAt
+        case finalInvoiceID
     }
 
     init(from decoder: Decoder) throws {
@@ -425,6 +437,10 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         self.createdAtMs = decodeFirstInt([.createdAtMs, .createdAt])
         self.approvedAtMs = decodeFirstInt([.approvedAtMs, .approvedAt])
         self.declinedAtMs = decodeFirstInt([.declinedAtMs, .declinedAt])
+        self.depositAmountCents = decodeFirstInt([.depositAmountCents, .depositAmount])
+        self.depositInvoiceId = decodeFirst([.depositInvoiceId, .depositInvoiceID])
+        self.depositPaidAtMs = decodeFirstInt([.depositPaidAtMs, .depositPaidAt])
+        self.finalInvoiceId = decodeFirst([.finalInvoiceId, .finalInvoiceID])
 
         self.isHandled = false
     }
@@ -432,6 +448,16 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
 
 struct BookingRequestsResponseDTO: Decodable {
     let requests: [BookingRequestDTO]
+}
+
+struct BookingDepositResponseDTO: Decodable {
+    let ok: Bool?
+    let portalUrl: String?
+    let depositInvoiceId: String?
+    let status: String?
+    let token: String?
+    let warnings: [String]?
+    let error: String?
 }
 
 private struct BookingSettingsEnvelopeDTO: Decodable {
@@ -2160,6 +2186,67 @@ final class PortalBackend {
             businessId: businessId,
             requestId: requestId
         )
+    }
+
+    func requestBookingDeposit(
+        businessId: UUID,
+        requestId: String,
+        depositAmountCents: Int,
+        clientEmail: String?,
+        clientPhone: String?,
+        businessName: String?,
+        sendEmail: Bool,
+        sendSms: Bool
+    ) async throws -> BookingDepositResponseDTO {
+        try await requestBookingDeposit(
+            businessId: businessId.uuidString,
+            requestId: requestId,
+            depositAmountCents: depositAmountCents,
+            clientEmail: clientEmail,
+            clientPhone: clientPhone,
+            businessName: businessName,
+            sendEmail: sendEmail,
+            sendSms: sendSms
+        )
+    }
+
+    func requestBookingDeposit(
+        businessId: String,
+        requestId: String,
+        depositAmountCents: Int,
+        clientEmail: String?,
+        clientPhone: String?,
+        businessName: String?,
+        sendEmail: Bool,
+        sendSms: Bool
+    ) async throws -> BookingDepositResponseDTO {
+        let adminKey = try requireAdminKey()
+        let url = baseURL.appendingPathComponent("/api/booking/admin/request/deposit")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "requestId": requestId,
+            "depositAmountCents": max(0, depositAmountCents),
+            "clientEmail": (clientEmail ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "clientPhone": (clientPhone ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "businessName": (businessName ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "sendEmail": sendEmail,
+            "sendSms": sendSms
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+        do {
+            return try decoder().decode(BookingDepositResponseDTO.self, from: data)
+        } catch {
+            throw PortalBackendError.decode(body: raw)
+        }
     }
 
     private func sendBookingAdminDecision(

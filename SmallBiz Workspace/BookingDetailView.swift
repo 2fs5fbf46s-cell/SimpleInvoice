@@ -1,9 +1,11 @@
 import SwiftUI
 import Foundation
 import SwiftData
+import UIKit
 
 struct BookingDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     let request: BookingRequestItem
@@ -14,6 +16,10 @@ struct BookingDetailView: View {
     @State private var currentStatus: String
     @State private var navigateToInvoice: Invoice? = nil
     @State private var navigateToJob: Job? = nil
+    @State private var showDepositSheet = false
+    @State private var depositAmountText = "100.00"
+    @State private var lastDepositPortalURL: URL? = nil
+    @State private var lastDepositSendWarning: String? = nil
 
     init(request: BookingRequestItem, onStatusChange: @escaping (String) -> Void = { _ in }) {
         self.request = request
@@ -23,6 +29,8 @@ struct BookingDetailView: View {
 
     @Query(sort: \Client.name) private var clients: [Client]
     @Query private var profiles: [BusinessProfile]
+    @Query private var jobs: [Job]
+    @Query private var invoices: [Invoice]
 
     var body: some View {
         Form {
@@ -65,8 +73,11 @@ struct BookingDetailView: View {
 
             if isPending {
                 Section("Actions") {
-                    Button("Approve") {
-                        Task { await approveRequest() }
+                    Button("Request Deposit") {
+                        depositAmountText = request.depositAmountCents != nil
+                            ? String(format: "%.2f", Double(request.depositAmountCents ?? 0) / 100.0)
+                            : "100.00"
+                        showDepositSheet = true
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSubmitting)
@@ -82,6 +93,24 @@ struct BookingDetailView: View {
                             ProgressView()
                             Spacer()
                         }
+                    }
+                }
+            }
+
+            if let portalURL = lastDepositPortalURL {
+                Section("Deposit Link") {
+                    Text("Deposit link ready.")
+                        .foregroundStyle(.secondary)
+                    Button("Copy Link") {
+                        UIPasteboard.general.string = portalURL.absoluteString
+                    }
+                    Button("Open Link") {
+                        openURL(portalURL)
+                    }
+                    if let warning = lastDepositSendWarning, !warning.isEmpty {
+                        Text(warning)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -103,7 +132,7 @@ struct BookingDetailView: View {
                 .disabled(!isApproved || isSubmitting)
 
                 if !isApproved {
-                    Text("Approve this request to enable conversions.")
+                    Text("Approved bookings enable conversions.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -112,6 +141,9 @@ struct BookingDetailView: View {
             Section("Metadata") {
                 detailRow("Request ID", request.requestId)
                 detailRow("Business ID", request.businessId)
+                if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
+                    detailRow("Deposit Invoice", depositInvoiceId)
+                }
                 if let createdAt = dateFromMs(request.createdAtMs) {
                     detailRow("Submitted", dateFormatter.string(from: createdAt))
                 }
@@ -133,10 +165,26 @@ struct BookingDetailView: View {
         .navigationDestination(item: $navigateToJob) { job in
             JobDetailView(job: job)
         }
+        .sheet(isPresented: $showDepositSheet) {
+            depositSheet
+        }
+        .onAppear {
+            Task {
+                if isApproved {
+                    await autoCreateApprovedArtifactsIfNeeded()
+                }
+            }
+        }
+        .onChange(of: currentStatus) { _, newValue in
+            if newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved" {
+                Task { await autoCreateApprovedArtifactsIfNeeded() }
+            }
+        }
     }
 
     private var statusLabel: String {
         let key = currentStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if key == "deposit_requested" { return "Deposit Requested" }
         if key == "approved" { return "Approved" }
         if key == "declined" { return "Declined" }
         if key == "pending" { return "Pending" }
@@ -149,6 +197,33 @@ struct BookingDetailView: View {
 
     private var isApproved: Bool {
         currentStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved"
+    }
+
+    private var depositSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Deposit Amount") {
+                    TextField("100.00", text: $depositAmountText)
+                        .keyboardType(.decimalPad)
+                    Text("USD")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Request Deposit")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showDepositSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send") {
+                        showDepositSheet = false
+                        Task { await requestDeposit() }
+                    }
+                }
+            }
+        }
     }
 
     private func detailRow(_ title: String, _ value: String) -> some View {
@@ -179,19 +254,37 @@ struct BookingDetailView: View {
     }
 
     @MainActor
-    private func approveRequest() async {
+    private func requestDeposit() async {
         guard !isSubmitting else { return }
         isSubmitting = true
         defer { isSubmitting = false }
 
         do {
             let bizID = try resolveBusinessId()
-            try await PortalBackend.shared.approveBookingRequest(
+            let depositAmountCents = parseDepositAmountCents(from: depositAmountText)
+            let businessName = profiles.first(where: { $0.businessID == bizID })?.name
+            let response = try await PortalBackend.shared.requestBookingDeposit(
                 businessId: bizID,
-                requestId: request.requestId
+                requestId: request.requestId,
+                depositAmountCents: depositAmountCents,
+                clientEmail: request.clientEmail,
+                clientPhone: request.clientPhone,
+                businessName: businessName,
+                sendEmail: true,
+                sendSms: false
             )
-            currentStatus = "approved"
-            onStatusChange("approved")
+            currentStatus = response.status?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? (response.status ?? "deposit_requested")
+                : "deposit_requested"
+            onStatusChange(currentStatus)
+            if let urlString = response.portalUrl, let url = URL(string: urlString) {
+                lastDepositPortalURL = url
+            }
+            if let warnings = response.warnings, !warnings.isEmpty {
+                lastDepositSendWarning = warnings.joined(separator: ", ")
+            } else {
+                lastDepositSendWarning = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -220,6 +313,30 @@ struct BookingDetailView: View {
         if let active = activeBiz.activeBusinessID { return active }
         if let parsed = UUID(uuidString: request.businessId) { return parsed }
         throw NSError(domain: "Booking", code: 0, userInfo: [NSLocalizedDescriptionKey: "No active business selected."])
+    }
+
+    private func parseDepositAmountCents(from text: String) -> Int {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        if cleaned.isEmpty { return 10_000 }
+        if let amount = Double(cleaned), amount > 0 {
+            return Int((amount * 100.0).rounded())
+        }
+        return 10_000
+    }
+
+    @MainActor
+    private func autoCreateApprovedArtifactsIfNeeded() async {
+        guard isApproved else { return }
+        do {
+            let bizID = try resolveBusinessId()
+            let job = try createOrReuseJobForBooking(businessID: bizID)
+            _ = try createOrReuseFinalInvoiceDraft(businessID: bizID, job: job)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -306,6 +423,7 @@ struct BookingDetailView: View {
         }
     }
 
+
     @MainActor
     private func createJob() async {
         guard !isSubmitting else { return }
@@ -340,6 +458,92 @@ struct BookingDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func createOrReuseJobForBooking(businessID: UUID) throws -> Job {
+        // Prevent duplicates: if a job already exists for this booking request, reuse it.
+        let reqId = request.requestId
+        let descriptor = FetchDescriptor<Job>(predicate: #Predicate<Job> { job in
+            job.businessID == businessID && job.sourceBookingRequestId == reqId
+        })
+
+        if let existing = try? modelContext.fetch(descriptor).first {
+            return existing
+        }
+
+        let client = try resolveOrCreateClient(businessID: businessID)
+        let title = bookingJobTitle()
+
+        let start = parseDate(request.requestedStart) ?? .now
+        let end = parseDate(request.requestedEnd)
+            ?? Calendar.current.date(byAdding: .hour, value: 2, to: start)
+            ?? start
+
+        let job = Job(
+            businessID: businessID,
+            clientID: client.id,
+            title: title,
+            notes: buildBookingNotes(),
+            startDate: start,
+            endDate: end,
+            locationName: "",
+            status: "scheduled",
+            sourceBookingRequestId: reqId
+        )
+
+        modelContext.insert(job)
+        try modelContext.save()
+        return job
+    }
+
+    @MainActor
+    private func createOrReuseFinalInvoiceDraft(businessID: UUID, job: Job) throws -> Invoice {
+        let reqId = request.requestId
+        if let existing = invoices.first(where: {
+            $0.businessID == businessID &&
+            $0.documentType == "invoice" &&
+            $0.sourceBookingRequestId == reqId &&
+            $0.invoiceNumber.uppercased().hasPrefix("FINAL-")
+        }) {
+            return existing
+        }
+
+        let client = try resolveOrCreateClient(businessID: businessID)
+        let profile = profileEnsured(businessID: businessID)
+        let finalNumber = "FINAL-\(reqId.suffix(6).uppercased())"
+        let paidCents = request.depositAmountCents ?? 0
+        let depositNote = paidCents > 0
+            ? String(format: "Deposit paid: $%.2f. Update final invoice total before sending.", Double(paidCents) / 100.0)
+            : "Deposit paid. Update final invoice total before sending."
+        let lineItem = LineItem(itemDescription: "Remaining Balance (after deposit)", quantity: 1, unitPrice: 0)
+
+        let invoice = Invoice(
+            businessID: businessID,
+            invoiceNumber: finalNumber,
+            issueDate: .now,
+            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
+            paymentTerms: "Net 14",
+            notes: [buildBookingNotes(), depositNote].joined(separator: "\n"),
+            thankYou: profile.defaultThankYou,
+            termsAndConditions: profile.defaultTerms,
+            taxRate: 0,
+            discountAmount: 0,
+            isPaid: false,
+            documentType: "invoice",
+            sourceBookingRequestId: reqId,
+            client: client,
+            job: job,
+            items: [lineItem]
+        )
+        if let preferredRaw = client.preferredInvoiceTemplateKey,
+           let preferred = InvoiceTemplateKey.from(preferredRaw) {
+            invoice.invoiceTemplateKeyOverride = preferred.rawValue
+        }
+
+        modelContext.insert(invoice)
+        try modelContext.save()
+        return invoice
     }
 
     @MainActor
