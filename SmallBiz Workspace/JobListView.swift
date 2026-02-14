@@ -14,21 +14,11 @@ struct JobsListView: View {
     private var jobs: [Job]
 
     @State private var searchText: String = ""
-    @State private var filter: JobFilter = .active
     @State private var selectedJob: Job? = nil
 
     // ✅ New Job sheet (Clients-style)
     @State private var showingNewJob = false
     @State private var newJobDraft: Job? = nil
-
-    private enum JobFilter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case active = "Active"
-        case completed = "Completed"
-        case canceled = "Canceled"
-
-        var id: String { rawValue }
-    }
 
     // MARK: - Scoped jobs (active business)
 
@@ -37,7 +27,7 @@ struct JobsListView: View {
         return jobs.filter { $0.businessID == bizID }
     }
 
-    private var filteredJobs: [Job] {
+    private var searchedJobs: [Job] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         func matchesSearch(_ job: Job) -> Bool {
@@ -48,21 +38,19 @@ struct JobsListView: View {
             || job.status.lowercased().contains(q)
         }
 
-        func matchesFilter(_ job: Job) -> Bool {
-            let status = job.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            switch filter {
-            case .all:
-                return true
-            case .active:
-                return !(status == "completed" || status == "canceled" || status == "cancelled")
-            case .completed:
-                return status == "completed"
-            case .canceled:
-                return status == "canceled" || status == "cancelled"
-            }
-        }
+        return scopedJobs.filter { matchesSearch($0) }
+    }
 
-        return scopedJobs.filter { matchesFilter($0) && matchesSearch($0) }
+    private var bookedJobs: [Job] {
+        searchedJobs.filter { $0.stage == .booked }
+    }
+
+    private var inProgressJobs: [Job] {
+        searchedJobs.filter { $0.stage == .inProgress }
+    }
+
+    private var completedJobs: [Job] {
+        searchedJobs.filter { $0.stage == .completed }
     }
 
     var body: some View {
@@ -74,17 +62,7 @@ struct JobsListView: View {
             SBWTheme.headerWash()
 
             List {
-                // Filter toggle (match other list screens)
-                Section {
-                    Picker("", selection: $filter) {
-                        ForEach(JobFilter.allCases) { f in
-                            Text(f.rawValue).tag(f)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                if filteredJobs.isEmpty {
+                if bookedJobs.isEmpty && inProgressJobs.isEmpty && completedJobs.isEmpty {
                     ContentUnavailableView(
                         scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
                         systemImage: "briefcase",
@@ -93,15 +71,53 @@ struct JobsListView: View {
                                           : "Try a different filter or search term.")
                     )
                 } else {
-                    ForEach(filteredJobs) { job in
-                        Button {
-                            selectedJob = job
-                        } label: {
-                            jobRow(job)
+                    if !bookedJobs.isEmpty {
+                        Section("Booked") {
+                            ForEach(bookedJobs) { job in
+                                Button {
+                                    selectedJob = job
+                                } label: {
+                                    jobRow(job)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .onDelete { offsets in
+                                deleteJobs(at: offsets, from: bookedJobs)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
-                    .onDelete(perform: deleteJobs)
+
+                    if !inProgressJobs.isEmpty {
+                        Section("In Progress") {
+                            ForEach(inProgressJobs) { job in
+                                Button {
+                                    selectedJob = job
+                                } label: {
+                                    jobRow(job)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .onDelete { offsets in
+                                deleteJobs(at: offsets, from: inProgressJobs)
+                            }
+                        }
+                    }
+
+                    if !completedJobs.isEmpty {
+                        Section("Completed") {
+                            ForEach(completedJobs) { job in
+                                Button {
+                                    selectedJob = job
+                                } label: {
+                                    jobRow(job)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .onDelete { offsets in
+                                deleteJobs(at: offsets, from: completedJobs)
+                            }
+                        }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -248,10 +264,10 @@ struct JobsListView: View {
         showingNewJob = false
     }
 
-    private func deleteJobs(at offsets: IndexSet) {
+    private func deleteJobs(at offsets: IndexSet, from source: [Job]) {
         let toDelete: [Job] = offsets.compactMap { idx -> Job? in
-            guard idx < filteredJobs.count else { return nil }
-            return filteredJobs[idx]
+            guard idx < source.count else { return nil }
+            return source[idx]
         }
 
         for job in toDelete {
