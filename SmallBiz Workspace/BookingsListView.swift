@@ -5,9 +5,6 @@ import SwiftData
 struct BookingsListView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Environment(\.modelContext) private var modelContext
-    @Query private var jobs: [Job]
-    @Query private var clients: [Client]
-    @Query private var invoices: [Invoice]
     @Query private var profiles: [BusinessProfile]
 
     @State private var searchText = ""
@@ -284,21 +281,15 @@ struct BookingsListView: View {
                 guard status == "approved" else { return false }
                 return hasPaidDepositEvidence(request)
             }
+            ensuredFinalInvoiceForBookingIds.removeAll()
             if !eligible.isEmpty {
-                Task { @MainActor in
-                    for request in eligible {
-                        if ensuredFinalInvoiceForBookingIds.contains(request.requestId) { continue }
-                        if let existing = findExistingBookingFinalInvoice(request: request, businessID: bizId) {
-                            ensuredFinalInvoiceForBookingIds.insert(request.requestId)
-                            _ = existing
-                            continue
-                        }
-                        do {
-                            try ensureApprovedBookingArtifacts(request: request, businessID: bizId)
-                            ensuredFinalInvoiceForBookingIds.insert(request.requestId)
-                        } catch {
-                            // keep non-fatal and retry on next refresh
-                        }
+                for request in eligible {
+                    if ensuredFinalInvoiceForBookingIds.contains(request.requestId) { continue }
+                    do {
+                        try ensureApprovedBookingArtifacts(request: request, businessID: bizId)
+                        ensuredFinalInvoiceForBookingIds.insert(request.requestId)
+                    } catch {
+                        // keep non-fatal and retry on next refresh
                     }
                 }
             }
@@ -341,42 +332,26 @@ struct BookingsListView: View {
     }
 
     private func ensureApprovedBookingArtifacts(request: BookingRequestItem, businessID: UUID) throws {
-        let requestId = request.requestId
-
-        let existingJob = jobs.first {
-            $0.businessID == businessID && $0.sourceBookingRequestId == requestId
-        }
-        if existingJob == nil {
-            let client = try resolveOrCreateClient(request: request, businessID: businessID)
-            let start = parseDate(request.requestedStart) ?? .now
-            let end = parseDate(request.requestedEnd)
-                ?? Calendar.current.date(byAdding: .hour, value: 2, to: start)
-                ?? start
-            let title = bookingJobTitle(request: request)
-            let created = Job(
-                businessID: businessID,
-                clientID: client.id,
-                title: title,
-                notes: buildBookingNotes(request: request),
-                startDate: start,
-                endDate: end,
-                locationName: "",
-                status: "scheduled",
-                sourceBookingRequestId: requestId
-            )
-            modelContext.insert(created)
-        }
-
-        let client = try resolveOrCreateClient(request: request, businessID: businessID)
         let profile = profileEnsured(businessID: businessID)
+        let client = try resolveOrCreateClientFromBooking(
+            businessID: businessID,
+            booking: request,
+            modelContext: modelContext
+        )
+        let job = try createOrReuseJobForBooking(
+            businessID: businessID,
+            booking: request,
+            client: client,
+            modelContext: modelContext
+        )
         _ = try createOrReuseFinalInvoiceForBooking(
             businessID: businessID,
             booking: request,
             client: client,
+            job: job,
             profile: profile,
             modelContext: modelContext
         )
-        try modelContext.save()
     }
 
     private func hasPaidDepositEvidence(_ request: BookingRequestItem) -> Bool {
@@ -387,62 +362,6 @@ struct BookingsListView: View {
         return status == "approved" && hasDepositInvoice && amountCents > 0
     }
 
-    private func findExistingBookingFinalInvoice(request: BookingRequestItem, businessID: UUID) -> Invoice? {
-        invoices.first(where: {
-            $0.businessID == businessID &&
-            $0.documentType == "invoice" &&
-            $0.sourceBookingRequestId == request.requestId
-        })
-    }
-
-    private func resolveOrCreateClient(request: BookingRequestItem, businessID: UUID) throws -> Client {
-        let normalizedEmail = normalizeEmail(request.clientEmail)
-        let normalizedPhone = normalizePhone(request.clientPhone)
-        let normalizedName = request.clientName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-
-        let scoped = clients.filter { $0.businessID == businessID }
-
-        if let normalizedEmail {
-            if let existing = scoped.first(where: { normalizeEmail($0.email) == normalizedEmail }) {
-                return existing
-            }
-        }
-        if let normalizedPhone {
-            if let existing = scoped.first(where: { normalizePhone($0.phone) == normalizedPhone }) {
-                return existing
-            }
-        }
-        if !normalizedName.isEmpty {
-            if let existing = scoped.first(where: {
-                $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedName
-            }) {
-                return existing
-            }
-        }
-
-        let newClient = Client(businessID: businessID)
-        newClient.name = (request.clientName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-            ? (request.clientName ?? "")
-            : (request.clientEmail ?? "New Client")
-        newClient.email = request.clientEmail ?? ""
-        newClient.phone = request.clientPhone ?? ""
-        newClient.address = ""
-        modelContext.insert(newClient)
-        return newClient
-    }
-
-    private func normalizeEmail(_ email: String?) -> String? {
-        guard let email else { return nil }
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private func normalizePhone(_ phone: String?) -> String? {
-        guard let phone else { return nil }
-        let digits = phone.filter { $0.isNumber }
-        return digits.isEmpty ? nil : digits
-    }
-
     private func profileEnsured(businessID: UUID) -> BusinessProfile {
         if let existing = profiles.first(where: { $0.businessID == businessID }) {
             return existing
@@ -450,48 +369,6 @@ struct BookingsListView: View {
         let created = BusinessProfile(businessID: businessID)
         modelContext.insert(created)
         return created
-    }
-
-    private func bookingJobTitle(request: BookingRequestItem) -> String {
-        if let service = request.serviceType?.trimmingCharacters(in: .whitespacesAndNewlines), !service.isEmpty {
-            return service
-        }
-        return "Booking Job"
-    }
-
-    private func buildBookingNotes(request: BookingRequestItem) -> String {
-        var lines: [String] = []
-        lines.append("Booking Request")
-        lines.append("Request ID: \(request.requestId)")
-        if let name = request.clientName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("Client Name: \(name)")
-        }
-        if let email = request.clientEmail, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("Client Email: \(email)")
-        }
-        if let phone = request.clientPhone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("Client Phone: \(phone)")
-        }
-        if let service = request.serviceType, !service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("Service: \(service)")
-        }
-        if let start = parseDate(request.requestedStart) {
-            lines.append("Requested Start: \(dateFormatter.string(from: start))")
-        }
-        if let end = parseDate(request.requestedEnd) {
-            lines.append("Requested End: \(dateFormatter.string(from: end))")
-        }
-        if let notes = request.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("Notes: \(notes)")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
     }
 
     @MainActor

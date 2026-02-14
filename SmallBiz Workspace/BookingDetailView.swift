@@ -3,13 +3,259 @@ import Foundation
 import SwiftData
 import UIKit
 
+struct BookingIdentity {
+    let requestId: String
+    let businessID: UUID
+    let clientName: String?
+    let clientEmail: String?
+    let clientPhone: String?
+    let serviceType: String?
+
+    init(businessID: UUID, booking: BookingRequestItem) {
+        self.requestId = booking.requestId
+        self.businessID = businessID
+        self.clientName = booking.clientName
+        self.clientEmail = booking.clientEmail
+        self.clientPhone = booking.clientPhone
+        self.serviceType = booking.serviceType
+    }
+
+    var displayName: String {
+        if let service = serviceType?.trimmingCharacters(in: .whitespacesAndNewlines), !service.isEmpty {
+            return service
+        }
+        if let name = clientName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        if let email = clientEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+            return email
+        }
+        return "Booking"
+    }
+}
+
+private func normalizedBookingEmail(_ email: String?) -> String? {
+    guard let email else { return nil }
+    let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+private func normalizedBookingPhone(_ phone: String?) -> String? {
+    guard let phone else { return nil }
+    let digits = phone.filter { $0.isNumber }
+    return digits.isEmpty ? nil : digits
+}
+
+private func normalizedBookingName(_ name: String?) -> String? {
+    guard let name else { return nil }
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+private func parseBookingDate(_ raw: String?) -> Date? {
+    guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    if let date = bookingISOWithFractional.date(from: raw) { return date }
+    if let date = bookingISOPlain.date(from: raw) { return date }
+    if let seconds = Double(raw) {
+        let normalized = seconds > 10_000_000_000 ? seconds / 1000.0 : seconds
+        return Date(timeIntervalSince1970: normalized)
+    }
+    return nil
+}
+
+private func bookingJobTitle(for booking: BookingRequestItem) -> String {
+    if let service = booking.serviceType?.trimmingCharacters(in: .whitespacesAndNewlines), !service.isEmpty {
+        return "Booking: \(service)"
+    }
+    if let name = booking.clientName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+        return "Booking: \(name)"
+    }
+    return "Booking: Booking"
+}
+
+private func bookingNotes(from booking: BookingRequestItem) -> String {
+    var lines: [String] = []
+    lines.append("Booking Request")
+    lines.append("Request ID: \(booking.requestId)")
+    if let name = booking.clientName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        lines.append("Client Name: \(name)")
+    }
+    if let email = booking.clientEmail, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        lines.append("Client Email: \(email)")
+    }
+    if let phone = booking.clientPhone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        lines.append("Client Phone: \(phone)")
+    }
+    if let service = booking.serviceType, !service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        lines.append("Service: \(service)")
+    }
+    if let start = parseBookingDate(booking.requestedStart) {
+        lines.append("Requested Start: \(bookingDateFormatter.string(from: start))")
+    }
+    if let end = parseBookingDate(booking.requestedEnd) {
+        lines.append("Requested End: \(bookingDateFormatter.string(from: end))")
+    }
+    if let notes = booking.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        lines.append("Notes: \(notes)")
+    }
+    return lines.joined(separator: "\n")
+}
+
+private func requiredFinalInvoiceNotes(for booking: BookingRequestItem) -> [String] {
+    var lines = [
+        "FINAL invoice draft created from Booking Request",
+        "Booking Request ID: \(booking.requestId)"
+    ]
+
+    if let cents = booking.depositAmountCents {
+        let amount = max(0, cents)
+        lines.append(String(format: "Deposit: $%.2f", Double(amount) / 100.0))
+    }
+
+    if booking.depositPaidAtMs != nil {
+        let amount = max(0, booking.depositAmountCents ?? 0)
+        lines.append(String(format: "Deposit paid: $%.2f", Double(amount) / 100.0))
+    }
+
+    return lines
+}
+
+private func mergedFinalInvoiceNotes(existing: String, booking: BookingRequestItem) -> String {
+    var lines = existing
+        .components(separatedBy: .newlines)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+    for required in requiredFinalInvoiceNotes(for: booking) where !lines.contains(required) {
+        lines.append(required)
+    }
+    return lines.joined(separator: "\n")
+}
+
+private let bookingDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    return formatter
+}()
+
+private let bookingISOWithFractional: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private let bookingISOPlain: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f
+}()
+
+@MainActor
+func resolveOrCreateClientFromBooking(
+    businessID: UUID,
+    booking: BookingRequestItem,
+    modelContext: ModelContext
+) throws -> Client {
+    let allClients = try modelContext.fetch(FetchDescriptor<Client>())
+    let scoped = allClients.filter { $0.businessID == businessID }
+
+    let normalizedEmail = normalizedBookingEmail(booking.clientEmail)
+    if let normalizedEmail,
+       let existing = scoped.first(where: { normalizedBookingEmail($0.email) == normalizedEmail }) {
+        return existing
+    }
+
+    let normalizedPhone = normalizedBookingPhone(booking.clientPhone)
+    if let normalizedPhone,
+       let existing = scoped.first(where: { normalizedBookingPhone($0.phone) == normalizedPhone }) {
+        return existing
+    }
+
+    let normalizedName = normalizedBookingName(booking.clientName)
+    if let normalizedName,
+       let existing = scoped.first(where: { normalizedBookingName($0.name) == normalizedName }) {
+        return existing
+    }
+
+    let fallbackName = booking.clientName?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let fallbackEmail = booking.clientEmail?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let name: String
+    if let fallbackName, !fallbackName.isEmpty {
+        name = fallbackName
+    } else if let fallbackEmail, !fallbackEmail.isEmpty {
+        name = fallbackEmail
+    } else {
+        name = "Booking Client"
+    }
+
+    let newClient = Client(businessID: businessID)
+    newClient.name = name
+    newClient.email = booking.clientEmail ?? ""
+    newClient.phone = booking.clientPhone ?? ""
+    newClient.address = ""
+
+    modelContext.insert(newClient)
+    try modelContext.save()
+    return newClient
+}
+
+@MainActor
+func createOrReuseJobForBooking(
+    businessID: UUID,
+    booking: BookingRequestItem,
+    client: Client,
+    modelContext: ModelContext
+) throws -> Job {
+    let allJobs = try modelContext.fetch(FetchDescriptor<Job>())
+    if let existing = allJobs.first(where: {
+        $0.businessID == businessID &&
+        $0.sourceBookingRequestId == booking.requestId
+    }) {
+        var updated = false
+        if existing.clientID != client.id {
+            existing.clientID = client.id
+            updated = true
+        }
+        if existing.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            existing.title = bookingJobTitle(for: booking)
+            updated = true
+        }
+        if updated {
+            try modelContext.save()
+        }
+        return existing
+    }
+
+    let start = parseBookingDate(booking.requestedStart) ?? .now
+    let end = parseBookingDate(booking.requestedEnd)
+        ?? Calendar.current.date(byAdding: .hour, value: 2, to: start)
+        ?? start
+
+    let job = Job(
+        businessID: businessID,
+        clientID: client.id,
+        title: bookingJobTitle(for: booking),
+        notes: bookingNotes(from: booking),
+        startDate: start,
+        endDate: end,
+        locationName: "",
+        status: "scheduled",
+        sourceBookingRequestId: booking.requestId
+    )
+    modelContext.insert(job)
+    try modelContext.save()
+    return job
+}
+
 @MainActor
 func createOrReuseFinalInvoiceForBooking(
-  businessID: UUID,
-  booking: BookingRequestItem,
-  client: Client,
-  profile: BusinessProfile?,
-  modelContext: ModelContext
+    businessID: UUID,
+    booking: BookingRequestItem,
+    client: Client,
+    job: Job,
+    profile: BusinessProfile,
+    modelContext: ModelContext
 ) throws -> Invoice {
     let allInvoices = try modelContext.fetch(FetchDescriptor<Invoice>())
     if let existing = allInvoices.first(where: {
@@ -17,32 +263,45 @@ func createOrReuseFinalInvoiceForBooking(
         $0.documentType == "invoice" &&
         $0.sourceBookingRequestId == booking.requestId
     }) {
+        var updated = false
+        if existing.client?.id != client.id {
+            existing.client = client
+            updated = true
+        }
+        if existing.job?.id != job.id {
+            existing.job = job
+            updated = true
+        }
+        if existing.documentType != "invoice" {
+            existing.documentType = "invoice"
+            updated = true
+        }
+        if existing.sourceBookingRequestId != booking.requestId {
+            existing.sourceBookingRequestId = booking.requestId
+            updated = true
+        }
+        if (existing.items ?? []).isEmpty {
+            let lineItem = LineItem(
+                itemDescription: "Remaining Balance (after deposit)",
+                quantity: 1,
+                unitPrice: 0
+            )
+            lineItem.invoice = existing
+            existing.items = [lineItem]
+            updated = true
+        }
+        let mergedNotes = mergedFinalInvoiceNotes(existing: existing.notes, booking: booking)
+        if existing.notes != mergedNotes {
+            existing.notes = mergedNotes
+            updated = true
+        }
+        if updated {
+            try modelContext.save()
+        }
         return existing
     }
-
-    let activeProfile: BusinessProfile
-    if let profile {
-        activeProfile = profile
-    } else {
-        let created = BusinessProfile(businessID: businessID)
-        modelContext.insert(created)
-        activeProfile = created
-    }
-
-    let number = InvoiceNumberGenerator.generateNextNumber(profile: activeProfile)
-    let depositLine: String
-    if booking.depositPaidAtMs != nil {
-        let cents = max(0, booking.depositAmountCents ?? 0)
-        depositLine = String(format: "Deposit paid: $%.2f", Double(cents) / 100.0)
-    } else {
-        depositLine = "Deposit: pending"
-    }
-
-    let notes = [
-        "FINAL invoice draft created from Booking Request",
-        "Booking Request ID: \(booking.requestId)",
-        depositLine
-    ].joined(separator: "\n")
+    let number = InvoiceNumberGenerator.generateNextNumber(profile: profile)
+    let notes = requiredFinalInvoiceNotes(for: booking).joined(separator: "\n")
 
     let lineItem = LineItem(
         itemDescription: "Remaining Balance (after deposit)",
@@ -57,15 +316,15 @@ func createOrReuseFinalInvoiceForBooking(
         dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
         paymentTerms: "Net 14",
         notes: notes,
-        thankYou: activeProfile.defaultThankYou,
-        termsAndConditions: activeProfile.defaultTerms,
+        thankYou: profile.defaultThankYou,
+        termsAndConditions: profile.defaultTerms,
         taxRate: 0,
         discountAmount: 0,
         isPaid: false,
         documentType: "invoice",
         sourceBookingRequestId: booking.requestId,
         client: client,
-        job: nil,
+        job: job,
         items: [lineItem]
     )
 
@@ -212,6 +471,21 @@ struct BookingDetailView: View {
                         navigateToInvoice = finalInvoice
                     }
                     .disabled(isSubmitting)
+#if DEBUG
+                    if let linkedClient = finalInvoice.client {
+                        Text("Linked Client: \(linkedClient.name) (\(shortID(linkedClient.id)))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let linkedJob = finalInvoice.job {
+                        Text("Linked Job: \(linkedJob.title) (\(shortID(linkedJob.id)))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Linked Invoice: \(finalInvoice.invoiceNumber) (\(shortID(finalInvoice.id)))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+#endif
                 }
 
                 if !isApproved {
@@ -416,7 +690,11 @@ struct BookingDetailView: View {
 
         do {
             let bizID = try resolveBusinessId()
-            let client = try resolveOrCreateClient(businessID: bizID)
+            let client = try resolveOrCreateClientFromBooking(
+                businessID: bizID,
+                booking: request,
+                modelContext: modelContext
+            )
             let number = generateEstimateDraftNumber()
 
             let estimate = Invoice(
@@ -458,7 +736,11 @@ struct BookingDetailView: View {
             let bizID = try resolveBusinessId()
             let profile = profileEnsured(businessID: bizID)
             let number = InvoiceNumberGenerator.generateNextNumber(profile: profile)
-            let client = try resolveOrCreateClient(businessID: bizID)
+            let client = try resolveOrCreateClientFromBooking(
+                businessID: bizID,
+                booking: request,
+                modelContext: modelContext
+            )
 
             let invoice = Invoice(
                 businessID: bizID,
@@ -501,7 +783,11 @@ struct BookingDetailView: View {
 
         do {
             let bizID = try resolveBusinessId()
-            let client = try resolveOrCreateClient(businessID: bizID)
+            let client = try resolveOrCreateClientFromBooking(
+                businessID: bizID,
+                booking: request,
+                modelContext: modelContext
+            )
             let title = bookingJobTitle()
 
             let start = parseDate(request.requestedStart) ?? .now
@@ -529,94 +815,8 @@ struct BookingDetailView: View {
         }
     }
 
-    @MainActor
-    private func createOrReuseJobForBooking(businessID: UUID) throws -> Job {
-        // Prevent duplicates: if a job already exists for this booking request, reuse it.
-        let reqId = request.requestId
-        let descriptor = FetchDescriptor<Job>(predicate: #Predicate<Job> { job in
-            job.businessID == businessID && job.sourceBookingRequestId == reqId
-        })
-
-        if let existing = try? modelContext.fetch(descriptor).first {
-            return existing
-        }
-
-        let client = try resolveOrCreateClient(businessID: businessID)
-        let title = bookingJobTitle()
-
-        let start = parseDate(request.requestedStart) ?? .now
-        let end = parseDate(request.requestedEnd)
-            ?? Calendar.current.date(byAdding: .hour, value: 2, to: start)
-            ?? start
-
-        let job = Job(
-            businessID: businessID,
-            clientID: client.id,
-            title: title,
-            notes: buildBookingNotes(),
-            startDate: start,
-            endDate: end,
-            locationName: "",
-            status: "scheduled",
-            sourceBookingRequestId: reqId
-        )
-
-        modelContext.insert(job)
-        try modelContext.save()
-        return job
-    }
-
-    @MainActor
-    private func resolveOrCreateClient(businessID: UUID) throws -> Client {
-        let normalizedEmail = normalizeEmail(request.clientEmail)
-        let normalizedPhone = normalizePhone(request.clientPhone)
-        let normalizedName = request.clientName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-
-        let scoped = clients.filter { $0.businessID == businessID }
-
-        if let normalizedEmail {
-            if let existing = scoped.first(where: { normalizeEmail($0.email) == normalizedEmail }) {
-                return existing
-            }
-        }
-
-        if let normalizedPhone {
-            if let existing = scoped.first(where: { normalizePhone($0.phone) == normalizedPhone }) {
-                return existing
-            }
-        }
-
-        if !normalizedName.isEmpty {
-            if let existing = scoped.first(where: {
-                $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedName
-            }) {
-                return existing
-            }
-        }
-
-        let newClient = Client(businessID: businessID)
-        newClient.name = (request.clientName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-            ? (request.clientName ?? "")
-            : (request.clientEmail ?? "New Client")
-        newClient.email = request.clientEmail ?? ""
-        newClient.phone = request.clientPhone ?? ""
-        newClient.address = ""
-
-        modelContext.insert(newClient)
-        try modelContext.save()
-        return newClient
-    }
-
-    private func normalizeEmail(_ email: String?) -> String? {
-        guard let email else { return nil }
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private func normalizePhone(_ phone: String?) -> String? {
-        guard let phone else { return nil }
-        let digits = phone.filter { $0.isNumber }
-        return digits.isEmpty ? nil : digits
+    private func shortID(_ id: UUID) -> String {
+        String(id.uuidString.prefix(8))
     }
 
     private func profileEnsured(businessID: UUID) -> BusinessProfile {
