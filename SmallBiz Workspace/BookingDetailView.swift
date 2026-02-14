@@ -3,6 +3,82 @@ import Foundation
 import SwiftData
 import UIKit
 
+@MainActor
+func createOrReuseFinalInvoiceForBooking(
+  businessID: UUID,
+  booking: BookingRequestItem,
+  client: Client,
+  profile: BusinessProfile?,
+  modelContext: ModelContext
+) throws -> Invoice {
+    let allInvoices = try modelContext.fetch(FetchDescriptor<Invoice>())
+    if let existing = allInvoices.first(where: {
+        $0.businessID == businessID &&
+        $0.documentType == "invoice" &&
+        $0.sourceBookingRequestId == booking.requestId
+    }) {
+        return existing
+    }
+
+    let activeProfile: BusinessProfile
+    if let profile {
+        activeProfile = profile
+    } else {
+        let created = BusinessProfile(businessID: businessID)
+        modelContext.insert(created)
+        activeProfile = created
+    }
+
+    let number = InvoiceNumberGenerator.generateNextNumber(profile: activeProfile)
+    let depositLine: String
+    if booking.depositPaidAtMs != nil {
+        let cents = max(0, booking.depositAmountCents ?? 0)
+        depositLine = String(format: "Deposit paid: $%.2f", Double(cents) / 100.0)
+    } else {
+        depositLine = "Deposit: pending"
+    }
+
+    let notes = [
+        "FINAL invoice draft created from Booking Request",
+        "Booking Request ID: \(booking.requestId)",
+        depositLine
+    ].joined(separator: "\n")
+
+    let lineItem = LineItem(
+        itemDescription: "Remaining Balance (after deposit)",
+        quantity: 1,
+        unitPrice: 0
+    )
+
+    let invoice = Invoice(
+        businessID: businessID,
+        invoiceNumber: number,
+        issueDate: .now,
+        dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
+        paymentTerms: "Net 14",
+        notes: notes,
+        thankYou: activeProfile.defaultThankYou,
+        termsAndConditions: activeProfile.defaultTerms,
+        taxRate: 0,
+        discountAmount: 0,
+        isPaid: false,
+        documentType: "invoice",
+        sourceBookingRequestId: booking.requestId,
+        client: client,
+        job: nil,
+        items: [lineItem]
+    )
+
+    if let preferredRaw = client.preferredInvoiceTemplateKey,
+       let preferred = InvoiceTemplateKey.from(preferredRaw) {
+        invoice.invoiceTemplateKeyOverride = preferred.rawValue
+    }
+
+    modelContext.insert(invoice)
+    try modelContext.save()
+    return invoice
+}
+
 struct BookingDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
@@ -131,6 +207,13 @@ struct BookingDetailView: View {
                 }
                 .disabled(!isApproved || isSubmitting)
 
+                if let finalInvoice = existingFinalInvoiceForBooking {
+                    Button("Open Final Invoice") {
+                        navigateToInvoice = finalInvoice
+                    }
+                    .disabled(isSubmitting)
+                }
+
                 if !isApproved {
                     Text("Approved bookings enable conversions.")
                         .font(.footnote)
@@ -168,18 +251,6 @@ struct BookingDetailView: View {
         .sheet(isPresented: $showDepositSheet) {
             depositSheet
         }
-        .onAppear {
-            Task {
-                if isApproved {
-                    await autoCreateApprovedArtifactsIfNeeded()
-                }
-            }
-        }
-        .onChange(of: currentStatus) { _, newValue in
-            if newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved" {
-                Task { await autoCreateApprovedArtifactsIfNeeded() }
-            }
-        }
     }
 
     private var statusLabel: String {
@@ -197,6 +268,16 @@ struct BookingDetailView: View {
 
     private var isApproved: Bool {
         currentStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved"
+    }
+
+    private var existingFinalInvoiceForBooking: Invoice? {
+        let requestId = request.requestId
+        let businessID = activeBiz.activeBusinessID ?? UUID(uuidString: request.businessId)
+        return invoices.first(where: {
+            $0.documentType == "invoice" &&
+            $0.sourceBookingRequestId == requestId &&
+            (businessID == nil || $0.businessID == businessID)
+        })
     }
 
     private var depositSheet: some View {
@@ -325,18 +406,6 @@ struct BookingDetailView: View {
             return Int((amount * 100.0).rounded())
         }
         return 10_000
-    }
-
-    @MainActor
-    private func autoCreateApprovedArtifactsIfNeeded() async {
-        guard isApproved else { return }
-        do {
-            let bizID = try resolveBusinessId()
-            let job = try createOrReuseJobForBooking(businessID: bizID)
-            _ = try createOrReuseFinalInvoiceDraft(businessID: bizID, job: job)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     @MainActor
@@ -495,55 +564,6 @@ struct BookingDetailView: View {
         modelContext.insert(job)
         try modelContext.save()
         return job
-    }
-
-    @MainActor
-    private func createOrReuseFinalInvoiceDraft(businessID: UUID, job: Job) throws -> Invoice {
-        let reqId = request.requestId
-        if let existing = invoices.first(where: {
-            $0.businessID == businessID &&
-            $0.documentType == "invoice" &&
-            $0.sourceBookingRequestId == reqId &&
-            $0.invoiceNumber.uppercased().hasPrefix("FINAL-")
-        }) {
-            return existing
-        }
-
-        let client = try resolveOrCreateClient(businessID: businessID)
-        let profile = profileEnsured(businessID: businessID)
-        let finalNumber = "FINAL-\(reqId.suffix(6).uppercased())"
-        let paidCents = request.depositAmountCents ?? 0
-        let depositNote = paidCents > 0
-            ? String(format: "Deposit paid: $%.2f. Update final invoice total before sending.", Double(paidCents) / 100.0)
-            : "Deposit paid. Update final invoice total before sending."
-        let lineItem = LineItem(itemDescription: "Remaining Balance (after deposit)", quantity: 1, unitPrice: 0)
-
-        let invoice = Invoice(
-            businessID: businessID,
-            invoiceNumber: finalNumber,
-            issueDate: .now,
-            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
-            paymentTerms: "Net 14",
-            notes: [buildBookingNotes(), depositNote].joined(separator: "\n"),
-            thankYou: profile.defaultThankYou,
-            termsAndConditions: profile.defaultTerms,
-            taxRate: 0,
-            discountAmount: 0,
-            isPaid: false,
-            documentType: "invoice",
-            sourceBookingRequestId: reqId,
-            client: client,
-            job: job,
-            items: [lineItem]
-        )
-        if let preferredRaw = client.preferredInvoiceTemplateKey,
-           let preferred = InvoiceTemplateKey.from(preferredRaw) {
-            invoice.invoiceTemplateKeyOverride = preferred.rawValue
-        }
-
-        modelContext.insert(invoice)
-        try modelContext.save()
-        return invoice
     }
 
     @MainActor
