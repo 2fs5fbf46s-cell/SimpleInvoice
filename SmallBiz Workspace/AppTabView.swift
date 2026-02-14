@@ -292,7 +292,11 @@ struct AppTabView: View {
                 serviceType: dto.serviceType,
                 notes: dto.notes,
                 status: dto.status,
-                createdAtMs: dto.createdAtMs
+                createdAtMs: dto.createdAtMs,
+                depositAmountCents: dto.depositAmountCents,
+                depositInvoiceId: dto.depositInvoiceId,
+                depositPaidAtMs: dto.depositPaidAtMs,
+                finalInvoiceId: dto.finalInvoiceId
             )
 
             tab = .more
