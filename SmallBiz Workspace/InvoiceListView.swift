@@ -162,17 +162,34 @@ struct InvoiceListView: View {
             base = nonEstimates.filter { !$0.isPaid }
         }
 
-        guard !searchText.isEmpty else { return base }
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return base }
 
-        return base.filter {
-            $0.invoiceNumber.localizedCaseInsensitiveContains(searchText) ||
-            ($0.client?.name ?? "").localizedCaseInsensitiveContains(searchText)
+        return base.filter { invoice in
+            if invoice.invoiceNumber.localizedCaseInsensitiveContains(q) { return true }
+            if (invoice.client?.name ?? "").localizedCaseInsensitiveContains(q) { return true }
+            if (invoice.notes).localizedCaseInsensitiveContains(q) { return true }
+            if (invoice.sourceBookingRequestId ?? "").localizedCaseInsensitiveContains(q) { return true }
+
+            // Convenience: allow searching "final" to find booking-created final drafts
+            if q.lowercased().contains("final"), isFinalDraft(invoice) { return true }
+
+            return false
         }
     }
 
     private var scopedInvoices: [Invoice] {
         guard let bizID = activeBiz.activeBusinessID else { return [] }
         return invoices.filter { $0.businessID == bizID }
+    }
+
+    private func isFinalDraft(_ invoice: Invoice) -> Bool {
+        // We create these from booking approval; they are normal-numbered invoices.
+        // Detection is based on linkage + the note prefix we add.
+        let hasBookingLink = (invoice.sourceBookingRequestId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        let notes = (invoice.notes).lowercased()
+        let isFinalNote = notes.contains("final invoice draft created")
+        return hasBookingLink && isFinalNote
     }
 
     // MARK: - Row UI (Option A polish: icon chip + content)
@@ -182,7 +199,8 @@ struct InvoiceListView: View {
         let clientName = invoice.client?.name ?? "No Client"
         let date = invoice.issueDate.formatted(date: .abbreviated, time: .omitted)
         let total = invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-        let subtitle = "\(statusText) • \(clientName) • \(date) • \(total)"
+        let finalBadge = isFinalDraft(invoice) ? "FINAL • " : ""
+        let subtitle = "\(finalBadge)\(statusText) • \(clientName) • \(date) • \(total)"
 
         return HStack(alignment: .top, spacing: 12) {
 
@@ -198,7 +216,10 @@ struct InvoiceListView: View {
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(invoice.invoiceNumber.isEmpty ? "Invoice" : "Invoice \(invoice.invoiceNumber)")
+                    let isFinal = isFinalDraft(invoice)
+                    Text(invoice.invoiceNumber.isEmpty
+                         ? (isFinal ? "Final Invoice" : "Invoice")
+                         : "\(isFinal ? "Final Invoice" : "Invoice") \(invoice.invoiceNumber)")
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
