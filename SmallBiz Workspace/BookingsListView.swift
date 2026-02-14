@@ -17,6 +17,7 @@ struct BookingsListView: View {
     @State private var errorMessage: String? = nil
     @State private var refreshTask: Task<Void, Never>? = nil
     @State private var selectedRequest: BookingRequestItem? = nil
+    @State private var ensuredFinalInvoiceForBookingIds: Set<String> = []
 
     private var taskKey: String {
         "\(activeBiz.activeBusinessID?.uuidString ?? "none")-\(selectedStatus.rawValue)"
@@ -278,8 +279,28 @@ struct BookingsListView: View {
                 let r = rhs.createdAtMs ?? 0
                 return l > r
             }
-            for request in requests where request.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved" {
-                try? autoCreateApprovedArtifactsIfNeeded(request: request, businessID: bizId)
+            let eligible = requests.filter { request in
+                let status = request.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard status == "approved" else { return false }
+                return hasPaidDepositEvidence(request)
+            }
+            if !eligible.isEmpty {
+                Task { @MainActor in
+                    for request in eligible {
+                        if ensuredFinalInvoiceForBookingIds.contains(request.requestId) { continue }
+                        if let existing = findExistingBookingFinalInvoice(request: request, businessID: bizId) {
+                            ensuredFinalInvoiceForBookingIds.insert(request.requestId)
+                            _ = existing
+                            continue
+                        }
+                        do {
+                            try ensureApprovedBookingArtifacts(request: request, businessID: bizId)
+                            ensuredFinalInvoiceForBookingIds.insert(request.requestId)
+                        } catch {
+                            // keep non-fatal and retry on next refresh
+                        }
+                    }
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -319,16 +340,13 @@ struct BookingsListView: View {
         scheduleRefreshAfterStatusChange()
     }
 
-    private func autoCreateApprovedArtifactsIfNeeded(request: BookingRequestItem, businessID: UUID) throws {
+    private func ensureApprovedBookingArtifacts(request: BookingRequestItem, businessID: UUID) throws {
         let requestId = request.requestId
 
         let existingJob = jobs.first {
             $0.businessID == businessID && $0.sourceBookingRequestId == requestId
         }
-        let job: Job
-        if let existingJob {
-            job = existingJob
-        } else {
+        if existingJob == nil {
             let client = try resolveOrCreateClient(request: request, businessID: businessID)
             let start = parseDate(request.requestedStart) ?? .now
             let end = parseDate(request.requestedEnd)
@@ -347,50 +365,34 @@ struct BookingsListView: View {
                 sourceBookingRequestId: requestId
             )
             modelContext.insert(created)
-            job = created
-        }
-
-        if invoices.contains(where: {
-            $0.businessID == businessID &&
-            $0.documentType == "invoice" &&
-            $0.sourceBookingRequestId == requestId &&
-            $0.invoiceNumber.uppercased().hasPrefix("FINAL-")
-        }) {
-            try modelContext.save()
-            return
         }
 
         let client = try resolveOrCreateClient(request: request, businessID: businessID)
         let profile = profileEnsured(businessID: businessID)
-        let finalNumber = "FINAL-\(requestId.suffix(6).uppercased())"
-        let depositNote: String
-        if let cents = request.depositAmountCents, cents > 0 {
-            depositNote = String(format: "Deposit paid: $%.2f. Update final invoice total before sending.", Double(cents) / 100.0)
-        } else {
-            depositNote = "Deposit paid. Update final invoice total before sending."
-        }
-
-        let lineItem = LineItem(itemDescription: "Remaining Balance (after deposit)", quantity: 1, unitPrice: 0)
-        let invoice = Invoice(
+        _ = try createOrReuseFinalInvoiceForBooking(
             businessID: businessID,
-            invoiceNumber: finalNumber,
-            issueDate: .now,
-            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
-            paymentTerms: "Net 14",
-            notes: [buildBookingNotes(request: request), depositNote].joined(separator: "\n"),
-            thankYou: profile.defaultThankYou,
-            termsAndConditions: profile.defaultTerms,
-            taxRate: 0,
-            discountAmount: 0,
-            isPaid: false,
-            documentType: "invoice",
-            sourceBookingRequestId: requestId,
+            booking: request,
             client: client,
-            job: job,
-            items: [lineItem]
+            profile: profile,
+            modelContext: modelContext
         )
-        modelContext.insert(invoice)
         try modelContext.save()
+    }
+
+    private func hasPaidDepositEvidence(_ request: BookingRequestItem) -> Bool {
+        if request.depositPaidAtMs != nil { return true }
+        let status = request.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let hasDepositInvoice = (request.depositInvoiceId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        let amountCents = request.depositAmountCents ?? 0
+        return status == "approved" && hasDepositInvoice && amountCents > 0
+    }
+
+    private func findExistingBookingFinalInvoice(request: BookingRequestItem, businessID: UUID) -> Invoice? {
+        invoices.first(where: {
+            $0.businessID == businessID &&
+            $0.documentType == "invoice" &&
+            $0.sourceBookingRequestId == request.requestId
+        })
     }
 
     private func resolveOrCreateClient(request: BookingRequestItem, businessID: UUID) throws -> Client {
