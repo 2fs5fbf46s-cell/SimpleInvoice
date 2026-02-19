@@ -13,6 +13,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCalendarsUsageDescription</key>
+	<string>SmallBiz Workspace uses your calendar to add and update job appointments you create.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

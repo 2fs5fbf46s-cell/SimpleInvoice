@@ -28,6 +28,7 @@ final class Job {
     var status: String = "scheduled"
     var stageRaw: String = JobStage.booked.rawValue
     var sourceBookingRequestId: String? = nil
+    var calendarEventId: String? = nil
 
     var stage: JobStage {
         get { JobStage(rawValue: stageRaw) ?? .booked }
@@ -60,6 +61,7 @@ final class Job {
         status: String = "scheduled",
         stageRaw: String = JobStage.booked.rawValue,
         sourceBookingRequestId: String? = nil,
+        calendarEventId: String? = nil,
         workspaceFolderKey: String? = nil
     ) {
         self.id = id
@@ -75,6 +77,7 @@ final class Job {
         self.status = status
         self.stageRaw = stageRaw
         self.sourceBookingRequestId = sourceBookingRequestId
+        self.calendarEventId = calendarEventId
         self.workspaceFolderKey = workspaceFolderKey
     }
 }
