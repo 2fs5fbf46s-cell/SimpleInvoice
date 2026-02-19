@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 8
+    static let currentVersion = 9
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -104,6 +104,11 @@ enum BusinessMigration {
             if let hash = invoice.portalLastUploadedHash?.trimmingCharacters(in: .whitespacesAndNewlines),
                hash.isEmpty {
                 invoice.portalLastUploadedHash = nil
+            }
+
+            if let bookingID = invoice.sourceBookingRequestId?.trimmingCharacters(in: .whitespacesAndNewlines),
+               bookingID.isEmpty {
+                invoice.sourceBookingRequestId = nil
             }
         }
 

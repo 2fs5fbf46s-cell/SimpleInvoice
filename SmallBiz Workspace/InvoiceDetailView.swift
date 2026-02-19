@@ -686,6 +686,39 @@ struct InvoiceDetailView: View {
                     Divider()
                     totalRow("Total", invoice.total, isEmphasis: true)
                 }
+
+                if showsBookingDepositSummary {
+                    Divider()
+
+                    HStack {
+                        Text(invoice.sourceBookingDepositPaidAtMs != nil ? "Deposit received" : "Deposit")
+                        Spacer()
+                        Text(currencyString(fromCents: invoice.bookingDepositCents))
+                            .font(.body.weight(.semibold))
+                    }
+
+                    if let paidAt = bookingDepositPaidDate {
+                        Text("Paid \(paidAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text("Remaining due")
+                        Spacer()
+                        Text(currencyString(fromCents: invoice.remainingDueCents))
+                            .font(.headline)
+                    }
+
+                    if invoice.overpaidCents > 0 {
+                        HStack {
+                            Text("Overpaid")
+                            Spacer()
+                            Text(currencyString(fromCents: invoice.overpaidCents))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .sbwCardRow()
             .disabled(isEstimatePricingLocked)
@@ -1750,6 +1783,22 @@ struct InvoiceDetailView: View {
             Text(amount, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
                 .font(isEmphasis ? .headline : .body)
         }
+    }
+
+    private var showsBookingDepositSummary: Bool {
+        guard invoice.sourceBookingRequestId != nil else { return false }
+        return invoice.bookingDepositCents > 0
+    }
+
+    private var bookingDepositPaidDate: Date? {
+        guard let value = invoice.sourceBookingDepositPaidAtMs, value > 0 else { return nil }
+        let seconds = value > 10_000_000_000 ? Double(value) / 1000.0 : Double(value)
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    private func currencyString(fromCents cents: Int) -> String {
+        let amount = Double(max(0, cents)) / 100.0
+        return amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
     }
     
     
