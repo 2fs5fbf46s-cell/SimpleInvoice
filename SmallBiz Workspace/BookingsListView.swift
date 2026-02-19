@@ -14,6 +14,7 @@ struct BookingsListView: View {
     @State private var errorMessage: String? = nil
     @State private var refreshTask: Task<Void, Never>? = nil
     @State private var selectedRequest: BookingRequestItem? = nil
+    @State private var showAnalytics = false
     @State private var ensuredFinalInvoiceForBookingIds: Set<String> = []
 
     private var taskKey: String {
@@ -103,12 +104,25 @@ struct BookingsListView: View {
                 updateStatus(for: request.requestId, newStatus: newStatus)
             }
         }
+        .navigationDestination(isPresented: $showAnalytics) {
+            BookingAnalyticsView()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await loadRequests() }
+                Menu {
+                    Button {
+                        showAnalytics = true
+                    } label: {
+                        Label("Analytics", systemImage: "chart.bar.xaxis")
+                    }
+
+                    Button {
+                        Task { await loadRequests() }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    Image(systemName: "gearshape")
                 }
             }
         }
