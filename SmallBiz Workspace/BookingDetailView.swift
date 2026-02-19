@@ -132,6 +132,67 @@ private func mergedFinalInvoiceNotes(existing: String, booking: BookingRequestIt
     return lines.joined(separator: "\n")
 }
 
+private func upsertRemainingBalanceLineItem(
+    invoice: Invoice,
+    remainingCents: Int
+) -> Bool {
+    let targetDescription = "Remaining Balance (after deposit)"
+    let unitPrice = Double(max(0, remainingCents)) / 100.0
+    var items = invoice.items ?? []
+    var updated = false
+
+    if let index = items.firstIndex(where: { $0.itemDescription == targetDescription }) {
+        let existing = items[index]
+        if existing.quantity != 1 {
+            existing.quantity = 1
+            updated = true
+        }
+        if existing.unitPrice != unitPrice {
+            existing.unitPrice = unitPrice
+            updated = true
+        }
+    } else {
+        let lineItem = LineItem(
+            itemDescription: targetDescription,
+            quantity: 1,
+            unitPrice: unitPrice
+        )
+        lineItem.invoice = invoice
+        items.append(lineItem)
+        invoice.items = items
+        updated = true
+    }
+
+    return updated
+}
+
+private func mergedRemainingNotes(
+    existing: String,
+    totalCents: Int,
+    depositCents: Int,
+    remainingCents: Int
+) -> String {
+    let prefixTotal = "Total:"
+    let prefixDeposit = "Deposit:"
+    let prefixRemaining = "Remaining:"
+
+    var lines = existing
+        .components(separatedBy: .newlines)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .filter {
+            !$0.hasPrefix(prefixTotal) &&
+            !$0.hasPrefix(prefixDeposit) &&
+            !$0.hasPrefix(prefixRemaining)
+        }
+
+    lines.append(String(format: "Total: $%.2f", Double(max(0, totalCents)) / 100.0))
+    lines.append(String(format: "Deposit: $%.2f", Double(max(0, depositCents)) / 100.0))
+    lines.append(String(format: "Remaining: $%.2f", Double(max(0, remainingCents)) / 100.0))
+
+    return lines.joined(separator: "\n")
+}
+
 private let bookingDateFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateStyle = .medium
@@ -258,6 +319,8 @@ func createOrReuseFinalInvoiceForBooking(
     modelContext: ModelContext
 ) throws -> Invoice {
     let allInvoices = try modelContext.fetch(FetchDescriptor<Invoice>())
+    let totalCents = booking.bookingTotalAmountCents
+    let depositCents = max(0, booking.depositAmountCents ?? 0)
     if let existing = allInvoices.first(where: {
         $0.businessID == businessID &&
         $0.documentType == "invoice" &&
@@ -295,19 +358,46 @@ func createOrReuseFinalInvoiceForBooking(
             existing.notes = mergedNotes
             updated = true
         }
+        if let totalCents {
+            let remainingCents = max(totalCents - depositCents, 0)
+            if upsertRemainingBalanceLineItem(invoice: existing, remainingCents: remainingCents) {
+                updated = true
+            }
+            let financialNotes = mergedRemainingNotes(
+                existing: existing.notes,
+                totalCents: totalCents,
+                depositCents: depositCents,
+                remainingCents: remainingCents
+            )
+            if existing.notes != financialNotes {
+                existing.notes = financialNotes
+                updated = true
+            }
+        }
         if updated {
             try modelContext.save()
         }
         return existing
     }
     let number = InvoiceNumberGenerator.generateNextNumber(profile: profile)
-    let notes = requiredFinalInvoiceNotes(for: booking).joined(separator: "\n")
+    let initialRemainingCents = totalCents != nil ? max((totalCents ?? 0) - depositCents, 0) : 0
 
     let lineItem = LineItem(
         itemDescription: "Remaining Balance (after deposit)",
         quantity: 1,
-        unitPrice: 0
+        unitPrice: totalCents != nil ? Double(initialRemainingCents) / 100.0 : 0
     )
+
+    var notes = requiredFinalInvoiceNotes(for: booking).joined(separator: "\n")
+    if let totalCents {
+        let remainingCents = max(totalCents - depositCents, 0)
+        notes = mergedRemainingNotes(
+            existing: notes,
+            totalCents: totalCents,
+            depositCents: depositCents,
+            remainingCents: remainingCents
+        )
+    }
 
     let invoice = Invoice(
         businessID: businessID,
@@ -353,6 +443,8 @@ struct BookingDetailView: View {
     @State private var navigateToJob: Job? = nil
     @State private var showDepositSheet = false
     @State private var depositAmountText = "100.00"
+    @State private var totalAmountText = ""
+    @State private var savedBookingTotalAmountCents: Int? = nil
     @State private var lastDepositPortalURL: URL? = nil
     @State private var lastDepositSendWarning: String? = nil
 
@@ -360,6 +452,12 @@ struct BookingDetailView: View {
         self.request = request
         self.onStatusChange = onStatusChange
         _currentStatus = State(initialValue: request.status)
+        _savedBookingTotalAmountCents = State(initialValue: request.bookingTotalAmountCents)
+        if let cents = request.bookingTotalAmountCents {
+            _totalAmountText = State(initialValue: String(format: "%.2f", Double(max(0, cents)) / 100.0))
+        } else {
+            _totalAmountText = State(initialValue: "")
+        }
     }
 
     @Query(sort: \Client.name) private var clients: [Client]
@@ -403,6 +501,33 @@ struct BookingDetailView: View {
                 Section("Notes") {
                     Text(notes)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            if shouldShowRemainingCapture {
+                Section("Payment Summary") {
+                    TextField("Total (optional)", text: $totalAmountText)
+                        .keyboardType(.decimalPad)
+
+                    if let depositCents = request.depositAmountCents {
+                        detailRow("Deposit", currencyString(fromCents: depositCents))
+                    } else {
+                        detailRow("Deposit", "Not set")
+                    }
+
+                    if let remaining = computedRemainingCents {
+                        detailRow("Remaining", currencyString(fromCents: remaining))
+                    } else {
+                        detailRow("Remaining", "Unknown")
+                        Text("Add the total to auto-calculate remaining balance on FINAL invoice.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("Save Total") {
+                        Task { await saveBookingTotal() }
+                    }
+                    .disabled(isSubmitting || parseOptionalCurrencyCents(from: totalAmountText) == nil)
                 }
             }
 
@@ -544,6 +669,21 @@ struct BookingDetailView: View {
         currentStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved"
     }
 
+    private var shouldShowRemainingCapture: Bool {
+        let key = currentStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return key == "deposit_requested" || key == "approved"
+    }
+
+    private var currentTotalAmountCents: Int? {
+        parseOptionalCurrencyCents(from: totalAmountText) ?? savedBookingTotalAmountCents
+    }
+
+    private var computedRemainingCents: Int? {
+        guard let totalCents = currentTotalAmountCents else { return nil }
+        let depositCents = max(0, request.depositAmountCents ?? 0)
+        return max(totalCents - depositCents, 0)
+    }
+
     private var existingFinalInvoiceForBooking: Invoice? {
         let requestId = request.requestId
         let businessID = activeBiz.activeBusinessID ?? UUID(uuidString: request.businessId)
@@ -680,6 +820,83 @@ struct BookingDetailView: View {
             return Int((amount * 100.0).rounded())
         }
         return 10_000
+    }
+
+    private func parseOptionalCurrencyCents(from text: String) -> Int? {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        guard !cleaned.isEmpty else { return nil }
+        guard let amount = Double(cleaned), amount > 0 else { return nil }
+        return Int((amount * 100.0).rounded())
+    }
+
+    private func currencyString(fromCents cents: Int) -> String {
+        String(format: "$%.2f", Double(max(0, cents)) / 100.0)
+    }
+
+    @MainActor
+    private func saveBookingTotal() async {
+        guard !isSubmitting else { return }
+        guard let totalAmountCents = parseOptionalCurrencyCents(from: totalAmountText) else { return }
+
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        do {
+            let bizID = try resolveBusinessId()
+            try await PortalBackend.shared.setBookingTotal(
+                businessId: bizID,
+                requestId: request.requestId,
+                totalAmountCents: totalAmountCents
+            )
+            savedBookingTotalAmountCents = totalAmountCents
+
+            if isApproved {
+                let profile = profileEnsured(businessID: bizID)
+                let client = try resolveOrCreateClientFromBooking(
+                    businessID: bizID,
+                    booking: request,
+                    modelContext: modelContext
+                )
+                let job = try createOrReuseJobForBooking(
+                    businessID: bizID,
+                    booking: request,
+                    client: client,
+                    modelContext: modelContext
+                )
+                let updatedBooking = BookingRequestItem(
+                    requestId: request.requestId,
+                    businessId: request.businessId,
+                    slug: request.slug,
+                    clientName: request.clientName,
+                    clientEmail: request.clientEmail,
+                    clientPhone: request.clientPhone,
+                    requestedStart: request.requestedStart,
+                    requestedEnd: request.requestedEnd,
+                    serviceType: request.serviceType,
+                    notes: request.notes,
+                    status: currentStatus,
+                    createdAtMs: request.createdAtMs,
+                    bookingTotalAmountCents: totalAmountCents,
+                    depositAmountCents: request.depositAmountCents,
+                    depositInvoiceId: request.depositInvoiceId,
+                    depositPaidAtMs: request.depositPaidAtMs,
+                    finalInvoiceId: request.finalInvoiceId
+                )
+                _ = try createOrReuseFinalInvoiceForBooking(
+                    businessID: bizID,
+                    booking: updatedBooking,
+                    client: client,
+                    job: job,
+                    profile: profile,
+                    modelContext: modelContext
+                )
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     @MainActor

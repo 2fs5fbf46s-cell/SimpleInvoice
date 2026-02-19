@@ -265,6 +265,7 @@ struct BookingsListView: View {
                     notes: dto.notes,
                     status: dto.status,
                     createdAtMs: dto.createdAtMs,
+                    bookingTotalAmountCents: dto.bookingTotalAmountCents,
                     depositAmountCents: dto.depositAmountCents,
                     depositInvoiceId: dto.depositInvoiceId,
                     depositPaidAtMs: dto.depositPaidAtMs,
@@ -322,6 +323,7 @@ struct BookingsListView: View {
                 notes: item.notes,
                 status: normalized,
                 createdAtMs: item.createdAtMs,
+                bookingTotalAmountCents: item.bookingTotalAmountCents,
                 depositAmountCents: item.depositAmountCents,
                 depositInvoiceId: item.depositInvoiceId,
                 depositPaidAtMs: item.depositPaidAtMs,
@@ -407,6 +409,7 @@ struct BookingRequestItem: Identifiable, Hashable {
     let notes: String?
     let status: String
     let createdAtMs: Int?
+    let bookingTotalAmountCents: Int?
     let depositAmountCents: Int?
     let depositInvoiceId: String?
     let depositPaidAtMs: Int?

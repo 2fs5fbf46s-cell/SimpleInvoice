@@ -293,6 +293,7 @@ struct AppTabView: View {
                 notes: dto.notes,
                 status: dto.status,
                 createdAtMs: dto.createdAtMs,
+                bookingTotalAmountCents: dto.bookingTotalAmountCents,
                 depositAmountCents: dto.depositAmountCents,
                 depositInvoiceId: dto.depositInvoiceId,
                 depositPaidAtMs: dto.depositPaidAtMs,
