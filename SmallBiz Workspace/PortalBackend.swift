@@ -464,6 +464,31 @@ struct BookingDepositResponseDTO: Decodable {
     let error: String?
 }
 
+struct BookingAnalyticsDTO: Decodable, Equatable {
+    let windowDays: Int
+    let totalRequests: Int
+    let pendingCount: Int
+    let depositRequestedCount: Int
+    let depositPaidCount: Int
+    let approvedCount: Int
+    let declinedCount: Int
+    let depositsTotalCents: Int
+    let totalsTotalCents: Int
+    let remainingTotalCents: Int
+    let conversionRates: BookingConversionRatesDTO
+}
+
+struct BookingConversionRatesDTO: Decodable, Equatable {
+    let approved: Double
+    let declined: Double
+    let depositRequested: Double
+    let depositPaid: Double
+}
+
+private struct BookingAnalyticsEnvelopeDTO: Decodable {
+    let analytics: BookingAnalyticsDTO?
+}
+
 private struct BookingSettingsEnvelopeDTO: Decodable {
     let settings: BookingSettingsDTO?
     let data: BookingSettingsDTO?
@@ -2251,6 +2276,51 @@ final class PortalBackend {
         } catch {
             throw PortalBackendError.decode(body: raw)
         }
+    }
+
+    func fetchBookingAnalytics(
+        businessId: UUID,
+        windowDays: Int
+    ) async throws -> BookingAnalyticsDTO {
+        try await fetchBookingAnalytics(
+            businessId: businessId.uuidString,
+            windowDays: windowDays
+        )
+    }
+
+    func fetchBookingAnalytics(
+        businessId: String,
+        windowDays: Int
+    ) async throws -> BookingAnalyticsDTO {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/booking/admin/analytics"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "businessId", value: businessId),
+            URLQueryItem(name: "window", value: String(windowDays))
+        ]
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+
+        if let dto = try? decoder().decode(BookingAnalyticsDTO.self, from: data) {
+            return dto
+        }
+        if let wrapped = try? decoder().decode(BookingAnalyticsEnvelopeDTO.self, from: data),
+           let analytics = wrapped.analytics {
+            return analytics
+        }
+        throw PortalBackendError.decode(body: raw)
     }
 
     func setBookingTotal(
