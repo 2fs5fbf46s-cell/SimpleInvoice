@@ -219,6 +219,9 @@ final class Invoice {
     var isPaid: Bool = false
     var documentType: String = "invoice"   // "invoice" | "estimate"
     var sourceBookingRequestId: String? = nil
+    var sourceBookingDepositAmountCents: Int? = nil
+    var sourceBookingDepositPaidAtMs: Int? = nil
+    var sourceBookingDepositInvoiceId: String? = nil
 
     var pdfRelativePath: String = ""
     var invoiceTemplateKeyOverride: String? = nil
@@ -333,6 +336,41 @@ final class Invoice {
     var discountedSubtotal: Double { max(0, subtotal - discountAmount) }
     var taxAmount: Double { discountedSubtotal * taxRate }
     var total: Double { discountedSubtotal + taxAmount }
+
+    var subtotalCents: Int {
+        (items ?? []).reduce(0) { partial, item in
+            partial + Int((item.lineTotal * 100.0).rounded())
+        }
+    }
+
+    var discountCents: Int {
+        max(0, Int((discountAmount * 100.0).rounded()))
+    }
+
+    var discountedSubtotalCents: Int {
+        max(0, subtotalCents - discountCents)
+    }
+
+    var taxCents: Int {
+        max(0, Int((Double(discountedSubtotalCents) * taxRate).rounded()))
+    }
+
+    var totalCents: Int {
+        max(0, discountedSubtotalCents + taxCents)
+    }
+
+    var bookingDepositCents: Int {
+        let cents = sourceBookingDepositAmountCents ?? 0
+        return max(0, cents)
+    }
+
+    var remainingDueCents: Int {
+        max(totalCents - bookingDepositCents, 0)
+    }
+
+    var overpaidCents: Int {
+        max(bookingDepositCents - totalCents, 0)
+    }
 }
 
 // MARK: - Invoice Snapshot / Finalization Helpers

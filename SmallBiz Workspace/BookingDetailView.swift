@@ -132,40 +132,6 @@ private func mergedFinalInvoiceNotes(existing: String, booking: BookingRequestIt
     return lines.joined(separator: "\n")
 }
 
-private func upsertRemainingBalanceLineItem(
-    invoice: Invoice,
-    remainingCents: Int
-) -> Bool {
-    let targetDescription = "Remaining Balance (after deposit)"
-    let unitPrice = Double(max(0, remainingCents)) / 100.0
-    var items = invoice.items ?? []
-    var updated = false
-
-    if let index = items.firstIndex(where: { $0.itemDescription == targetDescription }) {
-        let existing = items[index]
-        if existing.quantity != 1 {
-            existing.quantity = 1
-            updated = true
-        }
-        if existing.unitPrice != unitPrice {
-            existing.unitPrice = unitPrice
-            updated = true
-        }
-    } else {
-        let lineItem = LineItem(
-            itemDescription: targetDescription,
-            quantity: 1,
-            unitPrice: unitPrice
-        )
-        lineItem.invoice = invoice
-        items.append(lineItem)
-        invoice.items = items
-        updated = true
-    }
-
-    return updated
-}
-
 private func mergedRemainingNotes(
     existing: String,
     totalCents: Int,
@@ -349,6 +315,18 @@ func createOrReuseFinalInvoiceForBooking(
             existing.sourceBookingRequestId = booking.requestId
             updated = true
         }
+        if existing.sourceBookingDepositAmountCents != booking.depositAmountCents {
+            existing.sourceBookingDepositAmountCents = booking.depositAmountCents
+            updated = true
+        }
+        if existing.sourceBookingDepositPaidAtMs != booking.depositPaidAtMs {
+            existing.sourceBookingDepositPaidAtMs = booking.depositPaidAtMs
+            updated = true
+        }
+        if existing.sourceBookingDepositInvoiceId != booking.depositInvoiceId {
+            existing.sourceBookingDepositInvoiceId = booking.depositInvoiceId
+            updated = true
+        }
         if (existing.items ?? []).isEmpty {
             let lineItem = LineItem(
                 itemDescription: "Remaining Balance (after deposit)",
@@ -366,9 +344,6 @@ func createOrReuseFinalInvoiceForBooking(
         }
         if let totalCents {
             let remainingCents = max(totalCents - depositCents, 0)
-            if upsertRemainingBalanceLineItem(invoice: existing, remainingCents: remainingCents) {
-                updated = true
-            }
             let financialNotes = mergedRemainingNotes(
                 existing: existing.notes,
                 totalCents: totalCents,
@@ -386,12 +361,11 @@ func createOrReuseFinalInvoiceForBooking(
         return existing
     }
     let number = InvoiceNumberGenerator.generateNextNumber(profile: profile)
-    let initialRemainingCents = totalCents != nil ? max((totalCents ?? 0) - depositCents, 0) : 0
 
     let lineItem = LineItem(
         itemDescription: "Remaining Balance (after deposit)",
         quantity: 1,
-        unitPrice: totalCents != nil ? Double(initialRemainingCents) / 100.0 : 0
+        unitPrice: 0
     )
 
     var notes = requiredFinalInvoiceNotes(for: booking).joined(separator: "\n")
@@ -423,6 +397,9 @@ func createOrReuseFinalInvoiceForBooking(
         job: job,
         items: [lineItem]
     )
+    invoice.sourceBookingDepositAmountCents = booking.depositAmountCents
+    invoice.sourceBookingDepositPaidAtMs = booking.depositPaidAtMs
+    invoice.sourceBookingDepositInvoiceId = booking.depositInvoiceId
 
     if let preferredRaw = client.preferredInvoiceTemplateKey,
        let preferred = InvoiceTemplateKey.from(preferredRaw) {
