@@ -48,6 +48,13 @@ final class CalendarEventService {
         switch status {
         case .authorized:
             return
+
+        case .fullAccess:
+            return
+
+        case .writeOnly:
+            return
+
         case .notDetermined:
             let granted: Bool
             if #available(iOS 17.0, *) {
@@ -66,10 +73,13 @@ final class CalendarEventService {
             if !granted {
                 throw CalendarEventServiceError.accessDenied
             }
+
         case .denied:
             throw CalendarEventServiceError.accessDenied
+
         case .restricted:
             throw CalendarEventServiceError.accessRestricted
+
         @unknown default:
             throw CalendarEventServiceError.accessDenied
         }
