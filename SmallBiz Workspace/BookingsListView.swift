@@ -109,20 +109,17 @@ struct BookingsListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        showAnalytics = true
-                    } label: {
-                        Label("Analytics", systemImage: "chart.bar.xaxis")
-                    }
-
-                    Button {
-                        Task { await loadRequests() }
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
+                Button {
+                    showAnalytics = true
                 } label: {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "chart.bar.xaxis")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await loadRequests() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
             }
         }
