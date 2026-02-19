@@ -12,13 +12,25 @@ struct JobsListView: View {
 
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
     private var jobs: [Job]
+    @Query private var clients: [Client]
 
     @State private var searchText: String = ""
     @State private var selectedJob: Job? = nil
+    @State private var filter: Filter = .all
 
     // ✅ New Job sheet (Clients-style)
     @State private var showingNewJob = false
     @State private var newJobDraft: Job? = nil
+
+    private enum Filter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case booked = "Booked"
+        case inProgress = "In Progress"
+        case completed = "Completed"
+        case canceled = "Canceled"
+
+        var id: String { rawValue }
+    }
 
     // MARK: - Scoped jobs (active business)
 
@@ -27,34 +39,30 @@ struct JobsListView: View {
         return jobs.filter { $0.businessID == bizID }
     }
 
-    private var searchedJobs: [Job] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        func matchesSearch(_ job: Job) -> Bool {
-            guard !q.isEmpty else { return true }
-            return job.title.lowercased().contains(q)
-            || job.notes.lowercased().contains(q)
-            || job.locationName.lowercased().contains(q)
-            || normalizedJobStatusLabel(for: job).lowercased().contains(q)
+    private var filteredJobs: [Job] {
+        let byFilter: [Job]
+        switch filter {
+        case .all:
+            byFilter = scopedJobs
+        case .booked:
+            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .booked }
+        case .inProgress:
+            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .inProgress }
+        case .completed:
+            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .completed }
+        case .canceled:
+            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .canceled }
         }
 
-        return scopedJobs.filter { matchesSearch($0) }
-    }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return byFilter }
 
-    private var bookedJobs: [Job] {
-        searchedJobs.filter { $0.stage == .booked }
-    }
-
-    private var inProgressJobs: [Job] {
-        searchedJobs.filter { $0.stage == .inProgress }
-    }
-
-    private var completedJobs: [Job] {
-        searchedJobs.filter { $0.stage == .completed }
-    }
-
-    private var canceledJobs: [Job] {
-        searchedJobs.filter { $0.stage == .canceled }
+        return byFilter.filter { job in
+            if job.title.localizedCaseInsensitiveContains(query) { return true }
+            if let clientName = clientName(for: job),
+               clientName.localizedCaseInsensitiveContains(query) { return true }
+            return false
+        }
     }
 
     var body: some View {
@@ -66,7 +74,16 @@ struct JobsListView: View {
             SBWTheme.headerWash()
 
             List {
-                if bookedJobs.isEmpty && inProgressJobs.isEmpty && completedJobs.isEmpty && canceledJobs.isEmpty {
+                Section {
+                    Picker("Filter", selection: $filter) {
+                        ForEach(Filter.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                if filteredJobs.isEmpty {
                     ContentUnavailableView(
                         scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
                         systemImage: "briefcase",
@@ -75,69 +92,16 @@ struct JobsListView: View {
                                           : "Try a different filter or search term.")
                     )
                 } else {
-                    if !bookedJobs.isEmpty {
-                        Section("Booked") {
-                            ForEach(bookedJobs) { job in
-                                Button {
-                                    selectedJob = job
-                                } label: {
-                                    jobRow(job)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .onDelete { offsets in
-                                deleteJobs(at: offsets, from: bookedJobs)
-                            }
+                    ForEach(filteredJobs) { job in
+                        Button {
+                            selectedJob = job
+                        } label: {
+                            jobRow(job)
                         }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
-
-                    if !inProgressJobs.isEmpty {
-                        Section("In Progress") {
-                            ForEach(inProgressJobs) { job in
-                                Button {
-                                    selectedJob = job
-                                } label: {
-                                    jobRow(job)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .onDelete { offsets in
-                                deleteJobs(at: offsets, from: inProgressJobs)
-                            }
-                        }
-                    }
-
-                    if !completedJobs.isEmpty {
-                        Section("Completed") {
-                            ForEach(completedJobs) { job in
-                                Button {
-                                    selectedJob = job
-                                } label: {
-                                    jobRow(job)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .onDelete { offsets in
-                                deleteJobs(at: offsets, from: completedJobs)
-                            }
-                        }
-                    }
-
-                    if !canceledJobs.isEmpty {
-                        Section("Canceled") {
-                            ForEach(canceledJobs) { job in
-                                Button {
-                                    selectedJob = job
-                                } label: {
-                                    jobRow(job)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .onDelete { offsets in
-                                deleteJobs(at: offsets, from: canceledJobs)
-                            }
-                        }
-                    }
+                    .onDelete(perform: deleteJobs)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -204,11 +168,12 @@ struct JobsListView: View {
     private func jobRow(_ job: Job) -> some View {
         let contractCount = job.contracts?.count ?? 0
 
-        let statusText = normalizedJobStatusLabel(for: job)
+        let statusText = normalizedJobStatusLabel(for: resolvedFilter(for: job))
         let location = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
         let date = job.startDate.formatted(date: .abbreviated, time: .omitted)
+        let clientText = clientName(for: job)
         let contractText = contractCount > 0 ? "\(contractCount) contract\(contractCount == 1 ? "" : "s")" : nil
-        let subtitle = [statusText, location.isEmpty ? nil : location, contractText, date]
+        let subtitle = [statusText, clientText, location.isEmpty ? nil : location, contractText, date]
             .compactMap { $0 }
             .joined(separator: " • ")
 
@@ -217,7 +182,7 @@ struct JobsListView: View {
             // Leading icon chip (matches Contracts/Invoices/Bookings)
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Requests"))
+                    .fill(SBWTheme.chipFill(for: "Jobs"))
                 Image(systemName: "tray.full")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -229,11 +194,12 @@ struct JobsListView: View {
                 subtitle: subtitle.isEmpty ? " " : subtitle
             )
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
-    private func normalizedJobStatusLabel(for job: Job) -> String {
-        switch job.stage {
+    private func normalizedJobStatusLabel(for filter: Filter) -> String {
+        switch filter {
         case .booked:
             return "SCHEDULED"
         case .inProgress:
@@ -242,6 +208,8 @@ struct JobsListView: View {
             return "COMPLETED"
         case .canceled:
             return "CANCELED"
+        case .all:
+            return "SCHEDULED"
         }
     }
 
@@ -287,10 +255,10 @@ struct JobsListView: View {
         showingNewJob = false
     }
 
-    private func deleteJobs(at offsets: IndexSet, from source: [Job]) {
+    private func deleteJobs(at offsets: IndexSet) {
         let toDelete: [Job] = offsets.compactMap { idx -> Job? in
-            guard idx < source.count else { return nil }
-            return source[idx]
+            guard idx < filteredJobs.count else { return nil }
+            return filteredJobs[idx]
         }
 
         for job in toDelete {
@@ -299,5 +267,29 @@ struct JobsListView: View {
 
         do { try modelContext.save() }
         catch { print("Failed to save deletes: \(error)") }
+    }
+
+    private func resolvedFilter(for job: Job) -> Filter {
+        let rawStage = job.stageRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if rawStage == JobStage.booked.rawValue.lowercased() { return .booked }
+        if rawStage == JobStage.inProgress.rawValue.lowercased() { return .inProgress }
+        if rawStage == JobStage.completed.rawValue.lowercased() { return .completed }
+        if rawStage == JobStage.canceled.rawValue.lowercased() { return .canceled }
+
+        let status = job.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if status == "booked" || status == "scheduled" { return .booked }
+        if status == "in_progress" || status == "in progress" { return .inProgress }
+        if status == "completed" { return .completed }
+        if status == "canceled" || status == "cancelled" { return .canceled }
+        return .booked
+    }
+
+    private func clientName(for job: Job) -> String? {
+        guard let clientID = job.clientID else { return nil }
+        let name = clients.first(where: { $0.id == clientID })?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let name, !name.isEmpty {
+            return name
+        }
+        return nil
     }
 }
