@@ -312,6 +312,7 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
     let createdAtMs: Int?
     let approvedAtMs: Int?
     let declinedAtMs: Int?
+    let bookingTotalAmountCents: Int?
     let depositAmountCents: Int?
     let depositInvoiceId: String?
     let depositPaidAtMs: Int?
@@ -354,6 +355,7 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         case createdAtMs
         case approvedAtMs
         case declinedAtMs
+        case bookingTotalAmountCents
         case depositAmountCents
         case depositInvoiceId
         case depositPaidAtMs
@@ -361,6 +363,7 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         case createdAt
         case approvedAt
         case declinedAt
+        case bookingTotalAmount
         case depositAmount
         case depositInvoiceID
         case depositPaidAt
@@ -437,6 +440,7 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         self.createdAtMs = decodeFirstInt([.createdAtMs, .createdAt])
         self.approvedAtMs = decodeFirstInt([.approvedAtMs, .approvedAt])
         self.declinedAtMs = decodeFirstInt([.declinedAtMs, .declinedAt])
+        self.bookingTotalAmountCents = decodeFirstInt([.bookingTotalAmountCents, .bookingTotalAmount])
         self.depositAmountCents = decodeFirstInt([.depositAmountCents, .depositAmount])
         self.depositInvoiceId = decodeFirst([.depositInvoiceId, .depositInvoiceID])
         self.depositPaidAtMs = decodeFirstInt([.depositPaidAtMs, .depositPaidAt])
@@ -2247,6 +2251,42 @@ final class PortalBackend {
         } catch {
             throw PortalBackendError.decode(body: raw)
         }
+    }
+
+    func setBookingTotal(
+        businessId: UUID,
+        requestId: String,
+        totalAmountCents: Int
+    ) async throws {
+        try await setBookingTotal(
+            businessId: businessId.uuidString,
+            requestId: requestId,
+            totalAmountCents: totalAmountCents
+        )
+    }
+
+    func setBookingTotal(
+        businessId: String,
+        requestId: String,
+        totalAmountCents: Int
+    ) async throws {
+        let adminKey = try requireAdminKey()
+        let url = baseURL.appendingPathComponent("/api/booking/admin/request/total")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+        let payload: [String: Any] = [
+            "businessId": businessId,
+            "requestId": requestId,
+            "totalAmountCents": max(1, totalAmountCents),
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
     }
 
     private func sendBookingAdminDecision(
