@@ -434,6 +434,7 @@ struct BookingDetailView: View {
     @State private var calendarPermissionDenied = false
     @State private var calendarErrorMessage: String? = nil
     @State private var calendarSheetEvent: EKEvent? = nil
+    @State private var showAdvanced = false
 
     init(request: BookingRequestItem, onStatusChange: @escaping (String) -> Void = { _ in }) {
         self.request = request
@@ -638,18 +639,32 @@ struct BookingDetailView: View {
                         }
                     }
 
-                    bookingCard("Metadata") {
-                        detailRow("Request ID", request.requestId)
-                        Divider().opacity(0.35)
-                        detailRow("Business ID", request.businessId)
-                        if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
-                            Divider().opacity(0.35)
-                            detailRow("Deposit Invoice", depositInvoiceId)
+                    bookingCard("") {
+                        DisclosureGroup(isExpanded: $showAdvanced) {
+                            VStack(spacing: 0) {
+                                detailRow("Request ID", request.requestId)
+                                Divider().opacity(0.35)
+                                detailRow("Business ID", request.businessId)
+                                if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
+                                    Divider().opacity(0.35)
+                                    detailRow("Deposit Invoice", depositInvoiceId)
+                                }
+                                if let createdAt = dateFromMs(request.createdAtMs) {
+                                    Divider().opacity(0.35)
+                                    detailRow("Submitted", dateFormatter.string(from: createdAt))
+                                }
+                            }
+                            .padding(.top, 8)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Advanced")
+                                    .font(.headline)
+                                Text("IDs & debug info")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        if let createdAt = dateFromMs(request.createdAtMs) {
-                            Divider().opacity(0.35)
-                            detailRow("Submitted", dateFormatter.string(from: createdAt))
-                        }
+                        .tint(.secondary)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -693,8 +708,10 @@ struct BookingDetailView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
+            if !title.isEmpty {
+                Text(title)
+                    .font(.headline)
+            }
             content()
         }
         .padding(12)
