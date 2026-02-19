@@ -6,6 +6,8 @@ final class DashboardMetricsVM: ObservableObject {
     @Published private(set) var weeklyPaidCents: Int = 0
     @Published private(set) var monthlyPaidCents: Int = 0
     @Published private(set) var upcomingJobCount: Int = 0
+    @Published private(set) var upcomingBookingCount: Int = 0
+    @Published private(set) var scheduleCount: Int = 0
 
     private struct BookingCacheEntry {
         let requests: [BookingRequestDTO]
@@ -29,6 +31,8 @@ final class DashboardMetricsVM: ObservableObject {
             weeklyPaidCents = 0
             monthlyPaidCents = 0
             upcomingJobCount = 0
+            upcomingBookingCount = 0
+            scheduleCount = 0
             return
         }
 
@@ -74,6 +78,8 @@ final class DashboardMetricsVM: ObservableObject {
         weeklyPaidCents = metrics.weeklyPaidCents
         monthlyPaidCents = metrics.monthlyPaidCents
         upcomingJobCount = metrics.upcomingJobCount
+        upcomingBookingCount = metrics.upcomingBookingCount
+        scheduleCount = metrics.scheduleCount
     }
 }
 
@@ -81,6 +87,8 @@ private struct DashboardMetrics {
     let weeklyPaidCents: Int
     let monthlyPaidCents: Int
     let upcomingJobCount: Int
+    let upcomingBookingCount: Int
+    let scheduleCount: Int
 }
 
 private enum DashboardMetricsService {
@@ -136,26 +144,51 @@ private enum DashboardMetricsService {
         let upcomingJobCount = jobs
             .filter { $0.businessID == businessID }
             .filter { $0.startDate >= now }
-            .filter { !isCompleted($0) }
+            .filter { !isDoneOrCanceled($0) }
             .count
+
+        let upcomingBookingCount = bookingRequests
+            .filter { $0.businessId.lowercased() == businessIDString }
+            .filter { isSchedulableBookingStatus($0.status) }
+            .filter { request in
+                guard let start = parseBookingDate(request.requestedStart) else { return false }
+                return start >= now
+            }
+            .count
+
+        let scheduleCount = upcomingJobCount + upcomingBookingCount
 
         return DashboardMetrics(
             weeklyPaidCents: weeklyInvoicePaidCents + weeklyDepositsCents,
             monthlyPaidCents: monthlyInvoicePaidCents + monthlyDepositsCents,
-            upcomingJobCount: upcomingJobCount
+            upcomingJobCount: upcomingJobCount,
+            upcomingBookingCount: upcomingBookingCount,
+            scheduleCount: scheduleCount
         )
     }
 
-    private static func isCompleted(_ job: Job) -> Bool {
-        let normalizedStatus = job.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if normalizedStatus == "completed" {
-            return true
-        }
+    private static func isDoneOrCanceled(_ job: Job) -> Bool {
+        let stage = JobStage(rawValue: job.stageRaw) ?? .booked
+        return stage == .completed || stage == .canceled
+    }
 
-        if let stage = JobStage(rawValue: job.stageRaw), stage == .completed {
-            return true
+    private static func isSchedulableBookingStatus(_ raw: String) -> Bool {
+        let status = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return status == "approved" || status == "deposit_requested"
+    }
+
+    private static func parseBookingDate(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let date = bookingISOWithFractional.date(from: trimmed) { return date }
+        if let date = bookingISOPlain.date(from: trimmed) { return date }
+        if let seconds = Double(trimmed) {
+            let normalized = seconds > 10_000_000_000 ? seconds / 1000.0 : seconds
+            return Date(timeIntervalSince1970: normalized)
         }
-        return false
+        return nil
     }
 
     private static func resolvedPaidDate(for invoice: Invoice) -> Date? {
@@ -223,4 +256,16 @@ private enum DashboardMetricsService {
         }
         return nil
     }
+
+    private static let bookingISOWithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let bookingISOPlain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 }

@@ -193,8 +193,16 @@ struct JobDetailView: View {
     }
 
     private var jobStatusText: String {
-        let s = job.status.trimmingCharacters(in: .whitespacesAndNewlines)
-        return s.isEmpty ? "SCHEDULED" : s.uppercased()
+        switch job.stage {
+        case .booked:
+            return "SCHEDULED"
+        case .inProgress:
+            return "IN PROGRESS"
+        case .completed:
+            return "COMPLETED"
+        case .canceled:
+            return "CANCELED"
+        }
     }
 
     private var jobScheduleSummary: String {
@@ -245,25 +253,13 @@ struct JobDetailView: View {
                     scheduleWorkspaceRename()
                 }
 
-            Picker("Status", selection: Binding(
-                get: { normalizedJobStatusKey(job.status) },
-                set: { newValue in
-                    job.status = newValue
-                    scheduleSave()
-                }
-            )) {
-                Text("Scheduled").tag("scheduled")
-                Text("Completed").tag("completed")
-                Text("Canceled").tag("canceled")
-            }
-            .pickerStyle(.menu)
-
             Picker("Stage", selection: $job.stageRaw) {
                 Text("Booked").tag(JobStage.booked.rawValue)
                 Text("In Progress").tag(JobStage.inProgress.rawValue)
                 Text("Completed").tag(JobStage.completed.rawValue)
+                Text("Canceled").tag(JobStage.canceled.rawValue)
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .onChange(of: job.stageRaw) { _, _ in
                 scheduleSave()
             }
@@ -708,13 +704,6 @@ struct JobDetailView: View {
         } catch {
             attachError = error.localizedDescription
         }
-    }
-
-    private func normalizedJobStatusKey(_ raw: String) -> String {
-        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if key == "completed" { return "completed" }
-        if key == "canceled" || key == "cancelled" { return "canceled" }
-        return "scheduled"
     }
 
     private func resolveDestinationFolder(kind: FolderDestinationKind) throws -> Folder {

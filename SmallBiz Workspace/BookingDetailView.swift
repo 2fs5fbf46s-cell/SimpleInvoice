@@ -274,12 +274,17 @@ func createOrReuseJobForBooking(
         $0.sourceBookingRequestId == booking.requestId
     }) {
         var updated = false
+        let now = Date()
         if existing.clientID != client.id {
             existing.clientID = client.id
             updated = true
         }
         if existing.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             existing.title = bookingJobTitle(for: booking)
+            updated = true
+        }
+        if existing.stage == .completed && existing.startDate >= now {
+            existing.stage = .booked
             updated = true
         }
         if updated {
@@ -304,6 +309,7 @@ func createOrReuseJobForBooking(
         status: "scheduled",
         sourceBookingRequestId: booking.requestId
     )
+    job.stage = .booked
     modelContext.insert(job)
     try modelContext.save()
     return job
@@ -1023,6 +1029,7 @@ struct BookingDetailView: View {
                 status: "scheduled",
                 sourceBookingRequestId: request.requestId
             )
+            job.stage = .booked
 
             modelContext.insert(job)
             try modelContext.save()

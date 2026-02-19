@@ -127,9 +127,9 @@ struct DashboardView: View {
 
                         DashboardStatCard(
                             title: "Schedule",
-                            value: "\(metricsVM.upcomingJobCount)",
+                            value: "\(metricsVM.scheduleCount)",
                             subtitle: "Upcoming",
-                            updateKey: metricsVM.upcomingJobCount
+                            updateKey: metricsVM.scheduleCount
                         )
                     }
 
