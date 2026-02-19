@@ -678,11 +678,7 @@ struct BookingDetailView: View {
             set: { if !$0 { calendarSheetEvent = nil } }
         )) {
             if let event = calendarSheetEvent {
-                EventViewControllerRepresentable(
-                    event: event
-                ) {
-                    calendarSheetEvent = nil
-                }
+                CalendarEventViewer(event: event)
             } else {
                 Text("No event selected.")
             }

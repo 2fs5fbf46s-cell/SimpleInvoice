@@ -227,3 +227,25 @@ struct EventViewControllerRepresentable: UIViewControllerRepresentable {
         }
     }
 }
+
+struct CalendarEventViewer: View {
+    @Environment(\.dismiss) private var dismiss
+    let event: EKEvent
+
+    var body: some View {
+        NavigationStack {
+            EventViewControllerRepresentable(event: event) {
+                dismiss()
+            }
+            .navigationTitle("Calendar Event")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
