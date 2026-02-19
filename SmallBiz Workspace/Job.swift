@@ -2,11 +2,10 @@ import Foundation
 import SwiftData
 
 enum JobStage: String, Codable {
-    case lead
     case booked
     case inProgress
     case completed
-    case archived
+    case canceled
 }
 
 @Model
@@ -25,12 +24,13 @@ final class Job {
     var latitude: Double? = nil
     var longitude: Double? = nil
 
+    // Legacy compatibility only. UI/state should rely on `stage`.
     var status: String = "scheduled"
-    var stageRaw: String = JobStage.completed.rawValue
+    var stageRaw: String = JobStage.booked.rawValue
     var sourceBookingRequestId: String? = nil
 
     var stage: JobStage {
-        get { JobStage(rawValue: stageRaw) ?? .completed }
+        get { JobStage(rawValue: stageRaw) ?? .booked }
         set { stageRaw = newValue.rawValue }
     }
 
@@ -58,7 +58,7 @@ final class Job {
         latitude: Double? = nil,
         longitude: Double? = nil,
         status: String = "scheduled",
-        stageRaw: String = JobStage.completed.rawValue,
+        stageRaw: String = JobStage.booked.rawValue,
         sourceBookingRequestId: String? = nil,
         workspaceFolderKey: String? = nil
     ) {

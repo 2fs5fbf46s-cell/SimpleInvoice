@@ -35,7 +35,7 @@ struct JobsListView: View {
             return job.title.lowercased().contains(q)
             || job.notes.lowercased().contains(q)
             || job.locationName.lowercased().contains(q)
-            || job.status.lowercased().contains(q)
+            || normalizedJobStatusLabel(for: job).lowercased().contains(q)
         }
 
         return scopedJobs.filter { matchesSearch($0) }
@@ -53,6 +53,10 @@ struct JobsListView: View {
         searchedJobs.filter { $0.stage == .completed }
     }
 
+    private var canceledJobs: [Job] {
+        searchedJobs.filter { $0.stage == .canceled }
+    }
+
     var body: some View {
         ZStack {
             // Background
@@ -62,7 +66,7 @@ struct JobsListView: View {
             SBWTheme.headerWash()
 
             List {
-                if bookedJobs.isEmpty && inProgressJobs.isEmpty && completedJobs.isEmpty {
+                if bookedJobs.isEmpty && inProgressJobs.isEmpty && completedJobs.isEmpty && canceledJobs.isEmpty {
                     ContentUnavailableView(
                         scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
                         systemImage: "briefcase",
@@ -115,6 +119,22 @@ struct JobsListView: View {
                             }
                             .onDelete { offsets in
                                 deleteJobs(at: offsets, from: completedJobs)
+                            }
+                        }
+                    }
+
+                    if !canceledJobs.isEmpty {
+                        Section("Canceled") {
+                            ForEach(canceledJobs) { job in
+                                Button {
+                                    selectedJob = job
+                                } label: {
+                                    jobRow(job)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .onDelete { offsets in
+                                deleteJobs(at: offsets, from: canceledJobs)
                             }
                         }
                     }
@@ -184,7 +204,7 @@ struct JobsListView: View {
     private func jobRow(_ job: Job) -> some View {
         let contractCount = job.contracts?.count ?? 0
 
-        let statusText = normalizedJobStatusLabel(job.status)
+        let statusText = normalizedJobStatusLabel(for: job)
         let location = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
         let date = job.startDate.formatted(date: .abbreviated, time: .omitted)
         let contractText = contractCount > 0 ? "\(contractCount) contract\(contractCount == 1 ? "" : "s")" : nil
@@ -212,15 +232,17 @@ struct JobsListView: View {
         .padding(.vertical, 6)
     }
 
-    /// Maps stored job.status values into a user-facing label for chips.
-    private func normalizedJobStatusLabel(_ raw: String) -> String {
-        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        if key == "completed" { return "COMPLETED" }
-        if key == "canceled" || key == "cancelled" { return "CANCELED" }
-        if key == "scheduled" { return "SCHEDULED" }
-
-        return "ACTIVE"
+    private func normalizedJobStatusLabel(for job: Job) -> String {
+        switch job.stage {
+        case .booked:
+            return "SCHEDULED"
+        case .inProgress:
+            return "IN PROGRESS"
+        case .completed:
+            return "COMPLETED"
+        case .canceled:
+            return "CANCELED"
+        }
     }
 
     // MARK: - Add / Delete
@@ -239,6 +261,7 @@ struct JobsListView: View {
 
         job.title = ""
         job.status = "scheduled"
+        job.stage = .booked
 
         modelContext.insert(job)
         newJobDraft = job
