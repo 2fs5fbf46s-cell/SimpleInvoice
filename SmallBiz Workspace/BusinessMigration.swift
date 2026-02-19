@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 10
+    static let currentVersion = 11
 
     static func runIfNeeded(
         modelContext: ModelContext,

@@ -885,6 +885,32 @@ struct InvoiceDetailView: View {
                     .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
                 }
 
+                if canOpenPortal {
+                    Button {
+                        Task {
+                            openingPortal = true
+                            portalError = nil
+                            portalNotice = nil
+
+                            do {
+                                let url = try await buildPortalLink(mode: nil)
+                                portalURL = url
+                                showPortal = true
+                            } catch {
+                                portalURL = nil
+                                portalError = error.localizedDescription
+                            }
+
+                            openingPortal = false
+                        }
+                    } label: {
+                        Label("Open Client Payment Page", systemImage: "creditcard")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(openingPortal)
+                    .opacity(openingPortal ? 0.6 : 1)
+                }
+
                 if let client = invoice.client, !isClientPortalEnabled {
                     Button {
                         navigateToClientSettings = client
