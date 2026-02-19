@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import SwiftData
 import UIKit
+import EventKit
 
 struct BookingIdentity {
     let requestId: String
@@ -430,6 +431,9 @@ struct BookingDetailView: View {
     @State private var savedBookingTotalAmountCents: Int? = nil
     @State private var lastDepositPortalURL: URL? = nil
     @State private var lastDepositSendWarning: String? = nil
+    @State private var calendarPermissionDenied = false
+    @State private var calendarErrorMessage: String? = nil
+    @State private var calendarSheetEvent: EKEvent? = nil
 
     init(request: BookingRequestItem, onStatusChange: @escaping (String) -> Void = { _ in }) {
         self.request = request
@@ -603,6 +607,42 @@ struct BookingDetailView: View {
                 }
             }
 
+            Section("Calendar") {
+                if hasCalendarEventLink {
+                    Button("Update Calendar Event") {
+                        Task { await syncBookingCalendarEvent(viewAfter: false) }
+                    }
+                    .disabled(isSubmitting)
+
+                    Button("View Calendar Event") {
+                        Task { await syncBookingCalendarEvent(viewAfter: true) }
+                    }
+                    .disabled(isSubmitting)
+                } else {
+                    Button("Add to Calendar") {
+                        Task { await syncBookingCalendarEvent(viewAfter: false) }
+                    }
+                    .disabled(isSubmitting)
+                }
+
+                if calendarPermissionDenied {
+                    Text("Calendar permission is denied. Enable access in Settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Button("Open Settings") {
+                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                        UIApplication.shared.open(url)
+                    }
+                }
+
+                if let calendarErrorMessage, !calendarErrorMessage.isEmpty {
+                    Text(calendarErrorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Metadata") {
                 detailRow("Request ID", request.requestId)
                 detailRow("Business ID", request.businessId)
@@ -632,6 +672,20 @@ struct BookingDetailView: View {
         }
         .sheet(isPresented: $showDepositSheet) {
             depositSheet
+        }
+        .sheet(isPresented: Binding(
+            get: { calendarSheetEvent != nil },
+            set: { if !$0 { calendarSheetEvent = nil } }
+        )) {
+            if let event = calendarSheetEvent {
+                EventViewControllerRepresentable(
+                    event: event
+                ) {
+                    calendarSheetEvent = nil
+                }
+            } else {
+                Text("No event selected.")
+            }
         }
     }
 
@@ -675,6 +729,20 @@ struct BookingDetailView: View {
             $0.sourceBookingRequestId == requestId &&
             (businessID == nil || $0.businessID == businessID)
         })
+    }
+
+    private var existingJobForBooking: Job? {
+        let requestId = request.requestId
+        let businessID = activeBiz.activeBusinessID ?? UUID(uuidString: request.businessId)
+        return jobs.first(where: {
+            $0.sourceBookingRequestId == requestId &&
+            (businessID == nil || $0.businessID == businessID)
+        })
+    }
+
+    private var hasCalendarEventLink: Bool {
+        guard let eventID = existingJobForBooking?.calendarEventId else { return false }
+        return !eventID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var depositSheet: some View {
@@ -1014,6 +1082,57 @@ struct BookingDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func syncBookingCalendarEvent(viewAfter: Bool) async {
+        do {
+            let bizID = try resolveBusinessId()
+            let businessName = profiles.first(where: { $0.businessID == bizID })?.name
+            let client = try resolveOrCreateClientFromBooking(
+                businessID: bizID,
+                booking: request,
+                modelContext: modelContext
+            )
+            let job = try createOrReuseJobForBooking(
+                businessID: bizID,
+                booking: request,
+                client: client,
+                modelContext: modelContext
+            )
+
+            let event = try await CalendarEventService.shared.createOrUpdateEvent(
+                for: job,
+                businessName: trimmed(businessName),
+                clientName: trimmed(client.name),
+                clientEmail: trimmed(client.email),
+                clientPhone: trimmed(client.phone)
+            )
+            job.calendarEventId = event.eventIdentifier
+            try modelContext.save()
+
+            calendarPermissionDenied = false
+            calendarErrorMessage = nil
+
+            if viewAfter {
+                calendarSheetEvent = event
+            }
+        } catch let error as CalendarEventServiceError {
+            if case .accessDenied = error {
+                calendarPermissionDenied = true
+            } else if case .accessRestricted = error {
+                calendarPermissionDenied = true
+            }
+            calendarErrorMessage = error.localizedDescription
+        } catch {
+            calendarErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func trimmed(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let result = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? nil : result
     }
 
     private func shortID(_ id: UUID) -> String {

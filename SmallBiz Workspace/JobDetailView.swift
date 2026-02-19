@@ -7,6 +7,8 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import PhotosUI
+import EventKit
+import UIKit
 
 private struct JobFolderSheetItem: Identifiable {
     let id = UUID()
@@ -47,6 +49,9 @@ struct JobDetailView: View {
     @State private var jobFolder: Folder? = nil
     @State private var jobSubfolders: [JobWorkspaceSubfolder: Folder] = [:]
     @State private var workspaceError: String? = nil
+    @State private var calendarError: String? = nil
+    @State private var calendarPermissionDenied = false
+    @State private var calendarSheetEvent: EKEvent? = nil
 
     init(job: Job, isDraft: Bool = false) {
         self.job = job
@@ -66,6 +71,7 @@ struct JobDetailView: View {
             jobEssentialsCard
             scheduleCard
             locationCard
+            calendarCard
             linkedContractsCard
             filesCard
             advancedOptionsCard
@@ -126,6 +132,20 @@ struct JobDetailView: View {
         // QuickLook
         .sheet(item: $previewItem) { item in
             QuickLookPreview(url: item.url)
+        }
+        .sheet(isPresented: Binding(
+            get: { calendarSheetEvent != nil },
+            set: { if !$0 { calendarSheetEvent = nil } }
+        )) {
+            if let event = calendarSheetEvent {
+                EventViewControllerRepresentable(
+                    event: event
+                ) {
+                    calendarSheetEvent = nil
+                }
+            } else {
+                Text("No event selected.")
+            }
         }
 
         // Alerts
@@ -288,6 +308,51 @@ struct JobDetailView: View {
 
             TextField("Location Name", text: $job.locationName)
                 .onChange(of: job.locationName) { _, _ in scheduleSave() }
+        }
+        .sbwJobCardRow()
+    }
+
+    private var calendarCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Calendar")
+                .font(.headline)
+
+            if let eventID = job.calendarEventId,
+               !eventID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button("Update Calendar Event") {
+                    Task { await syncCalendarEvent(viewAfter: false) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+
+                Button("View Calendar Event") {
+                    Task { await syncCalendarEvent(viewAfter: true) }
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button("Add to Calendar") {
+                    Task { await syncCalendarEvent(viewAfter: false) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+            }
+
+            if calendarPermissionDenied {
+                Text("Calendar permission is denied. Enable access in Settings.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Open Settings") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let calendarError, !calendarError.isEmpty {
+                Text(calendarError)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .sbwJobCardRow()
     }
@@ -540,6 +605,54 @@ struct JobDetailView: View {
             return match
         }
         return try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
+    }
+
+    @MainActor
+    private func syncCalendarEvent(viewAfter: Bool) async {
+        do {
+            let client: Client?
+            if let clientID = job.clientID {
+                client = try modelContext.fetch(
+                    FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientID })
+                ).first
+            } else {
+                client = nil
+            }
+
+            let business = try fetchBusiness(for: job.businessID)
+            let event = try await CalendarEventService.shared.createOrUpdateEvent(
+                for: job,
+                businessName: business.name,
+                clientName: trimmed(client?.name),
+                clientEmail: trimmed(client?.email),
+                clientPhone: trimmed(client?.phone)
+            )
+
+            job.calendarEventId = event.eventIdentifier
+            try modelContext.save()
+
+            calendarPermissionDenied = false
+            calendarError = nil
+
+            if viewAfter {
+                calendarSheetEvent = event
+            }
+        } catch let error as CalendarEventServiceError {
+            if case .accessDenied = error {
+                calendarPermissionDenied = true
+            } else if case .accessRestricted = error {
+                calendarPermissionDenied = true
+            }
+            calendarError = error.localizedDescription
+        } catch {
+            calendarError = error.localizedDescription
+        }
+    }
+
+    private func trimmed(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let result = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? nil : result
     }
 
     
