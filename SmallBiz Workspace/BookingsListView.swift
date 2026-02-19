@@ -87,6 +87,7 @@ struct BookingsListView: View {
                             bookingRow(request)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                 }
             }
@@ -150,45 +151,50 @@ struct BookingsListView: View {
             // Leading icon chip (bookings)
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AnyShapeStyle(SBWTheme.brandGradient.opacity(0.18)))
+                    .fill(SBWTheme.chipFill(for: "Bookings"))
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(bookingClient(request))
                         .font(.headline)
+                        .lineLimit(1)
 
                     Spacer()
 
                     Text(statusText)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(chip.fg)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
                         .background(chip.bg)
                         .clipShape(Capsule())
                 }
 
                 if let service = request.serviceType, !service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(service)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 if let startDate {
                     Text(startDate, style: .date)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
                     Text("Requested time pending")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 4)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     private func normalizedStatusLabel(_ raw: String) -> String {
