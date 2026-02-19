@@ -592,11 +592,6 @@ struct BookingDetailView: View {
                             actionRow("Open Final Invoice", systemImage: "doc.text", enabled: !isSubmitting) {
                                 navigateToInvoice = finalInvoice
                             }
-#if DEBUG
-                            Text("Linked Invoice: \(finalInvoice.invoiceNumber) (\(shortID(finalInvoice.id)))")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-#endif
                         }
                         if !isApproved {
                             Text("Approved bookings enable conversions.")
@@ -639,33 +634,7 @@ struct BookingDetailView: View {
                         }
                     }
 
-                    bookingCard("") {
-                        DisclosureGroup(isExpanded: $showAdvanced) {
-                            VStack(spacing: 0) {
-                                detailRow("Request ID", request.requestId)
-                                Divider().opacity(0.35)
-                                detailRow("Business ID", request.businessId)
-                                if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
-                                    Divider().opacity(0.35)
-                                    detailRow("Deposit Invoice", depositInvoiceId)
-                                }
-                                if let createdAt = dateFromMs(request.createdAtMs) {
-                                    Divider().opacity(0.35)
-                                    detailRow("Submitted", dateFormatter.string(from: createdAt))
-                                }
-                            }
-                            .padding(.top, 8)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Advanced")
-                                    .font(.headline)
-                                Text("IDs & debug info")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tint(.secondary)
-                    }
+                    bookingCard("") { advancedSection }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
@@ -770,6 +739,55 @@ struct BookingDetailView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(Capsule().fill(colors.bg))
+    }
+
+    @ViewBuilder
+    private var advancedSection: some View {
+        DisclosureGroup(isExpanded: $showAdvanced) {
+            VStack(alignment: .leading, spacing: 0) {
+#if DEBUG
+                if let finalInvoice = existingFinalInvoiceForBooking {
+                    if let linkedClient = finalInvoice.client {
+                        Text("Linked Client: \(linkedClient.name) (\(shortID(linkedClient.id)))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Divider().opacity(0.35)
+                    }
+                    if let linkedJob = finalInvoice.job {
+                        Text("Linked Job: \(linkedJob.title) (\(shortID(linkedJob.id)))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Divider().opacity(0.35)
+                    }
+                    Text("Linked Invoice: \(finalInvoice.invoiceNumber) (\(shortID(finalInvoice.id)))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Divider().opacity(0.35)
+                }
+#endif
+                detailRow("Request ID", request.requestId)
+                Divider().opacity(0.35)
+                detailRow("Business ID", request.businessId)
+                if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
+                    Divider().opacity(0.35)
+                    detailRow("Deposit Invoice", depositInvoiceId)
+                }
+                if let createdAt = dateFromMs(request.createdAtMs) {
+                    Divider().opacity(0.35)
+                    detailRow("Submitted", dateFormatter.string(from: createdAt))
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Advanced")
+                    .font(.headline)
+                Text("IDs & linkage (debug)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(.secondary)
     }
 
     private var statusLabel: String {
