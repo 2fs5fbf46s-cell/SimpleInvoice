@@ -37,6 +37,14 @@ struct BusinessProfileView: View {
     @State private var showPayPalSafari = false
     @State private var paypalOnboardingURL: URL?
     @State private var awaitingPayPalReturn = false
+    @State private var stripeStatus: StripeConnectStatus?
+    @State private var isLoadingStripeStatus = false
+    @State private var isStartingStripeOnboarding = false
+    @State private var stripeErrorMessage: String?
+    @State private var showStripeErrorAlert = false
+    @State private var showStripeSafari = false
+    @State private var stripeOnboardingURL: URL?
+    @State private var awaitingStripeReturn = false
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationMessage: String?
     @State private var showInvoiceTemplateSheet = false
@@ -81,6 +89,7 @@ struct BusinessProfileView: View {
                     }
                 }
                 Task { await refreshPayPalStatus() }
+                Task { await refreshStripeStatus() }
                 Task { await refreshNotificationStatus() }
             }
     }
@@ -143,10 +152,12 @@ struct BusinessProfileView: View {
                     }
                 }
                 Task { await refreshPayPalStatus() }
+                Task { await refreshStripeStatus() }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     handlePayPalReturnIfNeeded()
+                    handleStripeReturnIfNeeded()
                     Task { await refreshNotificationStatus() }
                 }
             }
@@ -189,6 +200,17 @@ struct BusinessProfileView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .sheet(isPresented: $showStripeSafari) {
+                if let url = stripeOnboardingURL {
+                    SafariView(url: url) {
+                        showStripeSafari = false
+                        handleStripeReturnIfNeeded()
+                    }
+                } else {
+                    Text("Unable to open Stripe onboarding.")
+                        .foregroundStyle(.secondary)
+                }
+            }
             .sheet(isPresented: $showSitePreviewSafari) {
                 if let url = sitePreviewURL {
                     SafariView(url: url) {
@@ -201,6 +223,11 @@ struct BusinessProfileView: View {
             }
 
         let withAlerts = withSheets
+            .alert("Stripe Error", isPresented: $showStripeErrorAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(stripeErrorMessage ?? "Something went wrong.")
+            }
             .alert("PayPal Error", isPresented: $showPayPalErrorAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -510,59 +537,59 @@ struct BusinessProfileView: View {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(SBWTheme.brandBlue.opacity(0.15))
+                        .fill(SBWTheme.brandGreen.opacity(0.15))
                     Image(systemName: "creditcard")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brandGreen)
                 }
                 .frame(width: 32, height: 32)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("PayPal")
+                    Text("Stripe")
                         .font(.system(size: 16, weight: .semibold))
 
-                    Text(paypalStatusText)
+                    Text(stripeStatusText)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
-                if isLoadingPayPalStatus {
+                if isLoadingStripeStatus {
                     ProgressView()
                 } else {
-                    statusPillView
+                    stripeStatusPill
                 }
             }
 
-            if paypalStatus?.connected == true {
-                if let last4 = paypalStatus?.merchantIdLast4, !last4.isEmpty {
-                    Text("Merchant ID ••••\(last4)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Button(role: .destructive) {
-                    // Optional: backend disconnect endpoint not available yet.
-                } label: {
-                    Label("Disconnect PayPal", systemImage: "link.badge.minus")
-                }
-                .disabled(true)
-                .buttonStyle(.bordered)
-            } else {
+            HStack(spacing: 10) {
                 Button {
-                    Task { await startPayPalOnboarding() }
+                    Task { await startStripeOnboarding() }
                 } label: {
-                    Label("Connect PayPal", systemImage: "link")
+                    Label("Connect Stripe", systemImage: "link")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
-                .disabled(isStartingPayPalOnboarding || isLoadingPayPalStatus)
+                .tint(SBWTheme.brandGreen)
+                .disabled(isStartingStripeOnboarding || isLoadingStripeStatus)
+
+                Button {
+                    Task { await refreshStripeStatus() }
+                } label: {
+                    Label("Refresh Stripe Status", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isLoadingStripeStatus || isStartingStripeOnboarding)
             }
 
             Divider().padding(.vertical, 4)
 
             VStack(alignment: .leading, spacing: 6) {
+                Text("PayPal")
+                    .font(.subheadline.weight(.semibold))
+                Text("Platform enabled (backend env)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Text("PayPal.me (fallback)")
                     .font(.subheadline.weight(.semibold))
 
@@ -965,7 +992,53 @@ struct BusinessProfileView: View {
         return value
     }
 
-    // MARK: - PayPal helpers
+    // MARK: - Payments helpers
+
+    private var stripeStatusText: String {
+        if isLoadingStripeStatus {
+            return "Checking connection…"
+        }
+        guard let status = stripeStatus else { return "Not connected" }
+        switch status.onboardingStatus.lowercased() {
+        case "active":
+            return "Active"
+        case "needs_onboarding":
+            return "Needs onboarding"
+        case "disabled":
+            return "Disabled"
+        default:
+            return "Not connected"
+        }
+    }
+
+    private var stripeStatusPill: some View {
+        let normalized = stripeStatus?.onboardingStatus.lowercased() ?? "not_connected"
+        let text: String
+        let color: Color
+
+        switch normalized {
+        case "active":
+            text = "Active"
+            color = SBWTheme.brandGreen
+        case "needs_onboarding":
+            text = "Needs onboarding"
+            color = .orange
+        case "disabled":
+            text = "Disabled"
+            color = .red
+        default:
+            text = "Not connected"
+            color = .secondary
+        }
+
+        return Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 
     private var paypalStatusText: String {
         if isLoadingPayPalStatus {
@@ -979,21 +1052,6 @@ struct BusinessProfileView: View {
             return "Connected"
         }
         return "Not connected"
-    }
-
-    @ViewBuilder
-    private var statusPillView: some View {
-        let connected = paypalStatus?.connected == true
-        let text = connected ? "Connected" : "Not connected"
-        let color = connected ? SBWTheme.brandGreen : Color.secondary
-
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var websiteStatusPill: some View {
@@ -1154,6 +1212,61 @@ struct BusinessProfileView: View {
         guard awaitingPayPalReturn else { return }
         awaitingPayPalReturn = false
         Task { await refreshPayPalStatus() }
+    }
+
+    @MainActor
+    private func refreshStripeStatus() async {
+        guard let businessId = activeBiz.activeBusinessID else { return }
+        guard !isLoadingStripeStatus else { return }
+
+        isLoadingStripeStatus = true
+        defer { isLoadingStripeStatus = false }
+
+        do {
+            let status = try await PortalPaymentsAPI.shared.fetchStripeConnectStatus(businessId: businessId)
+            stripeStatus = status
+            if let business = businesses.first(where: { $0.id == businessId }) {
+                business.stripeAccountId = status.stripeAccountId
+                business.stripeOnboardingStatus = status.onboardingStatus
+                business.stripeChargesEnabled = status.chargesEnabled
+                business.stripePayoutsEnabled = status.payoutsEnabled
+                try? modelContext.save()
+                self.business = business
+            }
+        } catch {
+            stripeErrorMessage = error.localizedDescription
+            showStripeErrorAlert = true
+        }
+    }
+
+    @MainActor
+    private func startStripeOnboarding() async {
+        guard let businessId = activeBiz.activeBusinessID else { return }
+        guard !isStartingStripeOnboarding else { return }
+
+        isStartingStripeOnboarding = true
+        defer { isStartingStripeOnboarding = false }
+
+        do {
+            let returnURL = PortalConfig.shared.baseURL.appendingPathComponent("/portal/admin/settings")
+            let url = try await PortalPaymentsAPI.shared.startStripeConnect(
+                businessId: businessId,
+                returnURL: returnURL
+            )
+            stripeOnboardingURL = url
+            showStripeSafari = true
+            awaitingStripeReturn = true
+        } catch {
+            stripeErrorMessage = error.localizedDescription
+            showStripeErrorAlert = true
+        }
+    }
+
+    @MainActor
+    private func handleStripeReturnIfNeeded() {
+        guard awaitingStripeReturn else { return }
+        awaitingStripeReturn = false
+        Task { await refreshStripeStatus() }
     }
 }
 

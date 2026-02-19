@@ -6,6 +6,13 @@ struct PayPalStatus: Equatable {
     let merchantIdFull: String?
 }
 
+struct StripeConnectStatus: Equatable {
+    let stripeAccountId: String?
+    let chargesEnabled: Bool
+    let payoutsEnabled: Bool
+    let onboardingStatus: String
+}
+
 final class PortalPaymentsAPI {
     static let shared = PortalPaymentsAPI()
 
@@ -21,10 +28,31 @@ final class PortalPaymentsAPI {
         let actionUrl: String
     }
 
+    private struct StripeConnectStartResponseDTO: Decodable {
+        let ok: Bool?
+        let url: String?
+        let stripeAccountId: String?
+    }
+
+    private struct StripeConnectStatusResponseDTO: Decodable {
+        let ok: Bool?
+        let stripeAccountId: String?
+        let chargesEnabled: Bool?
+        let payoutsEnabled: Bool?
+        let onboardingStatus: String?
+    }
+
     private func decoder() -> JSONDecoder {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
         return d
+    }
+
+    private func adminKey() throws -> String {
+        guard let key = PortalSecrets.portalAdminKey(), !key.isEmpty else {
+            throw PortalBackendError.missingAdminKey
+        }
+        return key
     }
 
     func fetchPayPalStatus(businessId: UUID) async throws -> PayPalStatus {
@@ -122,5 +150,68 @@ final class PortalPaymentsAPI {
         } catch {
             throw PortalBackendError.decode(body: raw)
         }
+    }
+
+    func startStripeConnect(businessId: UUID, returnURL: URL) async throws -> URL {
+        let adminKey = try adminKey()
+        let url = baseURL.appendingPathComponent("/api/payments/stripe/connect/start")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let payload: [String: Any] = [
+            "businessId": businessId.uuidString,
+            "returnUrl": returnURL.absoluteString
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: "/api/payments/stripe/connect/start")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/stripe/connect/start")
+        }
+
+        let dto = try decoder().decode(StripeConnectStartResponseDTO.self, from: data)
+        guard let urlString = dto.url, let onboardingURL = URL(string: urlString) else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return onboardingURL
+    }
+
+    func fetchStripeConnectStatus(businessId: UUID) async throws -> StripeConnectStatus {
+        let adminKey = try adminKey()
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/payments/stripe/connect/status"),
+            resolvingAgainstBaseURL: false
+        )
+        comps?.queryItems = [URLQueryItem(name: "businessId", value: businessId.uuidString)]
+        guard let url = comps?.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: "/api/payments/stripe/connect/status")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/stripe/connect/status")
+        }
+
+        let dto = try decoder().decode(StripeConnectStatusResponseDTO.self, from: data)
+        return StripeConnectStatus(
+            stripeAccountId: dto.stripeAccountId,
+            chargesEnabled: dto.chargesEnabled ?? false,
+            payoutsEnabled: dto.payoutsEnabled ?? false,
+            onboardingStatus: dto.onboardingStatus ?? "not_connected"
+        )
     }
 }

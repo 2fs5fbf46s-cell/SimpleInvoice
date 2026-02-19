@@ -12,6 +12,10 @@ final class Business {
     var defaultInvoiceTemplateKey: String = InvoiceTemplateKey.modern_clean.rawValue
 
     var paypalMeUrl: String? = nil
+    var stripeAccountId: String? = nil
+    var stripeOnboardingStatus: String? = nil
+    var stripeChargesEnabled: Bool? = nil
+    var stripePayoutsEnabled: Bool? = nil
 
     var travelBufferMinutes: Int = 15
     var workdayStartMinutes: Int = 9 * 60
@@ -25,6 +29,10 @@ final class Business {
         currencyCode: String = "USD",
         defaultInvoiceTemplateKey: String = InvoiceTemplateKey.modern_clean.rawValue,
         paypalMeUrl: String? = nil,
+        stripeAccountId: String? = nil,
+        stripeOnboardingStatus: String? = nil,
+        stripeChargesEnabled: Bool? = nil,
+        stripePayoutsEnabled: Bool? = nil,
         travelBufferMinutes: Int = 15,
         workdayStartMinutes: Int = 9 * 60,
         workdayEndMinutes: Int = 17 * 60
@@ -36,6 +44,10 @@ final class Business {
         self.currencyCode = currencyCode
         self.defaultInvoiceTemplateKey = defaultInvoiceTemplateKey
         self.paypalMeUrl = paypalMeUrl
+        self.stripeAccountId = stripeAccountId
+        self.stripeOnboardingStatus = stripeOnboardingStatus
+        self.stripeChargesEnabled = stripeChargesEnabled
+        self.stripePayoutsEnabled = stripePayoutsEnabled
         self.travelBufferMinutes = travelBufferMinutes
         self.workdayStartMinutes = workdayStartMinutes
         self.workdayEndMinutes = workdayEndMinutes
