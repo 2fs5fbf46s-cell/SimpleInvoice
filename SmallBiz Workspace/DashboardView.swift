@@ -2,43 +2,51 @@ import SwiftUI
 import SwiftData
 
 struct DashboardView: View {
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var metricsVM = DashboardMetricsVM()
+
     // Pull business profile for name + logo
     @Query private var profiles: [BusinessProfile]
 
-    // Pull invoices for stats
+    // Pull invoices/jobs for stats
     @Query private var invoices: [Invoice]
-    @Query(sort: \Booking.startDate, order: .forward)
-    private var bookings: [Booking]
+    @Query(sort: \Job.startDate, order: .forward)
+    private var jobs: [Job]
 
     // MARK: - Computed: Profile
+    private var currentProfile: BusinessProfile? {
+        guard let bizID = activeBiz.activeBusinessID else { return profiles.first }
+        return profiles.first(where: { $0.businessID == bizID }) ?? profiles.first
+    }
+
     private var profileName: String {
-        let name = profiles.first?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = currentProfile?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? "Welcome" : name
     }
 
     private var logoImage: UIImage? {
-        guard let data = profiles.first?.logoData else { return nil }
+        guard let data = currentProfile?.logoData else { return nil }
         return UIImage(data: data)
     }
 
-    // MARK: - Computed: Stats
-    private var weekPaidTotal: Double {
-        let start = Calendar.current.startOfWeek(for: Date())
-        return invoices
-            .filter { $0.isPaid && $0.issueDate >= start }
-            .reduce(0) { $0 + $1.total }
-    }
-
-    private var monthPaidTotal: Double {
-        let start = Calendar.current.startOfMonth(for: Date())
-        return invoices
-            .filter { $0.isPaid && $0.issueDate >= start }
-            .reduce(0) { $0 + $1.total }
-    }
-
-    private var upcomingBookingsCount: Int {
-        let now = Date()
-        return bookings.filter { $0.endDate >= now && $0.status != "canceled" }.count
+    private var metricsDataSignature: String {
+        guard let bizID = activeBiz.activeBusinessID else { return "none" }
+        let invoiceSignature = invoices
+            .filter { $0.businessID == bizID }
+            .map {
+                "\($0.id.uuidString)|\($0.isPaid)|\($0.issueDate.timeIntervalSince1970)|\(Int(($0.total * 100).rounded()))|\($0.documentType)"
+            }
+            .sorted()
+            .joined(separator: ";")
+        let jobSignature = jobs
+            .filter { $0.businessID == bizID }
+            .map {
+                "\($0.id.uuidString)|\($0.startDate.timeIntervalSince1970)|\($0.stageRaw)|\($0.status)"
+            }
+            .sorted()
+            .joined(separator: ";")
+        return "\(bizID.uuidString)#\(invoiceSignature)#\(jobSignature)"
     }
 
     // MARK: - Layout
@@ -105,23 +113,23 @@ struct DashboardView: View {
                     HStack(spacing: 12) {
                         DashboardStatCard(
                             title: "Weekly",
-                            value: currency(weekPaidTotal),
+                            value: currency(cents: metricsVM.weeklyPaidCents),
                             subtitle: "Paid",
-                            updateKey: weekPaidTotal
+                            updateKey: metricsVM.weeklyPaidCents
                         )
 
                         DashboardStatCard(
                             title: "Monthly",
-                            value: currency(monthPaidTotal),
+                            value: currency(cents: metricsVM.monthlyPaidCents),
                             subtitle: "Paid",
-                            updateKey: monthPaidTotal
+                            updateKey: metricsVM.monthlyPaidCents
                         )
 
                         DashboardStatCard(
                             title: "Schedule",
-                            value: "\(upcomingBookingsCount)",
+                            value: "\(metricsVM.upcomingJobCount)",
                             subtitle: "Upcoming",
-                            updateKey: upcomingBookingsCount
+                            updateKey: metricsVM.upcomingJobCount
                         )
                     }
 
@@ -227,14 +235,40 @@ struct DashboardView: View {
         }
         .navigationTitle("") // Keep header custom
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: activeBiz.activeBusinessID?.uuidString ?? "none") {
+            await refreshDashboardMetrics(forceRemote: false)
+        }
+        .onChange(of: metricsDataSignature) { _, _ in
+            Task {
+                await refreshDashboardMetrics(forceRemote: false)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task {
+                await refreshDashboardMetrics(forceRemote: true)
+            }
+        }
+        .refreshable {
+            await refreshDashboardMetrics(forceRemote: true)
+        }
     }
 
     // MARK: - Helpers
-    private func currency(_ amount: Double) -> String {
+    private func refreshDashboardMetrics(forceRemote: Bool) async {
+        await metricsVM.refresh(
+            invoices: invoices,
+            jobs: jobs,
+            businessID: activeBiz.activeBusinessID,
+            forceRemote: forceRemote
+        )
+    }
+
+    private func currency(cents: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.maximumFractionDigits = 2
-        return f.string(from: NSNumber(value: amount)) ?? "$0.00"
+        return f.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$0.00"
     }
 
     private func formattedDate(_ date: Date) -> String {
@@ -456,19 +490,5 @@ private struct DashboardStatCard<UpdateKey: Equatable>: View {
                     }
                 }
             }
-    }
-}
-
-// MARK: - Calendar helpers
-
-private extension Calendar {
-    func startOfWeek(for date: Date) -> Date {
-        let comps = dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        return self.date(from: comps) ?? date
-    }
-
-    func startOfMonth(for date: Date) -> Date {
-        let comps = dateComponents([.year, .month], from: date)
-        return self.date(from: comps) ?? date
     }
 }
