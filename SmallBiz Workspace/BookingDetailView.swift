@@ -453,205 +453,208 @@ struct BookingDetailView: View {
     @Query private var invoices: [Invoice]
 
     var body: some View {
-        Form {
-            Section("Details") {
-                detailRow("Status", statusLabel)
-                if let serviceName = request.serviceType, !serviceName.isEmpty {
-                    detailRow("Service", serviceName)
-                }
-            }
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
 
-            Section("Customer") {
-                detailRow("Name", request.clientName ?? "Unknown")
-                if let email = request.clientEmail, !email.isEmpty {
-                    detailRow("Email", email)
-                }
-                if let phone = request.clientPhone, !phone.isEmpty {
-                    detailRow("Phone", phone)
-                }
-            }
-
-            Section("Schedule") {
-                if let start = parseDate(request.requestedStart) {
-                    detailRow("Start", dateFormatter.string(from: start))
-                } else {
-                    detailRow("Start", "Pending")
-                }
-                if let end = parseDate(request.requestedEnd) {
-                    detailRow("End", dateFormatter.string(from: end))
-                } else {
-                    detailRow("End", "Pending")
-                }
-            }
-
-            if let notes = request.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Section("Notes") {
-                    Text(notes)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if shouldShowRemainingCapture {
-                Section("Payment Summary") {
-                    TextField("Total (optional)", text: $totalAmountText)
-                        .keyboardType(.decimalPad)
-
-                    if let depositCents = request.depositAmountCents {
-                        detailRow("Deposit", currencyString(fromCents: depositCents))
-                    } else {
-                        detailRow("Deposit", "Not set")
-                    }
-
-                    if let remaining = computedRemainingCents {
-                        detailRow("Remaining", currencyString(fromCents: remaining))
-                    } else {
-                        detailRow("Remaining", "Unknown")
-                        Text("Add the total to auto-calculate remaining balance on FINAL invoice.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Button("Save Total") {
-                        Task { await saveBookingTotal() }
-                    }
-                    .disabled(isSubmitting || parseOptionalCurrencyCents(from: totalAmountText) == nil)
-                }
-            }
-
-            if isPending {
-                Section("Actions") {
-                    Button("Request Deposit") {
-                        depositAmountText = request.depositAmountCents != nil
-                            ? String(format: "%.2f", Double(request.depositAmountCents ?? 0) / 100.0)
-                            : "100.00"
-                        showDepositSheet = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isSubmitting)
-
-                    Button("Decline", role: .destructive) {
-                        Task { await declineRequest() }
-                    }
-                    .disabled(isSubmitting)
-
-                    if isSubmitting {
+            ScrollView {
+                VStack(spacing: 14) {
+                    bookingCard("Details") {
                         HStack {
+                            Text("Status")
                             Spacer()
-                            ProgressView()
-                            Spacer()
+                            statusChip(statusLabel)
+                        }
+                        if let serviceName = request.serviceType, !serviceName.isEmpty {
+                            Divider().opacity(0.35)
+                            detailRow("Service", serviceName)
+                        }
+                    }
+
+                    bookingCard("Customer") {
+                        detailRow("Name", request.clientName ?? "Unknown")
+                        if let email = request.clientEmail, !email.isEmpty {
+                            Divider().opacity(0.35)
+                            detailRow("Email", email)
+                        }
+                        if let phone = request.clientPhone, !phone.isEmpty {
+                            Divider().opacity(0.35)
+                            detailRow("Phone", phone)
+                        }
+                    }
+
+                    bookingCard("Schedule") {
+                        detailRow("Start", parseDate(request.requestedStart).map { dateFormatter.string(from: $0) } ?? "Pending")
+                        Divider().opacity(0.35)
+                        detailRow("End", parseDate(request.requestedEnd).map { dateFormatter.string(from: $0) } ?? "Pending")
+                    }
+
+                    if let notes = request.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        bookingCard("Notes") {
+                            Text(notes)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if shouldShowRemainingCapture {
+                        bookingCard("Payment Summary") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextField("Total (optional)", text: $totalAmountText)
+                                    .keyboardType(.decimalPad)
+                                    .textInputAutocapitalization(.never)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                detailRow("Deposit", request.depositAmountCents.map { currencyString(fromCents: $0) } ?? "Not set")
+                                Divider().opacity(0.35)
+                                detailRow("Remaining", computedRemainingCents.map { currencyString(fromCents: $0) } ?? "Unknown")
+
+                                if computedRemainingCents == nil {
+                                    Text("Add the total to auto-calculate remaining balance on FINAL invoice.")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                HStack {
+                                    Spacer()
+                                    Button("Save Total") {
+                                        Task { await saveBookingTotal() }
+                                    }
+                                    .font(.subheadline.weight(.semibold))
+                                    .buttonStyle(.bordered)
+                                    .disabled(isSubmitting || parseOptionalCurrencyCents(from: totalAmountText) == nil)
+                                }
+                            }
+                        }
+                    }
+
+                    if isPending {
+                        bookingCard("Primary Actions") {
+                            Button("Request Deposit") {
+                                depositAmountText = request.depositAmountCents != nil
+                                    ? String(format: "%.2f", Double(request.depositAmountCents ?? 0) / 100.0)
+                                    : "100.00"
+                                showDepositSheet = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isSubmitting)
+
+                            Button("Decline", role: .destructive) {
+                                Task { await declineRequest() }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isSubmitting)
+
+                            if isSubmitting {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+
+                    if let portalURL = lastDepositPortalURL {
+                        bookingCard("Deposit Link") {
+                            Text("Deposit link ready.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            actionRow("Copy Link", systemImage: "doc.on.doc") {
+                                UIPasteboard.general.string = portalURL.absoluteString
+                            }
+                            actionRow("Open Link", systemImage: "arrow.up.right.square") {
+                                openURL(portalURL)
+                            }
+                            if let warning = lastDepositSendWarning, !warning.isEmpty {
+                                Text(warning)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    bookingCard("Create From Booking") {
+                        actionRow("Create Estimate", systemImage: "doc.text.magnifyingglass", enabled: isApproved && !isSubmitting) {
+                            Task { await createEstimate() }
+                        }
+                        actionRow("Create Job", systemImage: "tray.full", enabled: isApproved && !isSubmitting) {
+                            Task { await createJob() }
+                        }
+                        actionRow("Create Invoice", systemImage: "doc.plaintext", enabled: isApproved && !isSubmitting) {
+                            Task { await createInvoice() }
+                        }
+                        if let finalInvoice = existingFinalInvoiceForBooking {
+                            actionRow("Open Final Invoice", systemImage: "doc.text", enabled: !isSubmitting) {
+                                navigateToInvoice = finalInvoice
+                            }
+#if DEBUG
+                            Text("Linked Invoice: \(finalInvoice.invoiceNumber) (\(shortID(finalInvoice.id)))")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+#endif
+                        }
+                        if !isApproved {
+                            Text("Approved bookings enable conversions.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    bookingCard("Calendar") {
+                        detailRow("State", hasCalendarEventLink ? "Linked" : "Not linked")
+                        Divider().opacity(0.35)
+                        if hasCalendarEventLink {
+                            actionRow("Update Calendar Event", systemImage: "calendar.badge.plus", enabled: !isSubmitting) {
+                                Task { await syncBookingCalendarEvent(viewAfter: false) }
+                            }
+                            actionRow("View Calendar Event", systemImage: "calendar", enabled: !isSubmitting) {
+                                Task { await syncBookingCalendarEvent(viewAfter: true) }
+                            }
+                        } else {
+                            actionRow("Add to Calendar", systemImage: "calendar.badge.plus", enabled: !isSubmitting) {
+                                Task { await syncBookingCalendarEvent(viewAfter: false) }
+                            }
+                        }
+
+                        if calendarPermissionDenied {
+                            Text("Calendar permission is denied. Enable access in Settings.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            actionRow("Open Settings", systemImage: "gearshape") {
+                                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                                UIApplication.shared.open(url)
+                            }
+                        }
+
+                        if let calendarErrorMessage, !calendarErrorMessage.isEmpty {
+                            Text(calendarErrorMessage)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    bookingCard("Metadata") {
+                        detailRow("Request ID", request.requestId)
+                        Divider().opacity(0.35)
+                        detailRow("Business ID", request.businessId)
+                        if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
+                            Divider().opacity(0.35)
+                            detailRow("Deposit Invoice", depositInvoiceId)
+                        }
+                        if let createdAt = dateFromMs(request.createdAtMs) {
+                            Divider().opacity(0.35)
+                            detailRow("Submitted", dateFormatter.string(from: createdAt))
                         }
                     }
                 }
-            }
-
-            if let portalURL = lastDepositPortalURL {
-                Section("Deposit Link") {
-                    Text("Deposit link ready.")
-                        .foregroundStyle(.secondary)
-                    Button("Copy Link") {
-                        UIPasteboard.general.string = portalURL.absoluteString
-                    }
-                    Button("Open Link") {
-                        openURL(portalURL)
-                    }
-                    if let warning = lastDepositSendWarning, !warning.isEmpty {
-                        Text(warning)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            Section("Create From Booking") {
-                Button("Create Estimate") {
-                    Task { await createEstimate() }
-                }
-                .disabled(!isApproved || isSubmitting)
-
-                Button("Create Job") {
-                    Task { await createJob() }
-                }
-                .disabled(!isApproved || isSubmitting)
-
-                Button("Create Invoice") {
-                    Task { await createInvoice() }
-                }
-                .disabled(!isApproved || isSubmitting)
-
-                if let finalInvoice = existingFinalInvoiceForBooking {
-                    Button("Open Final Invoice") {
-                        navigateToInvoice = finalInvoice
-                    }
-                    .disabled(isSubmitting)
-#if DEBUG
-                    if let linkedClient = finalInvoice.client {
-                        Text("Linked Client: \(linkedClient.name) (\(shortID(linkedClient.id)))")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let linkedJob = finalInvoice.job {
-                        Text("Linked Job: \(linkedJob.title) (\(shortID(linkedJob.id)))")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Linked Invoice: \(finalInvoice.invoiceNumber) (\(shortID(finalInvoice.id)))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-#endif
-                }
-
-                if !isApproved {
-                    Text("Approved bookings enable conversions.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Calendar") {
-                if hasCalendarEventLink {
-                    Button("Update Calendar Event") {
-                        Task { await syncBookingCalendarEvent(viewAfter: false) }
-                    }
-                    .disabled(isSubmitting)
-
-                    Button("View Calendar Event") {
-                        Task { await syncBookingCalendarEvent(viewAfter: true) }
-                    }
-                    .disabled(isSubmitting)
-                } else {
-                    Button("Add to Calendar") {
-                        Task { await syncBookingCalendarEvent(viewAfter: false) }
-                    }
-                    .disabled(isSubmitting)
-                }
-
-                if calendarPermissionDenied {
-                    Text("Calendar permission is denied. Enable access in Settings.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    Button("Open Settings") {
-                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                        UIApplication.shared.open(url)
-                    }
-                }
-
-                if let calendarErrorMessage, !calendarErrorMessage.isEmpty {
-                    Text(calendarErrorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Metadata") {
-                detailRow("Request ID", request.requestId)
-                detailRow("Business ID", request.businessId)
-                if let depositInvoiceId = request.depositInvoiceId, !depositInvoiceId.isEmpty {
-                    detailRow("Deposit Invoice", depositInvoiceId)
-                }
-                if let createdAt = dateFromMs(request.createdAtMs) {
-                    detailRow("Submitted", dateFormatter.string(from: createdAt))
-                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 24)
             }
         }
         .navigationTitle("Booking Request")
@@ -683,6 +686,73 @@ struct BookingDetailView: View {
                 Text("No event selected.")
             }
         }
+    }
+
+    private func bookingCard<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(SBWTheme.cardStroke, lineWidth: 1)
+        )
+    }
+
+    private func actionRow(
+        _ title: String,
+        systemImage: String,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(enabled ? .secondary : .tertiary)
+                    .frame(width: 18)
+                Text(title)
+                    .foregroundStyle(enabled ? .primary : .secondary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func statusChip(_ text: String) -> some View {
+        let key = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let colors: (fg: Color, bg: Color)
+        if key == "approved" {
+            colors = (SBWTheme.brandGreen, SBWTheme.brandGreen.opacity(0.18))
+        } else if key == "declined" {
+            colors = (.red, Color.red.opacity(0.16))
+        } else if key == "deposit requested" {
+            colors = (.blue, Color.blue.opacity(0.16))
+        } else {
+            colors = (.orange, Color.orange.opacity(0.18))
+        }
+
+        return Text(text.uppercased())
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(colors.fg)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(colors.bg))
     }
 
     private var statusLabel: String {
