@@ -52,7 +52,14 @@ struct BusinessProfileView: View {
     @State private var showNotificationAdvanced = false
     
 
-    @State private var showAdvancedOptions = false
+    @State private var showEssentialsSection = true
+    @State private var showBrandingSection = false
+    @State private var showDefaultsSection = false
+    @State private var showWebsiteSection = true
+    @State private var showPaymentsSection = true
+    @State private var showNotificationsSection = false
+    @State private var showAdvancedSection = false
+    @State private var showDebugMetadata = false
     @FocusState private var paypalMeFocused: Bool
 
     var body: some View {
@@ -117,11 +124,8 @@ struct BusinessProfileView: View {
 
             contentList(profile)
         }
-        .navigationTitle("Business Profile")
+        .navigationTitle("Business")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            pinnedHeader(profile)
-        }
         return applyProfileLifecycle(to: base, profile: profile)
     }
 
@@ -252,137 +256,188 @@ struct BusinessProfileView: View {
     }
 
     private func contentList(_ profile: BusinessProfile) -> some View {
-        List {
-            essentialsCard(profile)
-            brandingCard(profile)
-            defaultsCard(profile)
-            websitePublishingCard(profile)
-            invoicesCard
-            paymentsCard
-            notificationsCard
-            advancedOptionsCard(profile)
+        ScrollView {
+            VStack(spacing: 14) {
+                heroHeader(profile)
+                essentialsCard(profile)
+                brandingCard(profile)
+                defaultsCard(profile)
+                websitePublishingCard(profile)
+                paymentsCard
+                notificationsCard
+                advancedOptionsCard(profile)
 
-            Text("This info will appear on your invoice PDFs.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .sbwCardRow()
+                Text("This info appears on invoice PDFs and client portal pages.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 2)
+                    .padding(.bottom, 20)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 24)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .animation(.easeInOut(duration: 0.22), value: expansionAnimationKey)
     }
 
-    // MARK: - Header
-
-    private func pinnedHeader(_ profile: BusinessProfile) -> some View {
-        let name = profile.name.trimmed.isEmpty ? "Business Profile" : profile.name.trimmed
-        let status = completionStatus(for: profile)
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(name)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.primary)
-
-                    Text("Invoices • Portal • Emails")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                statusPill(text: status.text, color: status.color)
-            }
-
-            if !status.isComplete {
-                inlineWarning(
-                    "Add a business name and email to complete your profile.")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .background(.ultraThinMaterial)
-        .overlay(
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(height: 1),
-            alignment: .bottom
-        )
+    private var expansionAnimationKey: Int {
+        var value = 0
+        value += showEssentialsSection ? 1 : 0
+        value += showBrandingSection ? 2 : 0
+        value += showDefaultsSection ? 4 : 0
+        value += showWebsiteSection ? 8 : 0
+        value += showPaymentsSection ? 16 : 0
+        value += showNotificationsSection ? 32 : 0
+        value += showAdvancedSection ? 64 : 0
+        value += showDebugMetadata ? 128 : 0
+        return value
     }
 
     // MARK: - Cards
 
-    private func essentialsCard(_ profile: BusinessProfile) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            cardHeader("Essentials", subtitle: "Public business info")
+    private func heroHeader(_ profile: BusinessProfile) -> some View {
+        let name = profile.name.trimmed.isEmpty ? "Business Profile" : profile.name.trimmed
+        let status = completionStatus(for: profile)
+        return HeaderView(
+            businessName: name,
+            email: profile.email.trimmed.isEmpty ? nil : profile.email.trimmed,
+            logoData: profile.logoData,
+            statusText: status.text,
+            statusColor: status.color
+        )
+    }
 
-            TextField("Business Name", text: Bindable(profile).name)
-            TextField("Email", text: Bindable(profile).email)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.emailAddress)
-            TextField("Phone", text: Bindable(profile).phone)
-                .keyboardType(.phonePad)
-            TextField("Address", text: Bindable(profile).address, axis: .vertical)
-                .lineLimit(2...6)
+    private func essentialsCard(_ profile: BusinessProfile) -> some View {
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showEssentialsSection) {
+                VStack(spacing: 10) {
+                    FieldRow(title: "Name") {
+                        TextField("Business Name", text: Bindable(profile).name)
+                    }
+                    FieldRow(title: "Email") {
+                        TextField("Email", text: Bindable(profile).email)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                    }
+                    FieldRow(title: "Phone") {
+                        TextField("Phone", text: Bindable(profile).phone)
+                            .keyboardType(.phonePad)
+                    }
+                    FieldRow(title: "Address", verticalAlignTop: true) {
+                        TextField("Address", text: Bindable(profile).address, axis: .vertical)
+                            .lineLimit(2...6)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionHeaderRow(title: "Essentials", subtitle: "Public business info", systemImage: "building.2")
+            }
+            .tint(.secondary)
         }
-        .sbwCardRow()
     }
 
     private func brandingCard(_ profile: BusinessProfile) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            cardHeader("Branding", subtitle: "Logo and appearance")
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showBrandingSection) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                            if let logoData = profile.logoData,
+                               let uiImage = UIImage(data: logoData) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            } else {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(width: 72, height: 72)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
 
-            if let logoData = profile.logoData,
-               let uiImage = UIImage(data: logoData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 120)
-                    .cornerRadius(12)
-                    .padding(.vertical, 4)
-            } else {
-                ContentUnavailableView(
-                    "No Logo",
-                    systemImage: "photo",
-                    description: Text("Select a logo to appear on your invoices.")
-                )
-            }
-
-            HStack(spacing: 10) {
-                PhotosPicker(selection: $selectedLogoItem,
-                             matching: .images,
-                             photoLibrary: .shared()) {
-                    Label("Choose Logo", systemImage: "photo.on.rectangle")
-                }
-                .buttonStyle(.bordered)
-
-                if profile.logoData != nil {
-                    Button(role: .destructive) {
-                        profile.logoData = nil
-                        selectedLogoItem = nil
-                        try? modelContext.save()
-                    } label: {
-                        Label("Remove", systemImage: "trash")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Business Logo")
+                                .font(.subheadline.weight(.semibold))
+                            Text(profile.logoData == nil ? "No logo set" : "Logo set")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
                     }
-                    .buttonStyle(.bordered)
+
+                    HStack(spacing: 10) {
+                        PhotosPicker(selection: $selectedLogoItem, matching: .images, photoLibrary: .shared()) {
+                            Label("Choose Logo", systemImage: "photo.on.rectangle")
+                        }
+                        .buttonStyle(.bordered)
+
+                        if profile.logoData != nil {
+                            Button(role: .destructive) {
+                                profile.logoData = nil
+                                selectedLogoItem = nil
+                                try? modelContext.save()
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
                 }
+                .padding(.top, 8)
+            } label: {
+                SectionHeaderRow(title: "Branding", subtitle: "Logo and appearance", systemImage: "paintbrush.pointed")
             }
+            .tint(.secondary)
         }
-        .sbwCardRow()
     }
 
     private func defaultsCard(_ profile: BusinessProfile) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            cardHeader("Defaults", subtitle: "Pre-fill new invoices")
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showDefaultsSection) {
+                VStack(spacing: 12) {
+                    Button {
+                        showInvoiceTemplateSheet = true
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Default Invoice Template")
+                                    .font(.subheadline.weight(.semibold))
+                                Text(businessDefaultTemplate.displayName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
 
-            TextField("Default Thank You", text: Bindable(profile).defaultThankYou, axis: .vertical)
-                .lineLimit(2...6)
+                    FieldRow(title: "Thank You", verticalAlignTop: true) {
+                        TextField("Default Thank You", text: Bindable(profile).defaultThankYou, axis: .vertical)
+                            .lineLimit(2...6)
+                    }
 
-            TextField("Default Terms & Conditions", text: Bindable(profile).defaultTerms, axis: .vertical)
-                .lineLimit(4...10)
+                    FieldRow(title: "Terms", verticalAlignTop: true) {
+                        TextField("Default Terms & Conditions", text: Bindable(profile).defaultTerms, axis: .vertical)
+                            .lineLimit(4...10)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionHeaderRow(title: "Defaults", subtitle: "Pre-fill invoice values", systemImage: "text.badge.checkmark")
+            }
+            .tint(.secondary)
         }
-        .sbwCardRow()
     }
 
     private var businessDefaultTemplate: InvoiceTemplateKey {
@@ -393,307 +448,296 @@ struct BusinessProfileView: View {
         return key
     }
 
-    private var invoicesCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            cardHeader("Invoices", subtitle: "Default document styling")
+    private func websitePublishingCard(_ profile: BusinessProfile) -> some View {
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showWebsiteSection) {
+                if let siteDraft {
+                    VStack(spacing: 10) {
+                        FieldRow(title: "Handle") {
+                            TextField("your-handle", text: websiteHandleBinding(siteDraft))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .onSubmit {
+                                    siteDraft.handle = PublishedBusinessSite.normalizeHandle(siteDraft.handle)
+                                    BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                                }
+                        }
 
-            Button {
-                showInvoiceTemplateSheet = true
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Default Invoice Template")
-                            .foregroundStyle(.primary)
-                        Text(businessDefaultTemplate.displayName)
+                        FieldRow(title: "Domain") {
+                            TextField("Custom domain (optional)", text: websiteDomainBinding(siteDraft))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.URL)
+                        }
+
+                        Toggle("Also map www.\(siteDraft.publicSiteDomain ?? "domain")", isOn: websiteIncludeWwwBinding(siteDraft))
+                            .font(.subheadline)
+                        Text("Recommended if you want both domain.com and www.domain.com to work.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    }
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
+                        HStack {
+                            Text("Domain status")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            StatusPill(text: siteDomainStatusLabel, color: siteDomainStatusColor, systemImage: "dot.circle.fill")
+                        }
+
+                        HStack {
+                            Text("Gallery: \(siteDraft.galleryLocalPaths.count) images")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if !(siteDraft.publicSiteDomain ?? "").trimmed.isEmpty {
+                                Button(isCheckingSiteDomainStatus ? "Checking…" : "Check now") {
+                                    scheduleSiteDomainStatusCheck(force: true, debounced: false)
+                                }
+                                .font(.caption.weight(.semibold))
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(isCheckingSiteDomainStatus)
+                            }
+                        }
+
+                        FieldRow(title: "Display", verticalAlignTop: true) {
+                            TextField("Display Name", text: websiteAppNameBinding(siteDraft))
+                        }
+                        FieldRow(title: "About", verticalAlignTop: true) {
+                            TextField("About Us", text: websiteAboutBinding(siteDraft), axis: .vertical)
+                                .lineLimit(2...6)
+                        }
+                        FieldRow(title: "Services", verticalAlignTop: true) {
+                            TextField("Services (one per line)", text: $siteServicesText, axis: .vertical)
+                                .lineLimit(2...6)
+                                .onChange(of: siteServicesText) { _, newValue in
+                                    siteDraft.services = PublishedBusinessSite.splitLines(newValue)
+                                    BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                                }
+                        }
+                        FieldRow(title: "Team", verticalAlignTop: true) {
+                            TextField("Team Members (one per line)", text: $siteTeamText, axis: .vertical)
+                                .lineLimit(2...6)
+                                .onChange(of: siteTeamText) { _, newValue in
+                                    siteDraft.teamMembers = PublishedBusinessSite.splitLines(newValue)
+                                    BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
+                                }
+                        }
+
+                        ActionButtonRow(
+                            primaryTitle: isPublishingSite ? "Publishing…" : "Publish / Update",
+                            primarySystemImage: "arrow.up.circle.fill",
+                            primaryTint: SBWTheme.brandGreen,
+                            primaryDisabled: isPublishingSite,
+                            secondaryTitle: "Preview",
+                            secondarySystemImage: "safari",
+                            secondaryDisabled: false,
+                            onPrimaryTap: { Task { await publishWebsiteTapped(profile: profile) } },
+                            onSecondaryTap: { previewWebsiteTapped() }
+                        )
+
+                        if let lastError = siteDraft.lastPublishError, !lastError.trimmed.isEmpty {
+                            Text(lastError)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.top, 8)
+                } else {
+                    ProgressView("Preparing website draft…")
+                        .padding(.top, 8)
+                }
+            } label: {
+                HStack {
+                    SectionHeaderRow(title: "Website & Portal", subtitle: "Publish and domain settings", systemImage: "globe.badge.chevron.backward")
                     Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    websiteStatusPill
                 }
             }
-            .buttonStyle(.plain)
+            .tint(.secondary)
         }
-        .sbwCardRow()
-    }
-
-    private func websitePublishingCard(_ profile: BusinessProfile) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                cardHeader("Website", subtitle: "Publish your lightweight page")
-                Spacer()
-                websiteStatusPill
-            }
-
-            if let siteDraft {
-                TextField("Handle (example: javonfreeman)", text: websiteHandleBinding(siteDraft))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onSubmit {
-                        siteDraft.handle = PublishedBusinessSite.normalizeHandle(siteDraft.handle)
-                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                    }
-
-                TextField("Custom Domain (optional, example.com)", text: websiteDomainBinding(siteDraft))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .onSubmit {
-                        let normalized = PublishedBusinessSite.normalizePublicSiteDomain(siteDraft.publicSiteDomain ?? "")
-                        siteDraft.publicSiteDomain = normalized.isEmpty ? nil : normalized
-                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                    }
-
-                Toggle("Also map www.\(siteDraft.publicSiteDomain ?? "domain")", isOn: websiteIncludeWwwBinding(siteDraft))
-
-                Text("Recommended if you want both domain.com and www.domain.com to work.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if !(siteDraft.publicSiteDomain ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    HStack(spacing: 10) {
-                        Text("Status: \(siteDomainStatusLabel)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(siteDomainStatusColor)
-
-                        Spacer()
-
-                        Button(isCheckingSiteDomainStatus ? "Checking…" : "Check now") {
-                            scheduleSiteDomainStatusCheck(force: true, debounced: false)
-                        }
-                        .font(.caption.weight(.semibold))
-                        .disabled(isCheckingSiteDomainStatus)
-                    }
-                }
-
-                TextField("Display Name", text: websiteAppNameBinding(siteDraft))
-
-                TextField("About Us", text: websiteAboutBinding(siteDraft), axis: .vertical)
-                    .lineLimit(2...6)
-
-                TextField("Services (one per line)", text: $siteServicesText, axis: .vertical)
-                    .lineLimit(2...6)
-                    .onChange(of: siteServicesText) { _, newValue in
-                        siteDraft.services = PublishedBusinessSite.splitLines(newValue)
-                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                    }
-
-                TextField("Team Members (one per line)", text: $siteTeamText, axis: .vertical)
-                    .lineLimit(2...6)
-                    .onChange(of: siteTeamText) { _, newValue in
-                        siteDraft.teamMembers = PublishedBusinessSite.splitLines(newValue)
-                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                    }
-
-                TextField("Gallery Local Paths (one per line)", text: $siteGalleryPathsText, axis: .vertical)
-                    .lineLimit(2...6)
-                    .onChange(of: siteGalleryPathsText) { _, newValue in
-                        siteDraft.galleryLocalPaths = PublishedBusinessSite.splitLines(newValue)
-                        BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                    }
-
-                HStack(spacing: 10) {
-                    Button {
-                        previewWebsiteTapped()
-                    } label: {
-                        Label("Preview Website", systemImage: "safari")
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        Task { await publishWebsiteTapped(profile: profile) }
-                    } label: {
-                        if isPublishingSite {
-                            ProgressView()
-                        } else {
-                            Label("Publish Website", systemImage: "arrow.up.circle.fill")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isPublishingSite)
-                }
-
-                if let lastError = siteDraft.lastPublishError,
-                   !lastError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(lastError)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            } else {
-                ProgressView("Preparing website draft…")
-            }
-        }
-        .sbwCardRow()
     }
 
     private var paymentsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            cardHeader("Payments", subtitle: "Manage payment connections")
-
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(SBWTheme.brandGreen.opacity(0.15))
-                    Image(systemName: "creditcard")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(SBWTheme.brandGreen)
-                }
-                .frame(width: 32, height: 32)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Stripe")
-                        .font(.system(size: 16, weight: .semibold))
-
-                    Text(stripeStatusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if isLoadingStripeStatus {
-                    ProgressView()
-                } else {
-                    stripeStatusPill
-                }
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    Task { await startStripeOnboarding() }
-                } label: {
-                    Label("Connect Stripe", systemImage: "link")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandGreen)
-                .disabled(isStartingStripeOnboarding || isLoadingStripeStatus)
-
-                Button {
-                    Task { await refreshStripeStatus() }
-                } label: {
-                    Label("Refresh Stripe Status", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .disabled(isLoadingStripeStatus || isStartingStripeOnboarding)
-            }
-
-            Divider().padding(.vertical, 4)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("PayPal")
-                    .font(.subheadline.weight(.semibold))
-                Text("Platform enabled (backend env)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("PayPal.me (fallback)")
-                    .font(.subheadline.weight(.semibold))
-
-                Text("Used for PayPal payments in the client portal (fallback).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if let _ = business {
-                    TextField(
-                        "https://paypal.me/yourbusiness",
-                        text: paypalMeBinding
-                    )
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .focused($paypalMeFocused)
-                    .submitLabel(.done)
-                    .onSubmit {
-                        normalizePayPalMeIfNeeded()
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showPaymentsSection) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Stripe")
+                                .font(.subheadline.weight(.semibold))
+                            Text(stripeStatusText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if isLoadingStripeStatus {
+                            ProgressView()
+                        } else {
+                            stripeStatusPill
+                        }
                     }
-                } else {
-                    Text("Select a business to edit PayPal.me.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
 
-                Text("Paste a full PayPal.me link or just your handle (no @).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    ActionButtonRow(
+                        primaryTitle: stripePrimaryActionTitle,
+                        primarySystemImage: "link",
+                        primaryTint: SBWTheme.brandGreen,
+                        primaryDisabled: isLoadingStripeStatus || isStartingStripeOnboarding,
+                        secondaryTitle: "Refresh",
+                        secondarySystemImage: "arrow.clockwise",
+                        secondaryDisabled: isLoadingStripeStatus || isStartingStripeOnboarding,
+                        onPrimaryTap: { Task { await startStripeOnboarding() } },
+                        onSecondaryTap: { Task { await refreshStripeStatus() } }
+                    )
+
+                    Divider().overlay(Color.white.opacity(0.08))
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("PayPal (Platform)")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Configured on server")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        StatusPill(text: "Server Configured", color: .secondary, systemImage: "server.rack")
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PayPal.me (fallback)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        if business != nil {
+                            TextField("https://paypal.me/yourbusiness", text: paypalMeBinding)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.URL)
+                                .focused($paypalMeFocused)
+                                .submitLabel(.done)
+                                .onSubmit { normalizePayPalMeIfNeeded() }
+                        } else {
+                            Text("Select a business to edit PayPal.me.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text("Used only as fallback for client portal payments.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionHeaderRow(title: "Payments", subtitle: "Stripe and PayPal controls", systemImage: "creditcard.fill")
             }
+            .tint(.secondary)
         }
-        .sbwCardRow()
+    }
+
+    private var stripePrimaryActionTitle: String {
+        switch stripeStatus?.onboardingStatus.lowercased() {
+        case "active":
+            return "Manage Stripe"
+        case "needs_onboarding":
+            return "Finish Setup"
+        default:
+            return "Connect Stripe"
+        }
     }
 
     private var notificationsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            cardHeader("Notifications", subtitle: "Push and local reminders")
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showNotificationsSection) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Status")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        StatusPill(text: notificationStatusLabel, color: notificationStatusColor, systemImage: "bell.badge")
+                    }
 
-            Text("Status: \(notificationStatusLabel)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                    Button("Enable Notifications") {
+                        Task { await enableNotificationsTapped() }
+                    }
+                    .buttonStyle(.borderedProminent)
 
-            Button("Enable Notifications") {
-                Task { await enableNotificationsTapped() }
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                Task { await enablePushNotificationsTapped() }
-            } label: {
-                Label("Register for Push", systemImage: "bolt.horizontal.circle")
-            }
-            .buttonStyle(.bordered)
-
-            #if DEBUG
-            DisclosureGroup("Advanced", isExpanded: $showNotificationAdvanced) {
-                VStack(alignment: .leading, spacing: 10) {
                     Button {
-                        Task { await testLocalNotificationTapped() }
+                        Task { await enablePushNotificationsTapped() }
                     } label: {
-                        Label("Test Local Notification", systemImage: "bell")
+                        Label("Register for Push", systemImage: "bolt.horizontal.circle")
                     }
                     .buttonStyle(.bordered)
 
-                    Button {
-                        Task { await sendTestPushTapped() }
-                    } label: {
-                        if isSendingTestPush {
-                            HStack {
-                                ProgressView()
-                                Text("Sending…")
+                    #if DEBUG
+                    DisclosureGroup("Debug tools", isExpanded: $showNotificationAdvanced) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Button {
+                                Task { await testLocalNotificationTapped() }
+                            } label: {
+                                Label("Test Local Notification", systemImage: "bell")
                             }
-                        } else {
-                            Label("Send Test Push", systemImage: "paperplane")
+                            .buttonStyle(.bordered)
+
+                            Button {
+                                Task { await sendTestPushTapped() }
+                            } label: {
+                                if isSendingTestPush {
+                                    HStack {
+                                        ProgressView()
+                                        Text("Sending…")
+                                    }
+                                } else {
+                                    Label("Send Test Push", systemImage: "paperplane")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isSendingTestPush)
                         }
+                        .padding(.top, 8)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isSendingTestPush)
+                    .tint(.secondary)
+                    #endif
+
+                    if let notificationMessage, !notificationMessage.isEmpty {
+                        Text(notificationMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.top, 8)
+            } label: {
+                SectionHeaderRow(title: "Notifications", subtitle: "Push and reminders", systemImage: "bell.fill")
             }
-            #endif
-
-            if let notificationMessage, !notificationMessage.isEmpty {
-                Text(notificationMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .tint(.secondary)
         }
-        .sbwCardRow()
+    }
+
+    private var notificationStatusColor: Color {
+        switch notificationAuthorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return SBWTheme.brandGreen
+        case .denied:
+            return .red
+        default:
+            return .orange
+        }
     }
 
     private func advancedOptionsCard(_ profile: BusinessProfile) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            DisclosureGroup(isExpanded: $showAdvancedOptions) {
+        PremiumCard {
+            DisclosureGroup(isExpanded: $showAdvancedSection) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Divider().padding(.vertical, 4)
-
                     Text("Invoice Numbers")
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
 
-                    TextField("Prefix (letters before the number)", text: Bindable(profile).invoicePrefix)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
+                    FieldRow(title: "Prefix") {
+                        TextField("Prefix (letters before the number)", text: Bindable(profile).invoicePrefix)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                    }
 
                     Stepper(value: Bindable(profile).nextInvoiceNumber, in: 1...999999) {
                         Text("Next number: \(profile.nextInvoiceNumber)")
@@ -701,12 +745,12 @@ struct BusinessProfileView: View {
 
                     let year = Calendar.current.component(.year, from: .now)
                     Text("Example: \(profile.invoicePrefix)-\(year)-\(String(format: "%03d", profile.nextInvoiceNumber))")
-                        .font(.footnote)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
 
                     Button(role: .destructive) {
-                        let year = Calendar.current.component(.year, from: .now)
-                        profile.lastInvoiceYear = year
+                        let currentYear = Calendar.current.component(.year, from: .now)
+                        profile.lastInvoiceYear = currentYear
                         profile.nextInvoiceNumber = 1
                         try? modelContext.save()
                     } label: {
@@ -714,25 +758,45 @@ struct BusinessProfileView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    Text("Workspace")
-                        .font(.headline)
-
                     NavigationLink("Switch business") {
                         BusinessSwitcherView()
                     }
 
-                    if let id = activeBiz.activeBusinessID {
-                        Text("Active ID: \(id.uuidString)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    DisclosureGroup("Debug / Metadata", isExpanded: $showDebugMetadata) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let id = activeBiz.activeBusinessID {
+                                metadataRow("Active Business ID", id.uuidString)
+                            }
+                            metadataRow("Profile Business ID", profile.businessID.uuidString)
+                            metadataRow("Stripe Account ID", business?.stripeAccountId ?? "Not linked")
+                            metadataRow("Stripe Status", business?.stripeOnboardingStatus ?? "not_connected")
+                            metadataRow("Website Handle", siteDraft?.handle ?? "N/A")
+                            metadataRow("Domain Status", siteDomainStatusLabel)
+                        }
+                        .padding(.top, 8)
                     }
+                    .tint(.secondary)
                 }
+                .padding(.top, 8)
             } label: {
-                Text("Advanced Options")
-                    .font(.headline)
+                SectionHeaderRow(title: "Advanced", subtitle: "Invoice numbers and metadata", systemImage: "slider.horizontal.3")
             }
+            .tint(.secondary)
         }
-        .sbwCardRow()
+    }
+
+    private func metadataRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 140, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .textSelection(.enabled)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Status
@@ -740,46 +804,14 @@ struct BusinessProfileView: View {
     private func completionStatus(for profile: BusinessProfile) -> (text: String, color: Color, isComplete: Bool) {
         let nameOK = !profile.name.trimmed.isEmpty
         let emailOK = !profile.email.trimmed.isEmpty
-        if nameOK && emailOK {
+        let phoneOK = !profile.phone.trimmed.isEmpty
+        if nameOK && emailOK && phoneOK {
             return ("Complete", SBWTheme.brandGreen, true)
         }
-        return ("Needs Attention", .orange, false)
-    }
-
-    private func statusPill(text: String, color: Color) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func inlineWarning(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
+        if nameOK && emailOK {
+            return ("Incomplete", .orange, false)
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func cardHeader(_ title: String, subtitle: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.headline)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        return ("Action Needed", .red, false)
     }
 
     // MARK: - Website publishing
@@ -1270,27 +1302,188 @@ struct BusinessProfileView: View {
     }
 }
 
-private struct SBWCardRow: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(SBWTheme.cardStroke, lineWidth: 1)
-            )
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-            .listRowBackground(Color.clear)
+private struct HeaderView: View {
+    let businessName: String
+    let email: String?
+    let logoData: Data?
+    let statusText: String
+    let statusColor: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(businessName)
+                    .font(.system(size: 34, weight: .heavy))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+
+                Text("Invoices • Portal • Emails")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if let email, !email.isEmpty {
+                    Text(email)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                StatusPill(text: statusText, color: statusColor, systemImage: "circle.fill")
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                    if let logoData, let image = UIImage(data: logoData) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    } else {
+                        Image(systemName: "building.2.crop.circle")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 72, height: 72)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 6)
+            }
+        }
+        .padding(16)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(0.92))
+                SBWTheme.brandGradient
+                    .opacity(0.14)
+                    .blur(radius: 24)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        )
     }
 }
 
-private extension View {
-    func sbwCardRow() -> some View {
-        modifier(SBWCardRow())
+private struct PremiumCard<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(0.92))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            )
+    }
+}
+
+private struct SectionHeaderRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct StatusPill: View {
+    let text: String
+    let color: Color
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 8, weight: .bold))
+            Text(text)
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.16))
+        .foregroundStyle(color)
+        .clipShape(Capsule())
+    }
+}
+
+private struct ActionButtonRow: View {
+    let primaryTitle: String
+    let primarySystemImage: String
+    let primaryTint: Color
+    let primaryDisabled: Bool
+    let secondaryTitle: String
+    let secondarySystemImage: String
+    let secondaryDisabled: Bool
+    let onPrimaryTap: () -> Void
+    let onSecondaryTap: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onPrimaryTap) {
+                Label(primaryTitle, systemImage: primarySystemImage)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(primaryTint)
+            .disabled(primaryDisabled)
+
+            Button(action: onSecondaryTap) {
+                Label(secondaryTitle, systemImage: secondarySystemImage)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(secondaryDisabled)
+        }
+    }
+}
+
+private struct FieldRow<Content: View>: View {
+    let title: String
+    var verticalAlignTop: Bool = false
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack(alignment: verticalAlignTop ? .top : .center, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 92, alignment: .leading)
+                .padding(.top, verticalAlignTop ? 7 : 0)
+
+            content()
+                .textFieldStyle(.roundedBorder)
+        }
     }
 }
 
