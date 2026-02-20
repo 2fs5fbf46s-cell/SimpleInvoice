@@ -848,13 +848,33 @@ struct BookingDetailView: View {
 
     private var depositSheet: some View {
         NavigationStack {
-            Form {
-                Section("Deposit Amount") {
-                    TextField("100.00", text: $depositAmountText)
-                        .keyboardType(.decimalPad)
-                    Text("USD")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                SBWTheme.headerWash()
+
+                ScrollView {
+                    VStack(spacing: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Deposit Amount")
+                                .font(.headline)
+                            TextField("100.00", text: $depositAmountText)
+                                .keyboardType(.decimalPad)
+                            Text("USD")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                                )
+                        )
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                 }
             }
             .navigationTitle("Request Deposit")
