@@ -21,6 +21,9 @@ struct BookingPortalView: View {
     @State private var showBusinessProfile = false
     @State private var isSyncingSettings = false
     @State private var lastSyncedAt: Date? = nil
+    @State private var showActions = true
+    @State private var showQuickSetup = true
+    @State private var showAdvanced = false
 
     private let bookingBaseURL = "https://book.smallbizworkspace.com"
 
@@ -41,143 +44,31 @@ struct BookingPortalView: View {
     var body: some View {
         Group {
             if let currentProfile = profile {
-                Form {
-                    Section("Booking Link") {
-                        Text(bookingURLString)
-                            .font(.footnote)
-                            .foregroundStyle(bookingSlug.isEmpty ? .secondary : .primary)
-                            .textSelection(.enabled)
+                ZStack {
+                    Color(.systemGroupedBackground).ignoresSafeArea()
 
-                        if isGenerating {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text("Registering link…")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
+                    SBWTheme.brandGradient
+                        .opacity(SBWTheme.headerWashOpacity)
+                        .blur(radius: SBWTheme.headerWashBlur)
+                        .frame(height: SBWTheme.headerWashHeight)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            hero(currentProfile)
+                            actionsCard
+                            quickSetupCard
+                            advancedCard(currentProfile)
+                            customizeCard(currentProfile)
                         }
-                        
-                        if isOwnerEmailMissing {
-                            Text("Add a business email to receive booking request notifications.")
-                                .font(.footnote)
-                                .foregroundStyle(.orange)
-                        }
-
-                    }
-
-                    Section("Actions") {
-                        Button {
-                            guard let bookingURL else { return }
-                            UIPasteboard.general.string = bookingURL.absoluteString
-                            toastMessage = "Copied to clipboard"
-                            showCopyToast = true
-                            let generator = UINotificationFeedbackGenerator()
-                            generator.notificationOccurred(.success)
-                        } label: {
-                            Label("Copy Link", systemImage: "doc.on.doc")
-                        }
-                        .disabled(bookingURL == nil || isGenerating)
-
-                        Button {
-                            showSafari = false
-                            showBusinessProfile = false
-                            showShare = true
-                        } label: {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
-                        .disabled(bookingURL == nil || isGenerating)
-
-                        Button {
-                            showShare = false
-                            showBusinessProfile = false
-                            showSafari = true
-                        } label: {
-                            Label("View as Client", systemImage: "safari")
-                        }
-                        .disabled(bookingURL == nil || isGenerating || isOwnerEmailMissing)
-                    }
-
-                    Section("Quick Setup") {
-                        HStack {
-                            Text("Services")
-                            Spacer()
-                            Text(servicesSummaryText)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack {
-                            Text("Business Hours")
-                            Spacer()
-                            Text(hoursSummaryText)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack {
-                            Text("Default appointment length")
-                            Spacer()
-                            Text(defaultAppointmentText)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button {
-                            Task { await syncBookingSettingsNow() }
-                        } label: {
-                            if isSyncingSettings {
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                    Text("Syncing…")
-                                }
-                            } else {
-                                Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
-                            }
-                        }
-                        .disabled(isSyncingSettings)
-
-                        if let lastSyncedAt {
-                            Text("Synced \(lastSyncedAt.formatted(date: .omitted, time: .shortened))")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Section {
-                        DisclosureGroup("Link Settings (Advanced)") {
-                            HStack {
-                                Text("Link ending")
-                                Spacer()
-                                Text(bookingSlug.isEmpty ? "(Not set)" : bookingSlug)
-                                    .font(.footnote)
-                                    .foregroundStyle(bookingSlug.isEmpty ? .secondary : .primary)
-                                    .textSelection(.enabled)
-                            }
-
-                            if bookingSlug.isEmpty {
-                                Button("Create my booking link") {
-                                    Task { await registerNewSlug(force: true) }
-                                }
-                                .disabled(isGenerating)
-                            } else {
-                                Button("Change booking link address…") {
-                                    Task { await registerNewSlug(force: true) }
-                                }
-                                .foregroundStyle(.secondary)
-                                .disabled(isGenerating)
-
-                                Button("Regenerate link", role: .destructive) {
-                                    showRegenerateConfirm = true
-                                }
-                                .disabled(isGenerating)
-                            }
-                        }
-                    }
-
-                    Section {
-                        NavigationLink("Customize Info") {
-                            BookingPortalCustomizeView(profile: currentProfile)
-                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, 24)
                     }
                 }
                 .navigationTitle("Booking Portal")
+                .navigationBarTitleDisplayMode(.inline)
                 .alert("Regenerate booking link?", isPresented: $showRegenerateConfirm) {
                     Button("Regenerate", role: .destructive) {
                         Task { await registerNewSlug(force: true) }
@@ -246,6 +137,205 @@ struct BookingPortalView: View {
         }
         .task(id: profile?.businessID) {
             await ensureSlugIfNeeded()
+        }
+    }
+
+    private func hero(_ profile: BusinessProfile) -> some View {
+        PremiumPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Client Booking Link")
+                            .font(.system(size: 28, weight: .heavy))
+                        Text("Share your public booking page")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    StatusChip(
+                        text: bookingSlug.isEmpty ? "Not Ready" : "Live",
+                        color: bookingSlug.isEmpty ? .orange : SBWTheme.brandGreen,
+                        systemImage: "circle.fill"
+                    )
+                }
+
+                Text(bookingURLString)
+                    .font(.footnote)
+                    .foregroundStyle(bookingSlug.isEmpty ? .secondary : .primary)
+                    .textSelection(.enabled)
+
+                if isGenerating {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Registering link…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if isOwnerEmailMissing {
+                    Text("Add a business email to receive booking request notifications.")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+
+    private var actionsCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showActions) {
+                VStack(spacing: 10) {
+                    ActionButtonRow(
+                        primaryTitle: "Copy Link",
+                        primaryIcon: "doc.on.doc",
+                        primaryTint: SBWTheme.brandBlue,
+                        primaryDisabled: bookingURL == nil || isGenerating,
+                        secondaryTitle: "Share",
+                        secondaryIcon: "square.and.arrow.up",
+                        secondaryDisabled: bookingURL == nil || isGenerating
+                    ) {
+                        guard let bookingURL else { return }
+                        UIPasteboard.general.string = bookingURL.absoluteString
+                        toastMessage = "Copied to clipboard"
+                        showCopyToast = true
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } secondaryAction: {
+                        showSafari = false
+                        showBusinessProfile = false
+                        showShare = true
+                    }
+
+                    Button {
+                        showShare = false
+                        showBusinessProfile = false
+                        showSafari = true
+                    } label: {
+                        Label("View as Client", systemImage: "safari")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(bookingURL == nil || isGenerating || isOwnerEmailMissing)
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Actions", subtitle: "Share and test your link", icon: "paperplane.circle")
+            }
+            .tint(.secondary)
+        }
+    }
+
+    private var quickSetupCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showQuickSetup) {
+                VStack(spacing: 10) {
+                    metricRow("Services", value: servicesSummaryText)
+                    metricRow("Business Hours", value: hoursSummaryText)
+                    metricRow("Default appointment", value: defaultAppointmentText)
+
+                    Button {
+                        Task { await syncBookingSettingsNow() }
+                    } label: {
+                        if isSyncingSettings {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Syncing…")
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSyncingSettings)
+
+                    if let lastSyncedAt {
+                        Text("Synced \(lastSyncedAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Quick Setup", subtitle: "Portal readiness", icon: "checklist")
+            }
+            .tint(.secondary)
+        }
+    }
+
+    private func advancedCard(_ currentProfile: BusinessProfile) -> some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showAdvanced) {
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Link ending")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(bookingSlug.isEmpty ? "(Not set)" : bookingSlug)
+                            .font(.footnote)
+                            .foregroundStyle(bookingSlug.isEmpty ? .secondary : .primary)
+                            .textSelection(.enabled)
+                    }
+
+                    if bookingSlug.isEmpty {
+                        Button("Create my booking link") {
+                            Task { await registerNewSlug(force: true) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isGenerating)
+                    } else {
+                        Button("Change booking link address…") {
+                            Task { await registerNewSlug(force: true) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isGenerating)
+
+                        Button("Regenerate link", role: .destructive) {
+                            showRegenerateConfirm = true
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isGenerating)
+                    }
+
+                    if isOwnerEmailMissing {
+                        Button("Open Business Profile") {
+                            showBusinessProfile = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Advanced", subtitle: "Link settings", icon: "slider.horizontal.3")
+            }
+            .tint(.secondary)
+        }
+    }
+
+    private func customizeCard(_ currentProfile: BusinessProfile) -> some View {
+        PremiumPanel {
+            NavigationLink {
+                BookingPortalCustomizeView(profile: currentProfile)
+            } label: {
+                HStack {
+                    SectionTitle(title: "Customize Info", subtitle: "Brand, services, hours", icon: "paintpalette")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func metricRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -583,6 +673,102 @@ struct BookingPortalView: View {
         let profileEmail = profile?.email.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let trimmed = bookingOwner.isEmpty ? profileEmail : bookingOwner
         return trimmed.isEmpty
+    }
+}
+
+private struct PremiumPanel<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(0.92))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            )
+    }
+}
+
+private struct SectionTitle: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct StatusChip: View {
+    let text: String
+    let color: Color
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 8, weight: .bold))
+            Text(text)
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.16))
+        .foregroundStyle(color)
+        .clipShape(Capsule())
+    }
+}
+
+private struct ActionButtonRow: View {
+    let primaryTitle: String
+    let primaryIcon: String
+    let primaryTint: Color
+    let primaryDisabled: Bool
+    let secondaryTitle: String
+    let secondaryIcon: String
+    let secondaryDisabled: Bool
+    let primaryAction: () -> Void
+    let secondaryAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: primaryAction) {
+                Label(primaryTitle, systemImage: primaryIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(primaryTint)
+            .disabled(primaryDisabled)
+
+            Button(action: secondaryAction) {
+                Label(secondaryTitle, systemImage: secondaryIcon)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(secondaryDisabled)
+        }
     }
 }
 

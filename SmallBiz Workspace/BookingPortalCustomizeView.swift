@@ -29,6 +29,12 @@ struct BookingPortalCustomizeView: View {
     @State private var showDurationAdjustedAlert = false
     @State private var defaultDurationAdjustedNote: String? = nil
     @State private var showSyncedToast = false
+    @State private var showBrandSection = true
+    @State private var showServicesSection = true
+    @State private var showHoursSection = true
+    @State private var showOptionsSection = true
+    @State private var showNotesSection = false
+    @State private var showInstructionsSection = false
 
     var body: some View {
         configuredContent
@@ -37,6 +43,7 @@ struct BookingPortalCustomizeView: View {
     private var configuredContent: some View {
         contentView
             .navigationTitle("Customize Info")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .modifier(changeHandlers)
             .modifier(loadAndRefreshHandler)
@@ -124,198 +131,294 @@ struct BookingPortalCustomizeView: View {
     }
 
     private var contentView: some View {
-        Form {
-            loadingSection
-            refreshingSection
-            bookingPortalSection
-            brandSection
-            servicesSection
-            businessHoursSection
-            bookingOptionsSection
-            businessHoursNotesSection
-            bookingInstructionsSection
-            lastSyncedSection
-        }
-    }
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-    @ViewBuilder
-    private var loadingSection: some View {
-        if isLoading {
-            Section {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Loading settings…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 14) {
+                    heroCard
+
+                    if isLoading { loadingCard("Loading settings…") }
+                    if isRefreshing { loadingCard("Refreshing from portal…") }
+
+                    bookingPortalCard
+                    brandCard
+                    servicesCard
+                    hoursCard
+                    optionsCard
+                    notesCard
+                    instructionsCard
+
+                    if let lastSyncedAt {
+                        PremiumPanel {
+                            Text("Last synced: \(lastSyncedAt.formatted(date: .abbreviated, time: .shortened))")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 24)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: expansionKey)
     }
 
-    @ViewBuilder
-    private var refreshingSection: some View {
-        if isRefreshing {
-            Section {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Refreshing from portal…")
-                        .font(.footnote)
+    private var expansionKey: Int {
+        var value = 0
+        value += showBrandSection ? 1 : 0
+        value += showServicesSection ? 2 : 0
+        value += showHoursSection ? 4 : 0
+        value += showOptionsSection ? 8 : 0
+        value += showNotesSection ? 16 : 0
+        value += showInstructionsSection ? 32 : 0
+        return value
+    }
+
+    private var heroCard: some View {
+        PremiumPanel {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Booking Control Center")
+                        .font(.system(size: 28, weight: .heavy))
+                    Text("Brand, services, hours, and intake settings")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-            }
-        }
-    }
-
-    private var bookingPortalSection: some View {
-        Section("Booking Portal") {
-            Toggle("Enable Booking Portal", isOn: Bindable(profile).bookingEnabled)
-
-            Text("These details are saved locally and will appear on your booking page in a future update.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var brandSection: some View {
-        Section("Brand") {
-            TextField("Brand Name", text: $brandName)
-            TextField("Owner Email", text: $ownerEmail)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.emailAddress)
-        }
-    }
-
-    private var servicesSection: some View {
-        Section {
-            HStack {
-                Text("Services / Products")
                 Spacer()
-                EditButton()
+                StatusChip(
+                    text: profile.bookingEnabled ? "Enabled" : "Disabled",
+                    color: profile.bookingEnabled ? SBWTheme.brandGreen : .orange,
+                    systemImage: "circle.fill"
+                )
             }
+        }
+    }
 
-            if services.isEmpty {
-                Text("No services configured.")
+    private func loadingCard(_ text: String) -> some View {
+        PremiumPanel {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text(text)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-            } else {
-                ForEach($services) { $service in
-                    HStack {
-                        TextField("Service name", text: $service.name)
-                        Spacer()
-                        Picker("Duration", selection: $service.durationMinutes) {
+            }
+        }
+    }
+
+    private var bookingPortalCard: some View {
+        PremiumPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionTitle(title: "Booking Portal", subtitle: "Global portal toggle", icon: "link.badge.plus")
+                Toggle("Enable Booking Portal", isOn: Bindable(profile).bookingEnabled)
+                Text("These details are saved locally and synced to your booking page.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var brandCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showBrandSection) {
+                VStack(spacing: 10) {
+                    FieldRow(title: "Brand") {
+                        TextField("Brand Name", text: $brandName)
+                    }
+                    FieldRow(title: "Email") {
+                        TextField("Owner Email", text: $ownerEmail)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Brand", subtitle: "Public identity", icon: "building.2")
+            }
+            .tint(.secondary)
+        }
+    }
+
+    private var servicesCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showServicesSection) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if services.isEmpty {
+                        Text("No services configured.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(services.enumerated()), id: \.element.id) { index, service in
+                            HStack(spacing: 8) {
+                                TextField(
+                                    "Service name",
+                                    text: Binding(
+                                        get: { services[index].name },
+                                        set: { services[index].name = $0 }
+                                    )
+                                )
+                                Picker("Duration", selection: Binding(
+                                    get: { services[index].durationMinutes },
+                                    set: { services[index].durationMinutes = $0 }
+                                )) {
+                                    ForEach(serviceDurationOptions, id: \.self) { minutes in
+                                        Text("\(minutes) min").tag(minutes)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+
+                                Button(role: .destructive) {
+                                    services.remove(at: index)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("Add a service", text: $newServiceName)
+                            .onSubmit { addService() }
+                        Picker("Duration", selection: $newServiceDuration) {
                             ForEach(serviceDurationOptions, id: \.self) { minutes in
                                 Text("\(minutes) min").tag(minutes)
                             }
                         }
                         .pickerStyle(.menu)
+                        Button("+ Add") { addService() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(newServiceName.trimmed.isEmpty)
                     }
                 }
-                .onDelete(perform: deleteServices)
-                .onMove(perform: moveServices)
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Services", subtitle: "What clients can book", icon: "list.bullet")
             }
-
-            HStack(spacing: 8) {
-                TextField("Add a service", text: $newServiceName)
-                    .onSubmit { addService() }
-                Picker("Duration", selection: $newServiceDuration) {
-                    ForEach(serviceDurationOptions, id: \.self) { minutes in
-                        Text("\(minutes) min").tag(minutes)
-                    }
-                }
-                .pickerStyle(.menu)
-                Button("+ Add Service") { addService() }
-                    .disabled(newServiceName.trimmed.isEmpty)
-            }
+            .tint(.secondary)
         }
     }
 
-    private var businessHoursSection: some View {
-        Section("Business Hours") {
-            Button("Apply weekday hours to all weekdays") {
-                applyWeekdayHours()
-            }
-
-            ForEach($hours) { $row in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Toggle("\(row.day.displayName)", isOn: $row.isOpen)
+    private var hoursCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showHoursSection) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button("Apply weekday hours to all weekdays") {
+                        applyWeekdayHours()
                     }
+                    .buttonStyle(.bordered)
 
-                    if row.isOpen {
-                        HStack {
-                            DatePicker("Open", selection: $row.start, displayedComponents: .hourAndMinute)
-                            DatePicker("Close", selection: $row.end, displayedComponents: .hourAndMinute)
+                    ForEach($hours) { $row in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle("\(row.day.displayName)", isOn: $row.isOpen)
+                            if row.isOpen {
+                                HStack {
+                                    DatePicker("Open", selection: $row.start, displayedComponents: .hourAndMinute)
+                                    DatePicker("Close", selection: $row.end, displayedComponents: .hourAndMinute)
+                                }
+                                .datePickerStyle(.compact)
+                            }
                         }
-                        .datePickerStyle(.compact)
+                        .padding(.vertical, 4)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Business Hours", subtitle: "Availability windows", icon: "clock")
             }
+            .tint(.secondary)
         }
     }
 
-    private var bookingOptionsSection: some View {
-        Section("Booking Options") {
-            Picker("Time increments", selection: $timeIncrementMinutes) {
-                ForEach(timeIncrementOptions, id: \.self) { minutes in
-                    Text("\(minutes) min").tag(minutes)
+    private var optionsCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showOptionsSection) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Time increments", selection: $timeIncrementMinutes) {
+                        ForEach(timeIncrementOptions, id: \.self) { minutes in
+                            Text("\(minutes) min").tag(minutes)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Service durations must match the increments.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Default appointment length", selection: $defaultAppointmentMinutes) {
+                        ForEach(defaultDurationOptions, id: \.self) { minutes in
+                            Text("\(minutes) min").tag(minutes)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if let note = defaultDurationAdjustedNote {
+                        Text(note)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    FieldRow(title: "Min") {
+                        TextField("Minimum booking minutes", text: $minBookingMinutesText)
+                            .keyboardType(.numberPad)
+                    }
+                    FieldRow(title: "Max") {
+                        TextField("Maximum booking minutes", text: $maxBookingMinutesText)
+                            .keyboardType(.numberPad)
+                    }
+                    Toggle("Allow Same-Day Booking", isOn: $allowSameDay)
                 }
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Booking Options", subtitle: "Durations and constraints", icon: "slider.horizontal.3")
             }
-            .pickerStyle(.segmented)
+            .tint(.secondary)
+        }
+    }
 
-            Text("Service durations must match the increments.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+    private var notesCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showNotesSection) {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextEditor(text: Bindable(profile).bookingHoursText)
+                        .frame(minHeight: 140)
+                        .font(.body)
+                        .padding(8)
+                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            Picker("Default appointment length", selection: $defaultAppointmentMinutes) {
-                ForEach(defaultDurationOptions, id: \.self) { minutes in
-                    Text("\(minutes) min").tag(minutes)
+                    Text("Example: Mon: 9am-5pm\nTue: 9am-5pm")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Business Hours Notes", subtitle: "Optional freeform notes", icon: "note.text")
             }
-            .pickerStyle(.menu)
-
-            if let note = defaultDurationAdjustedNote {
-                Text(note)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            TextField("Minimum booking minutes", text: $minBookingMinutesText)
-                .keyboardType(.numberPad)
-            TextField("Maximum booking minutes", text: $maxBookingMinutesText)
-                .keyboardType(.numberPad)
-            Toggle("Allow Same-Day Booking", isOn: $allowSameDay)
+            .tint(.secondary)
         }
     }
 
-    private var businessHoursNotesSection: some View {
-        Section("Business Hours (Notes)") {
-            TextEditor(text: Bindable(profile).bookingHoursText)
-                .frame(minHeight: 140)
-                .font(.body)
-
-            Text("Example: Mon: 9am-5pm\nTue: 9am-5pm")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var bookingInstructionsSection: some View {
-        Section("Booking Instructions") {
-            TextEditor(text: Bindable(profile).bookingInstructions)
-                .frame(minHeight: 120)
-                .font(.body)
-        }
-    }
-
-    @ViewBuilder
-    private var lastSyncedSection: some View {
-        if let lastSyncedAt {
-            Section {
-                Text("Last synced: \(lastSyncedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+    private var instructionsCard: some View {
+        PremiumPanel {
+            DisclosureGroup(isExpanded: $showInstructionsSection) {
+                TextEditor(text: Bindable(profile).bookingInstructions)
+                    .frame(minHeight: 120)
+                    .font(.body)
+                    .padding(8)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.top, 8)
+            } label: {
+                SectionTitle(title: "Booking Instructions", subtitle: "Client-facing guidance", icon: "text.bubble")
             }
+            .tint(.secondary)
         }
     }
 
@@ -558,14 +661,6 @@ struct BookingPortalCustomizeView: View {
         newServiceDuration = defaultAppointmentMinutes
     }
 
-    private func deleteServices(at offsets: IndexSet) {
-        services.remove(atOffsets: offsets)
-    }
-
-    private func moveServices(from source: IndexSet, to destination: Int) {
-        services.move(fromOffsets: source, toOffset: destination)
-    }
-
     private func encodeServices(_ services: [BookingServiceOption]) -> String? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -653,6 +748,87 @@ private struct HoursRow: Identifiable, Equatable {
             }
         }
         return nil
+    }
+}
+
+private struct PremiumPanel<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(0.92))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            )
+    }
+}
+
+private struct SectionTitle: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct StatusChip: View {
+    let text: String
+    let color: Color
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 8, weight: .bold))
+            Text(text)
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.16))
+        .foregroundStyle(color)
+        .clipShape(Capsule())
+    }
+}
+
+private struct FieldRow<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 72, alignment: .leading)
+            content()
+                .textFieldStyle(.roundedBorder)
+        }
     }
 }
 
