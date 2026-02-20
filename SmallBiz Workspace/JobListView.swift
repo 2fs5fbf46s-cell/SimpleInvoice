@@ -83,7 +83,13 @@ struct JobsListView: View {
                     .pickerStyle(.segmented)
                 }
 
-                if filteredJobs.isEmpty {
+                if activeBiz.activeBusinessID == nil {
+                    ContentUnavailableView(
+                        "No Business Selected",
+                        systemImage: "building.2",
+                        description: Text("Select a business to view jobs.")
+                    )
+                } else if filteredJobs.isEmpty {
                     ContentUnavailableView(
                         scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
                         systemImage: "briefcase",
