@@ -450,112 +450,31 @@ struct BusinessProfileView: View {
 
     private func websitePublishingCard(_ profile: BusinessProfile) -> some View {
         PremiumCard {
-            DisclosureGroup(isExpanded: $showWebsiteSection) {
-                if let siteDraft {
-                    VStack(spacing: 10) {
-                        FieldRow(title: "Handle") {
-                            TextField("your-handle", text: websiteHandleBinding(siteDraft))
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .onSubmit {
-                                    siteDraft.handle = PublishedBusinessSite.normalizeHandle(siteDraft.handle)
-                                    BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                                }
-                        }
-
-                        FieldRow(title: "Domain") {
-                            TextField("Custom domain (optional)", text: websiteDomainBinding(siteDraft))
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.URL)
-                        }
-
-                        Toggle("Also map www.\(siteDraft.publicSiteDomain ?? "domain")", isOn: websiteIncludeWwwBinding(siteDraft))
-                            .font(.subheadline)
-                        Text("Recommended if you want both domain.com and www.domain.com to work.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        HStack {
-                            Text("Domain status")
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            StatusPill(text: siteDomainStatusLabel, color: siteDomainStatusColor, systemImage: "dot.circle.fill")
-                        }
-
-                        HStack {
-                            Text("Gallery: \(siteDraft.galleryLocalPaths.count) images")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if !(siteDraft.publicSiteDomain ?? "").trimmed.isEmpty {
-                                Button(isCheckingSiteDomainStatus ? "Checking…" : "Check now") {
-                                    scheduleSiteDomainStatusCheck(force: true, debounced: false)
-                                }
-                                .font(.caption.weight(.semibold))
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(isCheckingSiteDomainStatus)
-                            }
-                        }
-
-                        FieldRow(title: "Display", verticalAlignTop: true) {
-                            TextField("Display Name", text: websiteAppNameBinding(siteDraft))
-                        }
-                        FieldRow(title: "About", verticalAlignTop: true) {
-                            TextField("About Us", text: websiteAboutBinding(siteDraft), axis: .vertical)
-                                .lineLimit(2...6)
-                        }
-                        FieldRow(title: "Services", verticalAlignTop: true) {
-                            TextField("Services (one per line)", text: $siteServicesText, axis: .vertical)
-                                .lineLimit(2...6)
-                                .onChange(of: siteServicesText) { _, newValue in
-                                    siteDraft.services = PublishedBusinessSite.splitLines(newValue)
-                                    BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                                }
-                        }
-                        FieldRow(title: "Team", verticalAlignTop: true) {
-                            TextField("Team Members (one per line)", text: $siteTeamText, axis: .vertical)
-                                .lineLimit(2...6)
-                                .onChange(of: siteTeamText) { _, newValue in
-                                    siteDraft.teamMembers = PublishedBusinessSite.splitLines(newValue)
-                                    BusinessSitePublishService.shared.saveDraftEdits(siteDraft, context: modelContext)
-                                }
-                        }
-
-                        ActionButtonRow(
-                            primaryTitle: isPublishingSite ? "Publishing…" : "Publish / Update",
-                            primarySystemImage: "arrow.up.circle.fill",
-                            primaryTint: SBWTheme.brandGreen,
-                            primaryDisabled: isPublishingSite,
-                            secondaryTitle: "Preview",
-                            secondarySystemImage: "safari",
-                            secondaryDisabled: false,
-                            onPrimaryTap: { Task { await publishWebsiteTapped(profile: profile) } },
-                            onSecondaryTap: { previewWebsiteTapped() }
-                        )
-
-                        if let lastError = siteDraft.lastPublishError, !lastError.trimmed.isEmpty {
-                            Text(lastError)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .padding(.top, 8)
-                } else {
-                    ProgressView("Preparing website draft…")
-                        .padding(.top, 8)
-                }
+            NavigationLink {
+                WebsiteCustomizationView()
             } label: {
                 HStack {
-                    SectionHeaderRow(title: "Website & Portal", subtitle: "Publish and domain settings", systemImage: "globe.badge.chevron.backward")
+                    SectionHeaderRow(
+                        title: "Website & Portal",
+                        subtitle: "Customize your public page",
+                        systemImage: "globe.badge.chevron.backward"
+                    )
                     Spacer()
-                    websiteStatusPill
+                    if let draft = siteDraft {
+                        switch draft.status {
+                        case .draft:
+                            StatusPill(text: "Draft", color: .secondary, systemImage: "circle.fill")
+                        case .published:
+                            StatusPill(text: "Published", color: SBWTheme.brandGreen, systemImage: "circle.fill")
+                        case .error:
+                            StatusPill(text: "Error", color: .red, systemImage: "circle.fill")
+                        case .queued, .publishing:
+                            StatusPill(text: "Updating", color: .orange, systemImage: "circle.fill")
+                        }
+                    }
                 }
             }
-            .tint(.secondary)
+            .buttonStyle(.plain)
         }
     }
 
