@@ -263,7 +263,7 @@ struct BusinessProfileView: View {
                 brandingCard(profile)
                 defaultsCard(profile)
                 websitePublishingCard(profile)
-                paymentsCard
+                paymentsShortcutCard
                 notificationsCard
                 advancedOptionsCard(profile)
 
@@ -554,6 +554,30 @@ struct BusinessProfileView: View {
             }
             .tint(.secondary)
         }
+    }
+
+    private var paymentsShortcutCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeaderRow(
+                title: "Payments",
+                subtitle: "Manage setup in one place",
+                systemImage: "creditcard.fill"
+            )
+            NavigationLink {
+                SetupPaymentsView()
+            } label: {
+                SBWNavigationRow(
+                    title: "Setup Payments",
+                    subtitle: "Stripe, PayPal, Square, Cash App, Venmo, ACH"
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
     }
 
     private var stripePrimaryActionTitle: String {

@@ -13,6 +13,25 @@ struct StripeConnectStatus: Equatable {
     let onboardingStatus: String
 }
 
+struct PayPalPlatformStatus: Equatable {
+    let enabled: Bool
+    let env: String?
+}
+
+struct ManualPaymentReportDTO: Decodable, Identifiable, Equatable {
+    let id: String
+    let businessId: String
+    let invoiceId: String
+    let method: String
+    let amountCents: Int
+    let payerName: String?
+    let payerEmail: String?
+    let reference: String?
+    let status: String
+    let createdAtMs: Int64
+    let resolvedAtMs: Int64?
+}
+
 final class PortalPaymentsAPI {
     static let shared = PortalPaymentsAPI()
 
@@ -40,6 +59,15 @@ final class PortalPaymentsAPI {
         let chargesEnabled: Bool?
         let payoutsEnabled: Bool?
         let onboardingStatus: String?
+    }
+
+    private struct PayPalPlatformStatusResponseDTO: Decodable {
+        let enabled: Bool?
+        let env: String?
+    }
+
+    private struct ManualReportsResponseDTO: Decodable {
+        let reports: [ManualPaymentReportDTO]?
     }
 
     private func decoder() -> JSONDecoder {
@@ -213,5 +241,61 @@ final class PortalPaymentsAPI {
             payoutsEnabled: dto.payoutsEnabled ?? false,
             onboardingStatus: dto.onboardingStatus ?? "not_connected"
         )
+    }
+
+    func fetchPayPalPlatformStatus() async throws -> PayPalPlatformStatus {
+        let url = baseURL.appendingPathComponent("/api/payments/paypal/platform-status")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+        let dto = try decoder().decode(PayPalPlatformStatusResponseDTO.self, from: data)
+        return PayPalPlatformStatus(enabled: dto.enabled ?? false, env: dto.env)
+    }
+
+    func fetchManualPaymentReports(businessId: UUID) async throws -> [ManualPaymentReportDTO] {
+        let adminKey = try adminKey()
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/payments/manual/list"),
+            resolvingAgainstBaseURL: false
+        )
+        comps?.queryItems = [URLQueryItem(name: "businessId", value: businessId.uuidString)]
+        guard let url = comps?.url else { throw PortalBackendError.badURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+
+        let dto = try decoder().decode(ManualReportsResponseDTO.self, from: data)
+        return dto.reports ?? []
+    }
+
+    func resolveManualPaymentReport(reportId: String, action: String) async throws {
+        let adminKey = try adminKey()
+        let url = baseURL.appendingPathComponent("/api/payments/manual/resolve")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "reportId": reportId,
+            "action": action
+        ], options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
     }
 }
