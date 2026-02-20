@@ -84,7 +84,13 @@ struct ContractsHomeView: View {
                 }
 
                 // MARK: - Empty state (scoped)
-                if scopedContracts.isEmpty {
+                if activeBiz.activeBusinessID == nil {
+                    ContentUnavailableView(
+                        "No Business Selected",
+                        systemImage: "building.2",
+                        description: Text("Select a business to view contracts.")
+                    )
+                } else if scopedContracts.isEmpty {
                     ContentUnavailableView(
                         "No Contracts Yet",
                         systemImage: "doc.plaintext",
@@ -102,6 +108,7 @@ struct ContractsHomeView: View {
                                     contractRow(contract)
                                 }
                                 .buttonStyle(.plain)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                 .swipeActions {
                                     Button(role: .destructive) {
                                         deleteIfDraft(contract)
@@ -123,6 +130,7 @@ struct ContractsHomeView: View {
                                     contractRow(contract)
                                 }
                                 .buttonStyle(.plain)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             }
                         }
                     }
@@ -179,6 +187,8 @@ struct ContractsHomeView: View {
                 subtitle: subtitle
             )
         }
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     // MARK: - Client name resolution (same logic as list)
