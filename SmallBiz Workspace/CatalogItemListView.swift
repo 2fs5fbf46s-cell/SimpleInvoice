@@ -57,42 +57,50 @@ struct CatalogItemListView: View {
     }
 
     var body: some View {
-        List {
-            // Always-visible add button
-            Section {
-                Button { add() } label: {
-                    Label("Add Saved Item", systemImage: "plus.circle.fill")
-                }
-            }
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
 
-            Section {
-                if filteredItems.isEmpty {
-                    ContentUnavailableView(
-                        searchText.isEmpty ? "No Saved Items" : "No Results",
-                        systemImage: "tray",
-                        description: Text(searchText.isEmpty
-                                          ? "Tap “Add Saved Item” to create your first one."
-                                          : "Try a different search or category.")
-                    )
-                } else {
-                    ForEach(filteredItems) { item in
-                        Button {
-                            selectedItem = item
-                        } label: {
-                            let name = item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Item" : item.name
-                            let category = normalizedCategory(item.category)
-                            let details = item.details.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let price = item.unitPrice.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-                            let subtitleParts = [category, details.isEmpty ? nil : details, price]
-                                .compactMap { $0 }
-                                .joined(separator: " • ")
-                            SBWNavigationRow(title: name, subtitle: subtitleParts)
+            List {
+                Section {
+                    Picker("Category", selection: $selectedCategory) {
+                        ForEach(categories, id: \.self) { c in
+                            Text(c).tag(c)
                         }
-                        .buttonStyle(.plain)
                     }
-                    .onDelete(perform: deleteFiltered)
+                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    Button { add() } label: {
+                        Label("Add Saved Item", systemImage: "plus.circle.fill")
+                    }
+                }
+
+                Section {
+                    if filteredItems.isEmpty {
+                        ContentUnavailableView(
+                            searchText.isEmpty ? "No Saved Items" : "No Results",
+                            systemImage: "tray",
+                            description: Text(searchText.isEmpty
+                                              ? "Tap “Add Saved Item” to create your first one."
+                                              : "Try a different search or category.")
+                        )
+                    } else {
+                        ForEach(filteredItems) { item in
+                            Button {
+                                selectedItem = item
+                            } label: {
+                                row(item)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        }
+                        .onDelete(perform: deleteFiltered)
+                    }
                 }
             }
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Saved Items")
         .searchable(text: $searchText, prompt: "Search saved items")
@@ -104,22 +112,31 @@ struct CatalogItemListView: View {
                 Button { add() } label: { Image(systemName: "plus") }
             }
         }
-        .safeAreaInset(edge: .top) {
-            VStack(spacing: 8) {
-                Picker("Category", selection: $selectedCategory) {
-                    ForEach(categories, id: \.self) { c in
-                        Text(c).tag(c)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+    }
 
-                Divider()
+    private func row(_ item: CatalogItem) -> some View {
+        let name = item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Item" : item.name
+        let category = normalizedCategory(item.category)
+        let details = item.details.trimmingCharacters(in: .whitespacesAndNewlines)
+        let price = item.unitPrice.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        let subtitleParts = [category, details.isEmpty ? nil : details, price]
+            .compactMap { $0 }
+            .joined(separator: " • ")
+
+        return HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Saved Items"))
+                Image(systemName: "tray")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
             }
-            .background(.ultraThinMaterial)
+            .frame(width: 36, height: 36)
+
+            SBWNavigationRow(title: name, subtitle: subtitleParts)
         }
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     private func add() {
