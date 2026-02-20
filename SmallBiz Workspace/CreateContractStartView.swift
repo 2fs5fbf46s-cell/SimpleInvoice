@@ -57,111 +57,145 @@ struct CreateContractStartView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             SBWTheme.headerWash()
 
-            Form {
-                Section("Template") {
-                    if templates.isEmpty {
-                        ContentUnavailableView(
-                            "No Templates Found",
-                            systemImage: "doc.badge.gearshape",
-                            description: Text("Templates should seed on launch. Try closing/reopening the app.")
-                        )
-                    } else {
-                        Picker("Choose Template", selection: $selectedTemplate) {
-                            Text("Select…").tag(Optional<ContractTemplate>.none)
-                            ForEach(templates) { t in
-                                Text("\(t.name) (\(t.category))").tag(Optional(t))
-                            }
-                        }
-                    }
-                }
-                
-                Section("Source") {
-                    Toggle("Fill from Invoice", isOn: $useInvoice)
-                        .onChange(of: useInvoice) { _, newValue in
-                            if newValue {
-                                selectedClient = nil
+            ScrollView {
+                VStack(spacing: 14) {
+                    card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Template")
+                                .font(.headline)
+
+                            if templates.isEmpty {
+                                ContentUnavailableView(
+                                    "No Templates Found",
+                                    systemImage: "doc.badge.gearshape",
+                                    description: Text("Templates should seed on launch. Try closing/reopening the app.")
+                                )
                             } else {
-                                selectedInvoice = nil
-                            }
-                        }
-                    
-                    if useInvoice {
-                        if scopedInvoices.isEmpty {
-                            Text("No invoices yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Select Invoice", selection: $selectedInvoice) {
-                                Text("Select…").tag(Optional<Invoice>.none)
-                                ForEach(scopedInvoices) { inv in
-                                    Text("Invoice \(inv.invoiceNumber) — \(inv.client?.name ?? "No Client")")
-                                        .tag(Optional(inv))
-                                }
-                            }
-                            
-                            if let inv = selectedInvoice {
-                                Text("Client: \(inv.client?.name ?? "No Client")")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    } else {
-                        if scopedClients.isEmpty {
-                            Text("No clients yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Select Client", selection: $selectedClient) {
-                                Text("Select…").tag(Optional<Client>.none)
-                                ForEach(scopedClients) { c in
-                                    Text(c.name.isEmpty ? "Client" : c.name).tag(Optional(c))
+                                fieldRow(title: "Choose") {
+                                    Picker("Choose Template", selection: $selectedTemplate) {
+                                        Text("Select…").tag(Optional<ContractTemplate>.none)
+                                        ForEach(templates) { t in
+                                            Text("\(t.name) (\(t.category))").tag(Optional(t))
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .pickerStyle(.menu)
                                 }
                             }
                         }
                     }
-                }
 
-                Section("Jobs") {
-                    if selectedJobs.isEmpty {
-                        Text("No linked jobs")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(selectedJobs) { job in
-                            HStack {
-                                Text(job.title.isEmpty ? "Untitled Job" : job.title)
-                                Spacer()
-                                if primaryJobID == job.id {
-                                    Text("Primary")
-                                        .font(.caption)
+                    card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Source")
+                                .font(.headline)
+
+                            Toggle("Fill from Invoice", isOn: $useInvoice)
+                                .onChange(of: useInvoice) { _, newValue in
+                                    if newValue {
+                                        selectedClient = nil
+                                    } else {
+                                        selectedInvoice = nil
+                                    }
+                                }
+
+                            if useInvoice {
+                                if scopedInvoices.isEmpty {
+                                    Text("No invoices yet.")
                                         .foregroundStyle(.secondary)
+                                } else {
+                                    fieldRow(title: "Invoice") {
+                                        Picker("Select Invoice", selection: $selectedInvoice) {
+                                            Text("Select…").tag(Optional<Invoice>.none)
+                                            ForEach(scopedInvoices) { inv in
+                                                Text("Invoice \(inv.invoiceNumber) — \(inv.client?.name ?? "No Client")")
+                                                    .tag(Optional(inv))
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .pickerStyle(.menu)
+                                    }
+
+                                    if let inv = selectedInvoice {
+                                        Text("Client: \(inv.client?.name ?? "No Client")")
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            } else {
+                                if scopedClients.isEmpty {
+                                    Text("No clients yet.")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    fieldRow(title: "Client") {
+                                        Picker("Select Client", selection: $selectedClient) {
+                                            Text("Select…").tag(Optional<Client>.none)
+                                            ForEach(scopedClients) { c in
+                                                Text(c.name.isEmpty ? "Client" : c.name).tag(Optional(c))
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .pickerStyle(.menu)
+                                    }
                                 }
                             }
                         }
                     }
 
-                    Button("Manage Jobs") {
-                        showJobsPicker = true
+                    card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Jobs")
+                                .font(.headline)
+
+                            if selectedJobs.isEmpty {
+                                Text("No linked jobs")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(selectedJobs) { job in
+                                    HStack {
+                                        Text(job.title.isEmpty ? "Untitled Job" : job.title)
+                                        Spacer()
+                                        if primaryJobID == job.id {
+                                            Text("Primary")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Button("Manage Jobs") {
+                                showJobsPicker = true
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    card {
+                        VStack(spacing: 10) {
+                            Button {
+                                generatePreview()
+                            } label: {
+                                Label("Preview Contract", systemImage: "doc.richtext")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!canProceed)
+
+                            Button {
+                                saveDraft()
+                            } label: {
+                                Label("Save Draft Contract", systemImage: "tray.and.arrow.down")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!canProceed)
+                        }
                     }
                 }
-                
-                Section {
-                    Button {
-                        generatePreview()
-                    } label: {
-                        Label("Preview Contract", systemImage: "doc.richtext")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canProceed)
-                    
-                    Button {
-                        saveDraft()
-                    } label: {
-                        Label("Save Draft Contract", systemImage: "tray.and.arrow.down")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!canProceed)
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
-            .scrollContentBackground(.hidden)
         }
         .navigationTitle("New Contract")
         .navigationBarTitleDisplayMode(.inline)
@@ -226,6 +260,33 @@ struct CreateContractStartView: View {
         .onChange(of: selectedInvoice?.id) { _, _ in
             applyDefaultJobsFromInvoiceIfNeeded()
         }
+    }
+
+    @ViewBuilder
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                    )
+            )
+    }
+
+    @ViewBuilder
+    private func fieldRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 10)
+            content()
+                .font(.subheadline)
+        }
+        .frame(minHeight: 42)
     }
 
 

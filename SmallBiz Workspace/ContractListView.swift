@@ -102,7 +102,13 @@ struct ContractsListView: View {
                     .pickerStyle(.segmented)
                 }
 
-                if scopedContracts.isEmpty {
+                if activeBiz.activeBusinessID == nil {
+                    ContentUnavailableView(
+                        "No Business Selected",
+                        systemImage: "building.2",
+                        description: Text("Select a business to view contracts.")
+                    )
+                } else if scopedContracts.isEmpty {
                     ContentUnavailableView(
                         "No Contracts Yet",
                         systemImage: "doc.plaintext",
@@ -122,6 +128,7 @@ struct ContractsListView: View {
                             row(contract)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 attemptDelete(contract)
@@ -191,6 +198,8 @@ struct ContractsListView: View {
                 subtitle: subtitle
             )
         }
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     private func statusText(for contract: Contract) -> String {
