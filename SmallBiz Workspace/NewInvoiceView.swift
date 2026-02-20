@@ -21,29 +21,57 @@ struct NewInvoiceView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Invoice") {
-                    TextField("Invoice Number", text: $invoiceNumber)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                SBWTheme.headerWash()
 
-                    Picker("Client", selection: $selectedClient) {
-                        Text("None").tag(Client?.none)
-                        ForEach(scopedClients) { client in
-                            Text(client.name).tag(Client?.some(client))
+                ScrollView {
+                    VStack(spacing: 14) {
+                        card {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Invoice")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+
+                                VStack(spacing: 0) {
+                                    fieldRow(title: "Invoice Number") {
+                                        TextField("Invoice Number", text: $invoiceNumber)
+                                            .multilineTextAlignment(.trailing)
+                                            .textInputAutocapitalization(.characters)
+                                            .autocorrectionDisabled()
+                                    }
+
+                                    Divider().opacity(0.22)
+
+                                    fieldRow(title: "Client") {
+                                        Picker("Client", selection: $selectedClient) {
+                                            Text("None").tag(Client?.none)
+                                            ForEach(scopedClients) { client in
+                                                Text(client.name).tag(Client?.some(client))
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .pickerStyle(.menu)
+                                    }
+                                }
+                            }
+                        }
+
+                        if scopedClients.isEmpty {
+                            card {
+                                Text("No clients yet. You can add a client from the invoice detail screen or we’ll add a Clients tab later.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
-                }
-
-                if scopedClients.isEmpty {
-                    Section {
-                        Text("No clients yet. You can add a client from the invoice detail screen or we’ll add a Clients tab later.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                 }
             }
             .navigationTitle("New Invoice")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -59,6 +87,33 @@ struct NewInvoiceView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                    )
+            )
+    }
+
+    @ViewBuilder
+    private func fieldRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 10)
+            content()
+                .font(.subheadline)
+        }
+        .frame(minHeight: 42)
     }
 
     private func profileEnsured() -> BusinessProfile {

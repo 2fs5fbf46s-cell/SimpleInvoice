@@ -16,12 +16,21 @@ struct ClientListView: View {
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
 
     @State private var searchText: String = ""
+    @State private var filter: Filter = .all
 
     // New client sheet
     @State private var newClientDraft: Client? = nil
     @State private var openExistingClient: Client? = nil
     @State private var showOpenExistingBanner = false
     @State private var selectedClient: Client? = nil
+
+    private enum Filter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case withJobs = "With Jobs"
+        case noJobs = "No Jobs"
+
+        var id: String { rawValue }
+    }
 
     // MARK: - Scoping
 
@@ -31,9 +40,19 @@ struct ClientListView: View {
     }
 
     private var filtered: [Client] {
+        let base: [Client]
+        switch filter {
+        case .all:
+            base = scopedClients
+        case .withJobs:
+            base = scopedClients.filter { jobsCount(for: $0) > 0 }
+        case .noJobs:
+            base = scopedClients.filter { jobsCount(for: $0) == 0 }
+        }
+
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return scopedClients }
-        return scopedClients.filter {
+        if q.isEmpty { return base }
+        return base.filter {
             $0.name.lowercased().contains(q)
             || $0.email.lowercased().contains(q)
             || $0.phone.lowercased().contains(q)
@@ -49,6 +68,15 @@ struct ClientListView: View {
             SBWTheme.headerWash()
 
             List {
+                Section {
+                    Picker("Filter", selection: $filter) {
+                        ForEach(Filter.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 if activeBiz.activeBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
@@ -71,6 +99,7 @@ struct ClientListView: View {
                             row(client)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                     .onDelete(perform: deleteFiltered)
                 }
@@ -187,7 +216,8 @@ struct ClientListView: View {
                 subtitle: subtitle.isEmpty ? " " : subtitle
             )
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     // MARK: - Add / Delete
