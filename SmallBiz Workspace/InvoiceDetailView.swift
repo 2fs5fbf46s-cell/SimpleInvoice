@@ -57,6 +57,9 @@ struct InvoiceDetailView: View {
     @State private var showAdvancedOptions = false
     @State private var showMarkPaidConfirm = false
     @State private var showMarkUnpaidConfirm = false
+    @State private var manualReports: [ManualPaymentReportDTO] = []
+    @State private var loadingManualReports = false
+    @State private var resolvingManualReportId: String? = nil
 
     // Job picker
     @State private var showJobPicker = false
@@ -127,6 +130,7 @@ struct InvoiceDetailView: View {
             TotalsDisclosureSection
             ClientPortalSection
             StatusSection
+            PaymentReportsSection
             AdvancedOptionsSection
         }
         .listStyle(.plain)
@@ -185,6 +189,7 @@ struct InvoiceDetailView: View {
             EstimateDecisionSync.applyCachedDecisionIfAny(for: invoice, in: modelContext)
             EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             await refreshEstimateStatusFromPortal(estimate: invoice)
+            await refreshManualReports()
         }
         .onChange(of: invoice.estimateStatus) { _, _ in
             let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1026,6 +1031,82 @@ struct InvoiceDetailView: View {
         }
     }
 
+    private var PaymentReportsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Payment Reports")
+                        .font(.headline)
+                    Spacer()
+                    if loadingManualReports {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Button("Refresh") {
+                            Task { await refreshManualReports() }
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+
+                let pendingForInvoice = manualReports.filter {
+                    $0.invoiceId == invoice.id.uuidString && $0.status == "pending"
+                }
+
+                if pendingForInvoice.isEmpty {
+                    Text("No pending manual payment reports.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(pendingForInvoice) { report in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(report.method.uppercased())
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.white.opacity(0.12))
+                                    .clipShape(Capsule())
+                                Spacer()
+                                Text(currencyString(fromCents: report.amountCents))
+                                    .font(.subheadline.weight(.semibold))
+                            }
+
+                            Text(Date(timeIntervalSince1970: TimeInterval(report.createdAtMs) / 1000.0), style: .time)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if let reference = report.reference, !reference.isEmpty {
+                                Text("Ref: \(reference)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            HStack(spacing: 10) {
+                                Button("Approve") {
+                                    Task { await resolveManualReport(reportId: report.id, action: "approve") }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(SBWTheme.brandGreen)
+                                .disabled(resolvingManualReportId == report.id)
+
+                                Button("Reject") {
+                                    Task { await resolveManualReport(reportId: report.id, action: "reject") }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(resolvingManualReportId == report.id)
+                            }
+                        }
+                        .padding(10)
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
+            .sbwCardRow()
+        }
+    }
+
     private var AdvancedOptionsSection: some View {
         Section {
             DisclosureGroup(isExpanded: $showAdvancedOptions) {
@@ -1506,7 +1587,11 @@ struct InvoiceDetailView: View {
 
         let businessName = resolvedPortalBusinessName()
 
-        let token = try await PortalBackend.shared.createInvoicePortalToken(invoice: invoice, businessName: businessName)
+        let token = try await PortalBackend.shared.createInvoicePortalToken(
+            invoice: invoice,
+            business: businesses.first(where: { $0.id == invoice.businessID }),
+            businessName: businessName
+        )
 
         let modeValue = (mode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
             ? mode!
@@ -2137,6 +2222,7 @@ struct InvoiceDetailView: View {
     private func refreshInvoicePortalState() async {
         await refreshInvoicePaidStatusFromPortal()
         await refreshEstimateStatusFromPortal(estimate: invoice)
+        await refreshManualReports()
     }
 
     @MainActor
@@ -2196,6 +2282,36 @@ struct InvoiceDetailView: View {
             // Optional: show a non-blocking error
             // portalError = "Couldn’t refresh payment status"
             print("Payment status refresh failed:", error)
+        }
+    }
+
+    @MainActor
+    private func refreshManualReports() async {
+        guard !loadingManualReports else { return }
+        loadingManualReports = true
+        defer { loadingManualReports = false }
+
+        do {
+            let reports = try await PortalPaymentsAPI.shared.fetchManualPaymentReports(
+                businessId: invoice.businessID
+            )
+            manualReports = reports
+        } catch {
+            print("Manual reports refresh failed:", error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func resolveManualReport(reportId: String, action: String) async {
+        guard resolvingManualReportId == nil else { return }
+        resolvingManualReportId = reportId
+        defer { resolvingManualReportId = nil }
+
+        do {
+            try await PortalPaymentsAPI.shared.resolveManualPaymentReport(reportId: reportId, action: action)
+            await refreshInvoicePortalState()
+        } catch {
+            portalError = error.localizedDescription
         }
     }
 

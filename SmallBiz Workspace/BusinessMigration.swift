@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 11
+    static let currentVersion = 12
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -151,9 +151,44 @@ enum BusinessMigration {
             }
         }
 
+        // 8️⃣ Payment setup defaults:
+        for business in try modelContext.fetch(FetchDescriptor<Business>()) {
+            if business.paypalMeFallback?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                let legacy = business.paypalMeUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                business.paypalMeFallback = legacy.isEmpty ? nil : legacy
+            }
+            if business.paypalMeUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.paypalMeUrl = nil
+            }
+            if business.squareLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.squareLink = nil
+            }
+            if business.cashAppHandleOrLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.cashAppHandleOrLink = nil
+            }
+            if business.venmoHandleOrLink?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.venmoHandleOrLink = nil
+            }
+            if business.achRecipientName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.achRecipientName = nil
+            }
+            if business.achBankName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.achBankName = nil
+            }
+            if business.achAccountLast4?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.achAccountLast4 = nil
+            }
+            if business.achRoutingLast4?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.achRoutingLast4 = nil
+            }
+            if business.achInstructions?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.achInstructions = nil
+            }
+        }
+
         try modelContext.save()
 
-        // 8️⃣ Mark migration complete
+        // 9️⃣ Mark migration complete
         defaults.set(currentVersion, forKey: key)
 
         print("✅ Business migration v\(currentVersion) completed")

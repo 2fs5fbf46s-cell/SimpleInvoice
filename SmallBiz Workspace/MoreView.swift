@@ -33,6 +33,12 @@ struct MoreView: View {
                 destination: AnyView(BusinessProfileView())
             ),
             MoreItem(
+                title: "Setup Payments",
+                systemImage: "creditcard.fill",
+                keyword: "Payments",
+                destination: AnyView(SetupPaymentsView())
+            ),
+            MoreItem(
                 title: "Website",
                 systemImage: "globe",
                 keyword: "Website",

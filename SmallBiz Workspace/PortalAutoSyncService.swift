@@ -99,6 +99,7 @@ enum PortalAutoSyncService {
             } else {
                 try await PortalBackend.shared.indexInvoiceForPortalDirectory(
                     invoice: invoice,
+                    business: business,
                     pdfUrl: blobUrl
                 )
             }

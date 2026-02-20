@@ -715,7 +715,12 @@ final class PortalBackend {
 
     // MARK: - Token builders
 
-    func createInvoicePortalToken(invoice: Invoice, businessName: String? = nil, mode: String = "live") async throws -> String {
+    func createInvoicePortalToken(
+        invoice: Invoice,
+        business: Business? = nil,
+        businessName: String? = nil,
+        mode: String = "live"
+    ) async throws -> String {
         guard let clientId = invoice.client?.id else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice must be linked to a client to create a portal link."])
         }
@@ -741,7 +746,8 @@ final class PortalBackend {
             "title": "Invoice \(invoice.invoiceNumber)",
             "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
             "brandName": (businessName ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-            "clientPortalEnabled": invoice.client?.portalEnabled ?? true
+            "clientPortalEnabled": invoice.client?.portalEnabled ?? true,
+            "paymentMethods": paymentMethodsPayload(for: business)
         ]
 
         return try await seedToken(payload: body).token
@@ -1135,7 +1141,11 @@ final class PortalBackend {
     }
 
     @MainActor
-    func indexInvoiceForPortalDirectory(invoice: Invoice, pdfUrl: String? = nil) async throws {
+    func indexInvoiceForPortalDirectory(
+        invoice: Invoice,
+        business: Business? = nil,
+        pdfUrl: String? = nil
+    ) async throws {
         guard let client = invoice.client else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice is not linked to a client."])
         }
@@ -1167,7 +1177,8 @@ final class PortalBackend {
             "title": "Invoice \(invoice.invoiceNumber)",
             "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
             "clientPortalEnabled": client.portalEnabled,
-            "pdfUrl": (pdfUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            "pdfUrl": (pdfUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "paymentMethods": paymentMethodsPayload(for: business)
         ]
 
         _ = try await seedToken(payload: body)
@@ -1612,6 +1623,28 @@ final class PortalBackend {
         let fallback = ISO8601DateFormatter()
         fallback.formatOptions = [.withInternetDateTime]
         return fallback.date(from: trimmed)
+    }
+
+    private func paymentMethodsPayload(for business: Business?) -> [String: Any] {
+        guard let business else { return [:] }
+        return [
+            "stripeEnabled": business.stripeChargesEnabled && business.stripePayoutsEnabled,
+            "paypalPlatformEnabled": business.paypalEnabled,
+            "paypalFallbackUrl": (business.paypalMeFallback ?? business.paypalMeUrl ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            "squareEnabled": business.squareEnabled,
+            "squareLink": (business.squareLink ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "cashAppEnabled": business.cashAppEnabled,
+            "cashAppLink": (business.cashAppHandleOrLink ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "venmoEnabled": business.venmoEnabled,
+            "venmoLink": (business.venmoHandleOrLink ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "achEnabled": business.achEnabled,
+            "achRecipientName": (business.achRecipientName ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "achBankName": (business.achBankName ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "achAccountLast4": (business.achAccountLast4 ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "achRoutingLast4": (business.achRoutingLast4 ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            "achInstructions": (business.achInstructions ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
     }
 
     // MARK: - Booking Admin
