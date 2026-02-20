@@ -66,7 +66,13 @@ struct EstimateListView: View {
                 }
 
                 // MARK: - Content
-                if filteredEstimates.isEmpty {
+                if activeBiz.activeBusinessID == nil {
+                    ContentUnavailableView(
+                        "No Business Selected",
+                        systemImage: "building.2",
+                        description: Text("Select a business to view estimates.")
+                    )
+                } else if filteredEstimates.isEmpty {
                     ContentUnavailableView(
                         "No Estimates",
                         systemImage: "doc.text",
@@ -80,6 +86,7 @@ struct EstimateListView: View {
                             row(estimate)
                         }
                         .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
 
                             Button {
@@ -282,10 +289,23 @@ struct EstimateListView: View {
         let total = estimate.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
         let subtitle = "\(statusText) • \(clientName) • \(date) • \(total)"
 
-        return SBWNavigationRow(
-            title: "Estimate \(estimate.invoiceNumber)",
-            subtitle: subtitle
-        )
+        return HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Estimates"))
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 36, height: 36)
+
+            SBWNavigationRow(
+                title: "Estimate \(estimate.invoiceNumber)",
+                subtitle: subtitle
+            )
+        }
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 
     private func estimatePillText(for estimate: Invoice) -> String {
