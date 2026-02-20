@@ -547,28 +547,50 @@ private struct CatalogItemEditorSheet: View {
     let onDone: () -> Void
 
     var body: some View {
-        Form {
-            Section("Item") {
-                TextField("Name", text: $item.name)
-                TextField("Details", text: $item.details, axis: .vertical)
-                    .lineLimit(2...6)
-            }
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
 
-            Section("Pricing") {
-                TextField("Unit Price", value: $item.unitPrice, format: .number)
-                    .keyboardType(.decimalPad)
+            ScrollView {
+                VStack(spacing: 14) {
+                    editorCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Item")
+                                .font(.headline)
+                            TextField("Name", text: $item.name)
+                            TextField("Details", text: $item.details, axis: .vertical)
+                                .lineLimit(2...6)
+                        }
+                    }
 
-                Stepper(value: $item.defaultQuantity, in: 1...999, step: 1) {
-                    Text("Default Qty: \(item.defaultQuantity, format: .number)")
-                }
-            }
+                    editorCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Pricing")
+                                .font(.headline)
+                            TextField("Unit Price", value: $item.unitPrice, format: .number)
+                                .keyboardType(.decimalPad)
 
-            Section("Category") {
-                Picker("Category", selection: $item.category) {
-                    ForEach(categories, id: \.self) { c in
-                        Text(c).tag(c)
+                            Stepper(value: $item.defaultQuantity, in: 1...999, step: 1) {
+                                Text("Default Qty: \(item.defaultQuantity, format: .number)")
+                            }
+                        }
+                    }
+
+                    editorCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Category")
+                                .font(.headline)
+                            Picker("Category", selection: $item.category) {
+                                ForEach(categories, id: \.self) { c in
+                                    Text(c).tag(c)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
         }
         .navigationTitle("Saved Item")
@@ -582,6 +604,20 @@ private struct CatalogItemEditorSheet: View {
                     .fontWeight(.semibold)
             }
         }
+    }
+
+    @ViewBuilder
+    private func editorCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                    )
+            )
     }
 }
 

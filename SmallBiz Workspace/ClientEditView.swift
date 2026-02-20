@@ -341,75 +341,94 @@ struct ClientEditView: View {
 
     private var sendPortalSheetView: some View {
         NavigationStack {
-            Form {
-                Section("Send via") {
-                    Toggle("Email", isOn: $sendByEmail)
-                    Toggle("SMS", isOn: $sendBySms)
-                }
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                SBWTheme.headerWash()
 
-                Section("Recipient") {
-                    HStack {
-                        Text("Email")
-                        Spacer()
-                        Text(client.email.isEmpty ? "Missing" : client.email)
-                            .foregroundStyle(client.email.isEmpty ? .red : .secondary)
-                            .lineLimit(1)
-                    }
+                ScrollView {
+                    VStack(spacing: 14) {
+                        cardSection("Send via") {
+                            Toggle("Email", isOn: $sendByEmail)
+                            Toggle("SMS", isOn: $sendBySms)
+                        }
 
-                    HStack {
-                        Text("Phone")
-                        Spacer()
-                        Text(client.phone.isEmpty ? "Missing" : client.phone)
-                            .foregroundStyle(client.phone.isEmpty ? .red : .secondary)
-                            .lineLimit(1)
-                    }
-                }
-
-                Section("Link Settings") {
-                    Stepper("Expires in \(ttlDays) day(s)", value: $ttlDays, in: 1...30)
-                }
-
-                Section("Optional Message") {
-                    TextField("Custom message (optional)", text: $customMessage, axis: .vertical)
-                        .lineLimit(2...6)
-                }
-
-                Section {
-                    Button {
-                        sendPortalLinkNow()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if sendingPortalLink {
-                                ProgressView()
-                            } else {
-                                Text("Send Portal Link")
-                                    .fontWeight(.semibold)
+                        cardSection("Recipient") {
+                            HStack {
+                                Text("Email")
+                                Spacer()
+                                Text(client.email.isEmpty ? "Missing" : client.email)
+                                    .foregroundStyle(client.email.isEmpty ? .red : .secondary)
+                                    .lineLimit(1)
                             }
-                            Spacer()
-                        }
-                    }
-                    .disabled(sendingPortalLink || (!sendByEmail && !sendBySms))
-                }
 
-                if let link = lastSentPortalLink, !link.isEmpty {
-                    Section("Last Link") {
-                        Text(link)
-                            .font(.footnote)
-                            .textSelection(.enabled)
-
-                        Button {
-                            UIPasteboard.general.string = link
-                        } label: {
-                            Label("Copy Link", systemImage: "doc.on.doc")
-                        }
-
-                        if let url = URL(string: link) {
-                            ShareLink(item: url) {
-                                Label("Share…", systemImage: "square.and.arrow.up")
+                            HStack {
+                                Text("Phone")
+                                Spacer()
+                                Text(client.phone.isEmpty ? "Missing" : client.phone)
+                                    .foregroundStyle(client.phone.isEmpty ? .red : .secondary)
+                                    .lineLimit(1)
                             }
                         }
+
+                        cardSection("Link Settings") {
+                            Stepper("Expires in \(ttlDays) day(s)", value: $ttlDays, in: 1...30)
+                        }
+
+                        cardSection("Optional Message") {
+                            TextField("Custom message (optional)", text: $customMessage, axis: .vertical)
+                                .lineLimit(2...6)
+                        }
+
+                        VStack {
+                            Button {
+                                sendPortalLinkNow()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    if sendingPortalLink {
+                                        ProgressView()
+                                    } else {
+                                        Text("Send Portal Link")
+                                            .fontWeight(.semibold)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(sendingPortalLink || (!sendByEmail && !sendBySms))
+                        }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                                )
+                        )
+
+                        if let link = lastSentPortalLink, !link.isEmpty {
+                            cardSection("Last Link") {
+                                Text(link)
+                                    .font(.footnote)
+                                    .textSelection(.enabled)
+
+                                Button {
+                                    UIPasteboard.general.string = link
+                                } label: {
+                                    Label("Copy Link", systemImage: "doc.on.doc")
+                                }
+
+                                if let url = URL(string: link) {
+                                    ShareLink(item: url) {
+                                        Label("Share…", systemImage: "square.and.arrow.up")
+                                    }
+                                }
+                            }
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                 }
             }
             .navigationTitle("Send Portal Link")
@@ -419,6 +438,24 @@ struct ClientEditView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func cardSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(SBWTheme.cardStroke, lineWidth: 1)
+                )
+        )
     }
 
     private var clientDisplayName: String {
