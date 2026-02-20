@@ -54,7 +54,13 @@ struct InvoiceListView: View {
                 }
 
                 // MARK: - Content
-                if filteredInvoices.isEmpty {
+                if activeBiz.activeBusinessID == nil {
+                    ContentUnavailableView(
+                        "No Business Selected",
+                        systemImage: "building.2",
+                        description: Text("Select a business to view invoices.")
+                    )
+                } else if filteredInvoices.isEmpty {
                     ContentUnavailableView(
                         "No Invoices",
                         systemImage: "doc.text",
