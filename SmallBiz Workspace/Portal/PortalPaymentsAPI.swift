@@ -1,5 +1,12 @@
 import Foundation
 
+struct PaymentServiceResponseError: LocalizedError {
+    let message: String
+    let details: String
+
+    var errorDescription: String? { message }
+}
+
 struct PayPalStatus: Equatable {
     let connected: Bool
     let merchantIdLast4: String?
@@ -14,6 +21,12 @@ struct StripeConnectStatus: Equatable {
 }
 
 struct PayPalPlatformStatus: Equatable {
+    let enabled: Bool
+    let env: String?
+}
+
+struct PayPalStatusResponse: Decodable {
+    let ok: Bool
     let enabled: Bool
     let env: String?
 }
@@ -59,11 +72,6 @@ final class PortalPaymentsAPI {
         let chargesEnabled: Bool?
         let payoutsEnabled: Bool?
         let onboardingStatus: String?
-    }
-
-    private struct PayPalPlatformStatusResponseDTO: Decodable {
-        let enabled: Bool?
-        let env: String?
     }
 
     private struct ManualReportsResponseDTO: Decodable {
@@ -244,15 +252,30 @@ final class PortalPaymentsAPI {
     }
 
     func fetchPayPalPlatformStatus() async throws -> PayPalPlatformStatus {
-        let url = baseURL.appendingPathComponent("/api/payments/paypal/platform-status")
+        let url = baseURL.appendingPathComponent("/api/payments/paypal/status")
         let (data, resp) = try await URLSession.shared.data(from: url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
-        guard (200...299).contains(http.statusCode) else {
-            throw PortalBackendError.http(http.statusCode, body: raw)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PaymentServiceResponseError(
+                message: "Payment service is unavailable (unexpected response). Please try again.",
+                details: raw
+            )
         }
-        let dto = try decoder().decode(PayPalPlatformStatusResponseDTO.self, from: data)
-        return PayPalPlatformStatus(enabled: dto.enabled ?? false, env: dto.env)
+        guard http.statusCode == 200 else {
+            throw PaymentServiceResponseError(
+                message: "Unable to check PayPal status right now. Please try again.",
+                details: raw
+            )
+        }
+        do {
+            let dto = try decoder().decode(PayPalStatusResponse.self, from: data)
+            return PayPalPlatformStatus(enabled: dto.enabled, env: dto.env)
+        } catch {
+            throw PaymentServiceResponseError(
+                message: "Payment service is unavailable (unexpected response). Please try again.",
+                details: raw
+            )
+        }
     }
 
     func fetchManualPaymentReports(businessId: UUID) async throws -> [ManualPaymentReportDTO] {
