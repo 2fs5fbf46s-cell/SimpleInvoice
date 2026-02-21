@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct SetupPaymentsView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
@@ -11,7 +12,8 @@ struct SetupPaymentsView: View {
     @State private var stripeStatus: StripeConnectStatus?
     @State private var isLoadingStripe = false
     @State private var isStartingStripe = false
-    @State private var stripeError: String?
+    @State private var stripeAlertMessage: String?
+    @State private var stripeAlertDetails: String?
     @State private var showStripeError = false
     @State private var stripeURL: URL?
     @State private var showStripeSafari = false
@@ -19,7 +21,9 @@ struct SetupPaymentsView: View {
 
     @State private var isLoadingPayPalPlatform = false
     @State private var payPalPlatformEnabled = false
-    @State private var payPalError: String?
+    @State private var payPalEnv: String?
+    @State private var payPalAlertMessage: String?
+    @State private var payPalAlertDetails: String?
     @State private var showPayPalError = false
 
     @State private var showingACHSheet = false
@@ -27,6 +31,7 @@ struct SetupPaymentsView: View {
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
+
             SBWTheme.brandGradient
                 .opacity(SBWTheme.headerWashOpacity)
                 .blur(radius: SBWTheme.headerWashBlur)
@@ -37,6 +42,7 @@ struct SetupPaymentsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+
                     if let business {
                         stripeCard(business)
                         payPalCard(business)
@@ -47,13 +53,15 @@ struct SetupPaymentsView: View {
                     } else {
                         ProgressView("Loading…")
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                            .padding(.vertical, 24)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 24)
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Spacer().frame(height: 24)
         }
         .navigationTitle("Setup Payments")
         .navigationBarTitleDisplayMode(.inline)
@@ -90,15 +98,29 @@ struct SetupPaymentsView: View {
                     .presentationDetents([.medium, .large])
             }
         }
-        .alert("Stripe Error", isPresented: $showStripeError) {
+        .alert("Stripe", isPresented: $showStripeError) {
+            #if DEBUG
+            if let details = stripeAlertDetails, !details.isEmpty {
+                Button("Copy Details") {
+                    UIPasteboard.general.string = details
+                }
+            }
+            #endif
             Button("OK", role: .cancel) {}
         } message: {
-            Text(stripeError ?? "Something went wrong.")
+            Text(stripeAlertMessage ?? "Payment service is unavailable. Please try again.")
         }
-        .alert("PayPal Error", isPresented: $showPayPalError) {
+        .alert("PayPal", isPresented: $showPayPalError) {
+            #if DEBUG
+            if let details = payPalAlertDetails, !details.isEmpty {
+                Button("Copy Details") {
+                    UIPasteboard.general.string = details
+                }
+            }
+            #endif
             Button("OK", role: .cancel) {}
         } message: {
-            Text(payPalError ?? "Something went wrong.")
+            Text(payPalAlertMessage ?? "Payment service is unavailable. Please try again.")
         }
     }
 
@@ -114,271 +136,244 @@ struct SetupPaymentsView: View {
 
     private func stripeCard(_ business: Business) -> some View {
         let status = stripeState
-        return providerCard(
-            logo: "stripe_logo",
-            title: "Stripe Connect",
-            description: "Accept cards and wallet payments with connected payouts.",
-            methodChips: ["Visa", "Mastercard", "Apple Pay"],
-            feeNote: "Fees vary by region and card type.",
-            status: status.label,
-            primaryTitle: isStartingStripe ? "Opening…" : (status.isConnected ? "Manage Stripe" : "Connect with Stripe"),
-            secondaryTitle: "Refresh Status",
-            primaryDisabled: isStartingStripe || isLoadingStripe,
-            secondaryDisabled: isLoadingStripe || isStartingStripe
-        ) {
-            await startStripe()
-        } onSecondaryTap: {
-            await refreshStripeStatus()
+        return providerCardContainer {
+            providerHeader(
+                logo: "stripe_logo",
+                title: "Stripe Connect",
+                description: "Accept cards and wallet payments with connected payouts.",
+                status: status.label
+            )
+            methodsRow(["Visa", "Mastercard", "Apple Pay"])
+            feeNote("Fees vary by region and card type.")
+            actionButtonsRow(
+                primaryTitle: isStartingStripe ? "Opening…" : (status.isConnected ? "Manage Stripe" : "Connect with Stripe"),
+                secondaryTitle: "Refresh Status",
+                primaryDisabled: isStartingStripe || isLoadingStripe,
+                secondaryDisabled: isLoadingStripe || isStartingStripe
+            ) {
+                await startStripe()
+            } onSecondaryTap: {
+                await refreshStripeStatus()
+            }
         }
     }
 
     private func payPalCard(_ business: Business) -> some View {
-        providerCard(
-            logo: "paypal_logo",
-            title: "PayPal",
-            description: "Platform-first PayPal checkout with optional fallback link.",
-            methodChips: ["PayPal", "Cards"],
-            feeNote: "PayPal fees apply per transaction.",
-            status: payPalPlatformEnabled ? "Enabled" : "Not connected",
-            primaryTitle: payPalPlatformEnabled ? "Enabled" : (isLoadingPayPalPlatform ? "Checking…" : "Check Status"),
-            secondaryTitle: nil,
-            primaryDisabled: isLoadingPayPalPlatform,
-            secondaryDisabled: true
-        ) {
-            await refreshPayPalPlatformStatus()
-        } onSecondaryTap: { }
-        .overlay(alignment: .bottom) {
-            VStack(spacing: 8) {
-                Divider()
-                TextField(
-                    "PayPal.me fallback (optional)",
-                    text: Binding(
-                        get: { business.paypalMeFallback ?? "" },
-                        set: {
-                            business.paypalMeFallback = normalizeURL($0)
-                            business.paypalMeUrl = business.paypalMeFallback
-                            save()
-                        }
-                    )
-                )
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .padding(.top, 8)
+        providerCardContainer {
+            providerHeader(
+                logo: "paypal_logo",
+                title: "PayPal",
+                description: "Platform-first PayPal checkout with optional fallback link.",
+                status: payPalPlatformEnabled ? "Enabled (backend env)" : "Unavailable"
+            )
+            methodsRow(["PayPal", "Cards"])
+            feeNote("PayPal fees apply per transaction.")
+
+            actionButtonsRow(
+                primaryTitle: isLoadingPayPalPlatform ? "Checking…" : "Check Status",
+                secondaryTitle: nil,
+                primaryDisabled: isLoadingPayPalPlatform,
+                secondaryDisabled: true
+            ) {
+                await refreshPayPalPlatformStatus()
+            } onSecondaryTap: {
+                // no-op
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 16)
+
+            if let env = payPalEnv, !env.isEmpty {
+                Text("Environment: \(env)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField(
+                "PayPal.me fallback (optional)",
+                text: Binding(
+                    get: { business.paypalMeFallback ?? "" },
+                    set: {
+                        business.paypalMeFallback = normalizeURL($0)
+                        business.paypalMeUrl = business.paypalMeFallback
+                        save()
+                    }
+                )
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
     private func squareCard(_ business: Business) -> some View {
-        providerCard(
-            logo: "square_logo",
-            title: "Square",
-            description: "Manual Square link with payment reconciliation approval.",
-            methodChips: ["Cards", "Wallets"],
-            feeNote: "Use your hosted Square payment link.",
-            status: business.squareEnabled ? "Enabled" : "Not connected",
-            primaryTitle: "Enable Square",
-            secondaryTitle: nil,
-            primaryDisabled: false,
-            secondaryDisabled: true
-        ) {
-            business.squareEnabled = true
-            business.squareLink = normalizeURL(business.squareLink)
-            save()
-        } onSecondaryTap: { }
-        .overlay(alignment: .bottom) {
-            VStack(spacing: 8) {
-                Divider()
-                Toggle("Enable Square", isOn: Binding(
-                    get: { business.squareEnabled },
-                    set: {
-                        business.squareEnabled = $0
-                        save()
-                    }
-                ))
-                TextField("https://square.link/...", text: Binding(
-                    get: { business.squareLink ?? "" },
-                    set: {
-                        business.squareLink = normalizeURL($0)
-                        save()
-                    }
-                ))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+        providerCardContainer {
+            providerHeader(
+                logo: "square_logo",
+                title: "Square",
+                description: "Manual Square link with payment reconciliation approval.",
+                status: business.squareEnabled ? "Enabled" : "Not connected"
+            )
+            methodsRow(["Cards", "Wallets"])
+            feeNote("Use your hosted Square payment link.")
+
+            toggleRow("Enable Square", isOn: Binding(
+                get: { business.squareEnabled },
+                set: {
+                    business.squareEnabled = $0
+                    save()
+                }
+            ))
+
+            actionButtonsRow(
+                primaryTitle: "Enable Square",
+                secondaryTitle: nil,
+                primaryDisabled: false,
+                secondaryDisabled: true
+            ) {
+                business.squareEnabled = true
+                business.squareLink = normalizeURL(business.squareLink)
+                save()
+            } onSecondaryTap: {
+                // no-op
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 16)
+
+            TextField("https://square.link/...", text: Binding(
+                get: { business.squareLink ?? "" },
+                set: {
+                    business.squareLink = normalizeURL($0)
+                    save()
+                }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
     private func cashAppCard(_ business: Business) -> some View {
-        providerCard(
-            logo: "cashapp_logo",
-            title: "Cash App",
-            description: "Accept Cash App with manual payment reconciliation.",
-            methodChips: ["Cash App"],
-            feeNote: "Customers can pay with your Cash App profile.",
-            status: business.cashAppEnabled ? "Enabled" : "Not connected",
-            primaryTitle: "Enable Cash App",
-            secondaryTitle: nil,
-            primaryDisabled: false,
-            secondaryDisabled: true
-        ) {
-            business.cashAppEnabled = true
-            business.cashAppHandleOrLink = normalizeCashAppInput(business.cashAppHandleOrLink ?? "")
-            save()
-        } onSecondaryTap: { }
-        .overlay(alignment: .bottom) {
-            VStack(spacing: 8) {
-                Divider()
-                Toggle("Enable Cash App", isOn: Binding(
-                    get: { business.cashAppEnabled },
-                    set: {
-                        business.cashAppEnabled = $0
-                        save()
-                    }
-                ))
-                TextField("$handle or URL", text: Binding(
-                    get: { business.cashAppHandleOrLink ?? "" },
-                    set: {
-                        business.cashAppHandleOrLink = normalizeCashAppInput($0)
-                        save()
-                    }
-                ))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+        providerCardContainer {
+            providerHeader(
+                logo: "cashapp_logo",
+                title: "Cash App",
+                description: "Accept Cash App with manual payment reconciliation.",
+                status: business.cashAppEnabled ? "Enabled" : "Not connected"
+            )
+            methodsRow(["Cash App"])
+            feeNote("Customers can pay with your Cash App profile.")
+
+            toggleRow("Enable Cash App", isOn: Binding(
+                get: { business.cashAppEnabled },
+                set: {
+                    business.cashAppEnabled = $0
+                    save()
+                }
+            ))
+
+            actionButtonsRow(
+                primaryTitle: "Enable Cash App",
+                secondaryTitle: nil,
+                primaryDisabled: false,
+                secondaryDisabled: true
+            ) {
+                business.cashAppEnabled = true
+                business.cashAppHandleOrLink = normalizeCashAppInput(business.cashAppHandleOrLink ?? "")
+                save()
+            } onSecondaryTap: {
+                // no-op
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 16)
+
+            TextField("$handle or URL", text: Binding(
+                get: { business.cashAppHandleOrLink ?? "" },
+                set: {
+                    business.cashAppHandleOrLink = normalizeCashAppInput($0)
+                    save()
+                }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
     private func venmoCard(_ business: Business) -> some View {
-        providerCard(
-            logo: "venmo_logo",
-            title: "Venmo",
-            description: "Use a Venmo profile link and reconcile manual reports.",
-            methodChips: ["Venmo"],
-            feeNote: "Use your public Venmo profile link.",
-            status: business.venmoEnabled ? "Enabled" : "Not connected",
-            primaryTitle: "Enable Venmo",
-            secondaryTitle: nil,
-            primaryDisabled: false,
-            secondaryDisabled: true
-        ) {
-            business.venmoEnabled = true
-            business.venmoHandleOrLink = normalizeVenmoInput(business.venmoHandleOrLink ?? "")
-            save()
-        } onSecondaryTap: { }
-        .overlay(alignment: .bottom) {
-            VStack(spacing: 8) {
-                Divider()
-                Toggle("Enable Venmo", isOn: Binding(
-                    get: { business.venmoEnabled },
-                    set: {
-                        business.venmoEnabled = $0
-                        save()
-                    }
-                ))
-                TextField("@handle or URL", text: Binding(
-                    get: { business.venmoHandleOrLink ?? "" },
-                    set: {
-                        business.venmoHandleOrLink = normalizeVenmoInput($0)
-                        save()
-                    }
-                ))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+        providerCardContainer {
+            providerHeader(
+                logo: "venmo_logo",
+                title: "Venmo",
+                description: "Use a Venmo profile link and reconcile manual reports.",
+                status: business.venmoEnabled ? "Enabled" : "Not connected"
+            )
+            methodsRow(["Venmo"])
+            feeNote("Use your public Venmo profile link.")
+
+            toggleRow("Enable Venmo", isOn: Binding(
+                get: { business.venmoEnabled },
+                set: {
+                    business.venmoEnabled = $0
+                    save()
+                }
+            ))
+
+            actionButtonsRow(
+                primaryTitle: "Enable Venmo",
+                secondaryTitle: nil,
+                primaryDisabled: false,
+                secondaryDisabled: true
+            ) {
+                business.venmoEnabled = true
+                business.venmoHandleOrLink = normalizeVenmoInput(business.venmoHandleOrLink ?? "")
+                save()
+            } onSecondaryTap: {
+                // no-op
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 16)
+
+            TextField("@handle or URL", text: Binding(
+                get: { business.venmoHandleOrLink ?? "" },
+                set: {
+                    business.venmoHandleOrLink = normalizeVenmoInput($0)
+                    save()
+                }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
     private func achCard(_ business: Business) -> some View {
-        providerCard(
-            logo: "ach_logo",
-            title: "ACH",
-            description: "Manual bank transfer with instructions and reconciliation.",
-            methodChips: ["Bank Transfer"],
-            feeNote: "Store only account/routing last 4 digits.",
-            status: business.achEnabled ? "Enabled" : "Not connected",
-            primaryTitle: "Enable ACH",
-            secondaryTitle: "Edit Instructions",
-            primaryDisabled: false,
-            secondaryDisabled: false
-        ) {
-            business.achEnabled = true
-            save()
-        } onSecondaryTap: {
-            showingACHSheet = true
+        providerCardContainer {
+            providerHeader(
+                logo: "ach_logo",
+                title: "ACH",
+                description: "Manual bank transfer with instructions and reconciliation.",
+                status: business.achEnabled ? "Enabled" : "Not connected"
+            )
+            methodsRow(["Bank Transfer"])
+            feeNote("Store only account/routing last 4 digits.")
+
+            toggleRow("Enable ACH", isOn: Binding(
+                get: { business.achEnabled },
+                set: {
+                    business.achEnabled = $0
+                    save()
+                }
+            ))
+
+            actionButtonsRow(
+                primaryTitle: "Enable ACH",
+                secondaryTitle: "Edit Instructions",
+                primaryDisabled: false,
+                secondaryDisabled: false
+            ) {
+                business.achEnabled = true
+                save()
+            } onSecondaryTap: {
+                showingACHSheet = true
+            }
         }
     }
 
-    @ViewBuilder
-    private func providerCard(
-        logo: String,
-        title: String,
-        description: String,
-        methodChips: [String],
-        feeNote: String,
-        status: String,
-        primaryTitle: String,
-        secondaryTitle: String?,
-        primaryDisabled: Bool,
-        secondaryDisabled: Bool,
-        onPrimaryTap: @escaping () async -> Void,
-        onSecondaryTap: @escaping () async -> Void
-    ) -> some View {
+    private func providerCardContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(logo)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.headline)
-                    Text(description).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                statusPill(status)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(methodChips, id: \.self) { chip in
-                        Text(chip)
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-
-            Text(feeNote)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                Button(primaryTitle) {
-                    Task { await onPrimaryTap() }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
-                .disabled(primaryDisabled)
-
-                if let secondaryTitle {
-                    Button(secondaryTitle) {
-                        Task { await onSecondaryTap() }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(secondaryDisabled)
-                }
-            }
+            content()
         }
         .padding(16)
         .background(
@@ -386,6 +381,84 @@ struct SetupPaymentsView: View {
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 6)
         )
+    }
+
+    private func providerHeader(logo: String, title: String, description: String, status: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(logo)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 36, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            statusPill(status)
+        }
+    }
+
+    private func methodsRow(_ chips: [String]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(chips, id: \.self) { chip in
+                    Text(chip)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+    }
+
+    private func feeNote(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private func toggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+        }
+    }
+
+    private func actionButtonsRow(
+        primaryTitle: String,
+        secondaryTitle: String?,
+        primaryDisabled: Bool,
+        secondaryDisabled: Bool,
+        onPrimaryTap: @escaping () async -> Void,
+        onSecondaryTap: @escaping () async -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            Button(primaryTitle) {
+                Task { await onPrimaryTap() }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(SBWTheme.brandBlue)
+            .disabled(primaryDisabled)
+
+            if let secondaryTitle {
+                Button(secondaryTitle) {
+                    Task { await onSecondaryTap() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(secondaryDisabled)
+            }
+        }
     }
 
     private func statusPill(_ text: String) -> some View {
@@ -396,6 +469,7 @@ struct SetupPaymentsView: View {
             .padding(.vertical, 5)
             .background(Capsule().fill(colors.bg))
             .foregroundStyle(colors.fg)
+            .multilineTextAlignment(.trailing)
     }
 
     private var stripeState: (label: String, isConnected: Bool) {
@@ -434,8 +508,7 @@ struct SetupPaymentsView: View {
             stripeURL = url
             showStripeSafari = true
         } catch {
-            stripeError = error.localizedDescription
-            showStripeError = true
+            presentStripeError(error)
         }
     }
 
@@ -453,8 +526,7 @@ struct SetupPaymentsView: View {
             business.stripePayoutsEnabled = status.payoutsEnabled
             save()
         } catch {
-            stripeError = error.localizedDescription
-            showStripeError = true
+            presentStripeError(error)
         }
     }
 
@@ -465,12 +537,41 @@ struct SetupPaymentsView: View {
         do {
             let status = try await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
             payPalPlatformEnabled = status.enabled
+            payPalEnv = status.env
             business?.paypalEnabled = status.enabled
             save()
         } catch {
-            payPalError = error.localizedDescription
-            showPayPalError = true
+            presentPayPalError(error)
         }
+    }
+
+    private func presentStripeError(_ error: Error) {
+        let details = errorDebugDetails(error)
+        stripeAlertDetails = details
+        stripeAlertMessage = sanitizeErrorMessage(details, fallback: "Unable to connect to Stripe right now. Please try again.")
+        showStripeError = true
+    }
+
+    private func presentPayPalError(_ error: Error) {
+        let details = errorDebugDetails(error)
+        payPalAlertDetails = details
+        payPalAlertMessage = sanitizeErrorMessage(details, fallback: "Unable to check PayPal status right now. Please try again.")
+        showPayPalError = true
+    }
+
+    private func errorDebugDetails(_ error: Error) -> String {
+        if let serviceError = error as? PaymentServiceResponseError {
+            return serviceError.details
+        }
+        return (error as NSError).localizedDescription
+    }
+
+    private func sanitizeErrorMessage(_ details: String, fallback: String) -> String {
+        let lowered = details.lowercased()
+        if lowered.contains("<html") || lowered.contains("<!doctype") {
+            return "Payment service is unavailable (unexpected response). Please try again."
+        }
+        return fallback
     }
 
     @ViewBuilder
