@@ -255,15 +255,16 @@ final class PortalPaymentsAPI {
         let url = baseURL.appendingPathComponent("/api/payments/paypal/status")
         let (data, resp) = try await URLSession.shared.data(from: url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        let friendly = "PayPal status unavailable. Please verify backend deployment and environment variables."
         guard let http = resp as? HTTPURLResponse else {
             throw PaymentServiceResponseError(
-                message: "Payment service is unavailable (unexpected response). Please try again.",
+                message: friendly,
                 details: raw
             )
         }
         guard http.statusCode == 200 else {
             throw PaymentServiceResponseError(
-                message: "Unable to check PayPal status right now. Please try again.",
+                message: friendly,
                 details: raw
             )
         }
@@ -272,7 +273,7 @@ final class PortalPaymentsAPI {
             return PayPalPlatformStatus(enabled: dto.enabled, env: dto.env)
         } catch {
             throw PaymentServiceResponseError(
-                message: "Payment service is unavailable (unexpected response). Please try again.",
+                message: friendly,
                 details: raw
             )
         }
