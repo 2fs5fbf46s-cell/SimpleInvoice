@@ -140,9 +140,9 @@ struct SetupPaymentsView: View {
             providerHeader(
                 logo: "stripe_logo",
                 title: "Stripe Connect",
-                description: "Accept cards and wallet payments with connected payouts.",
                 status: status.label
             )
+            providerDescription("Accept cards and wallet payments with connected payouts.")
             methodsRow(["Visa", "Mastercard", "Apple Pay"])
             feeNote("Fees vary by region and card type.")
             actionButtonsRow(
@@ -163,9 +163,9 @@ struct SetupPaymentsView: View {
             providerHeader(
                 logo: "paypal_logo",
                 title: "PayPal",
-                description: "Platform-first PayPal checkout with optional fallback link.",
                 status: payPalPlatformEnabled ? "Enabled (backend env)" : "Unavailable"
             )
+            providerDescription("Platform-first PayPal checkout with optional fallback link.")
             methodsRow(["PayPal", "Cards"])
             feeNote("PayPal fees apply per transaction.")
 
@@ -208,43 +208,38 @@ struct SetupPaymentsView: View {
             providerHeader(
                 logo: "square_logo",
                 title: "Square",
-                description: "Manual Square link with payment reconciliation approval.",
                 status: business.squareEnabled ? "Enabled" : "Not connected"
             )
+            providerDescription("Manual Square link with payment reconciliation approval.")
             methodsRow(["Cards", "Wallets"])
             feeNote("Use your hosted Square payment link.")
+            Divider().opacity(0.35)
 
             toggleRow("Enable Square", isOn: Binding(
                 get: { business.squareEnabled },
-                set: {
-                    business.squareEnabled = $0
+                set: { newValue in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        business.squareEnabled = newValue
+                    }
                     save()
                 }
             ))
 
-            actionButtonsRow(
-                primaryTitle: "Enable Square",
-                secondaryTitle: nil,
-                primaryDisabled: false,
-                secondaryDisabled: true
-            ) {
-                business.squareEnabled = true
-                business.squareLink = normalizeURL(business.squareLink)
-                save()
-            } onSecondaryTap: {
-                // no-op
+            if business.squareEnabled {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("https://square.link/...", text: Binding(
+                        get: { business.squareLink ?? "" },
+                        set: {
+                            business.squareLink = normalizeURL($0)
+                            save()
+                        }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            TextField("https://square.link/...", text: Binding(
-                get: { business.squareLink ?? "" },
-                set: {
-                    business.squareLink = normalizeURL($0)
-                    save()
-                }
-            ))
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -253,43 +248,38 @@ struct SetupPaymentsView: View {
             providerHeader(
                 logo: "cashapp_logo",
                 title: "Cash App",
-                description: "Accept Cash App with manual payment reconciliation.",
                 status: business.cashAppEnabled ? "Enabled" : "Not connected"
             )
+            providerDescription("Accept Cash App with manual payment reconciliation.")
             methodsRow(["Cash App"])
             feeNote("Customers can pay with your Cash App profile.")
+            Divider().opacity(0.35)
 
             toggleRow("Enable Cash App", isOn: Binding(
                 get: { business.cashAppEnabled },
-                set: {
-                    business.cashAppEnabled = $0
+                set: { newValue in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        business.cashAppEnabled = newValue
+                    }
                     save()
                 }
             ))
 
-            actionButtonsRow(
-                primaryTitle: "Enable Cash App",
-                secondaryTitle: nil,
-                primaryDisabled: false,
-                secondaryDisabled: true
-            ) {
-                business.cashAppEnabled = true
-                business.cashAppHandleOrLink = normalizeCashAppInput(business.cashAppHandleOrLink ?? "")
-                save()
-            } onSecondaryTap: {
-                // no-op
+            if business.cashAppEnabled {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("$handle or URL", text: Binding(
+                        get: { business.cashAppHandleOrLink ?? "" },
+                        set: {
+                            business.cashAppHandleOrLink = normalizeCashAppInput($0)
+                            save()
+                        }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            TextField("$handle or URL", text: Binding(
-                get: { business.cashAppHandleOrLink ?? "" },
-                set: {
-                    business.cashAppHandleOrLink = normalizeCashAppInput($0)
-                    save()
-                }
-            ))
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -298,43 +288,38 @@ struct SetupPaymentsView: View {
             providerHeader(
                 logo: "venmo_logo",
                 title: "Venmo",
-                description: "Use a Venmo profile link and reconcile manual reports.",
                 status: business.venmoEnabled ? "Enabled" : "Not connected"
             )
+            providerDescription("Use a Venmo profile link and reconcile manual reports.")
             methodsRow(["Venmo"])
             feeNote("Use your public Venmo profile link.")
+            Divider().opacity(0.35)
 
             toggleRow("Enable Venmo", isOn: Binding(
                 get: { business.venmoEnabled },
-                set: {
-                    business.venmoEnabled = $0
+                set: { newValue in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        business.venmoEnabled = newValue
+                    }
                     save()
                 }
             ))
 
-            actionButtonsRow(
-                primaryTitle: "Enable Venmo",
-                secondaryTitle: nil,
-                primaryDisabled: false,
-                secondaryDisabled: true
-            ) {
-                business.venmoEnabled = true
-                business.venmoHandleOrLink = normalizeVenmoInput(business.venmoHandleOrLink ?? "")
-                save()
-            } onSecondaryTap: {
-                // no-op
+            if business.venmoEnabled {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("@handle or URL", text: Binding(
+                        get: { business.venmoHandleOrLink ?? "" },
+                        set: {
+                            business.venmoHandleOrLink = normalizeVenmoInput($0)
+                            save()
+                        }
+                    ))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-
-            TextField("@handle or URL", text: Binding(
-                get: { business.venmoHandleOrLink ?? "" },
-                set: {
-                    business.venmoHandleOrLink = normalizeVenmoInput($0)
-                    save()
-                }
-            ))
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -343,30 +328,31 @@ struct SetupPaymentsView: View {
             providerHeader(
                 logo: "ach_logo",
                 title: "ACH",
-                description: "Manual bank transfer with instructions and reconciliation.",
                 status: business.achEnabled ? "Enabled" : "Not connected"
             )
+            providerDescription("Manual bank transfer with instructions and reconciliation.")
             methodsRow(["Bank Transfer"])
             feeNote("Store only account/routing last 4 digits.")
+            Divider().opacity(0.35)
 
             toggleRow("Enable ACH", isOn: Binding(
                 get: { business.achEnabled },
-                set: {
-                    business.achEnabled = $0
+                set: { newValue in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        business.achEnabled = newValue
+                    }
                     save()
                 }
             ))
 
-            actionButtonsRow(
-                primaryTitle: "Enable ACH",
-                secondaryTitle: "Edit Instructions",
-                primaryDisabled: false,
-                secondaryDisabled: false
-            ) {
-                business.achEnabled = true
-                save()
-            } onSecondaryTap: {
-                showingACHSheet = true
+            if business.achEnabled {
+                VStack(alignment: .leading, spacing: 12) {
+                    Button("Edit Instructions") {
+                        showingACHSheet = true
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -383,7 +369,7 @@ struct SetupPaymentsView: View {
         )
     }
 
-    private func providerHeader(logo: String, title: String, description: String, status: String) -> some View {
+    private func providerHeader(logo: String, title: String, status: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(logo)
                 .resizable()
@@ -394,15 +380,18 @@ struct SetupPaymentsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 8)
 
             statusPill(status)
         }
+    }
+
+    private func providerDescription(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private func methodsRow(_ chips: [String]) -> some View {
@@ -555,7 +544,7 @@ struct SetupPaymentsView: View {
     private func presentPayPalError(_ error: Error) {
         let details = errorDebugDetails(error)
         payPalAlertDetails = details
-        payPalAlertMessage = sanitizeErrorMessage(details, fallback: "Unable to check PayPal status right now. Please try again.")
+        payPalAlertMessage = "PayPal status unavailable. Please verify backend deployment and environment variables."
         showPayPalError = true
     }
 
