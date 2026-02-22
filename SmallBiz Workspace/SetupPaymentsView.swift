@@ -482,7 +482,7 @@ struct SetupPaymentsView: View {
         } catch {
             let details = errorDebugDetails(error)
             stripeAlertDetails = details
-            stripeAlertMessage = mapStripeErrorMessage(details)
+            stripeAlertMessage = stripeUserMessage(error: error, details: details)
             showStripeError = true
         }
     }
@@ -504,7 +504,7 @@ struct SetupPaymentsView: View {
         } catch {
             let details = errorDebugDetails(error)
             stripeAlertDetails = details
-            stripeAlertMessage = mapStripeErrorMessage(details)
+            stripeAlertMessage = stripeUserMessage(error: error, details: details)
             showStripeError = true
         }
     }
@@ -537,8 +537,18 @@ struct SetupPaymentsView: View {
         return (error as NSError).localizedDescription
     }
 
+    private func stripeUserMessage(error: Error, details: String) -> String {
+        if let serviceError = error as? PaymentServiceResponseError {
+            return serviceError.message
+        }
+        return mapStripeErrorMessage(details)
+    }
+
     private func mapStripeErrorMessage(_ details: String) -> String {
         let lower = details.lowercased()
+        if lower.contains("http 405") || lower.contains("method not allowed") {
+            return "Stripe setup service misconfigured (method not allowed)."
+        }
         if lower.contains("<!doctype html") ||
             lower.contains("<html") ||
             lower.contains("portal backend http 404") ||

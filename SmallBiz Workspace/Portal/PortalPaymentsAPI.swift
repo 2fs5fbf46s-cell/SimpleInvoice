@@ -233,7 +233,7 @@ final class PortalPaymentsAPI {
 
         let payload: [String: Any] = [
             "businessId": businessId.uuidString,
-            "returnUrl": returnURL.absoluteString
+            "returnURL": returnURL.absoluteString
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
@@ -243,15 +243,51 @@ final class PortalPaymentsAPI {
         guard let http = resp as? HTTPURLResponse else {
             throw PortalBackendError.http(-1, body: raw, path: "/api/payments/stripe/connect/resume")
         }
+        if http.statusCode == 405 {
+            throw PaymentServiceResponseError(
+                message: "Stripe setup service misconfigured (method not allowed).",
+                details: raw
+            )
+        }
         guard (200...299).contains(http.statusCode) else {
+            if appearsToBeHTML(raw) {
+                throw PaymentServiceResponseError(
+                    message: "Stripe service unavailable. Try again.",
+                    details: raw
+                )
+            }
             throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/stripe/connect/resume")
         }
 
-        let dto = try decoder().decode(StripeConnectStartResponseDTO.self, from: data)
-        guard let urlString = dto.url, let onboardingURL = URL(string: urlString) else {
+        do {
+            let dto = try decoder().decode(StripeConnectStartResponseDTO.self, from: data)
+            guard dto.ok == true else {
+                throw PaymentServiceResponseError(
+                    message: "Stripe service unavailable. Try again.",
+                    details: raw
+                )
+            }
+            guard let urlString = dto.url, let onboardingURL = URL(string: urlString) else {
+                throw PortalBackendError.decode(body: raw)
+            }
+            return onboardingURL
+        } catch {
+            if appearsToBeHTML(raw) {
+                throw PaymentServiceResponseError(
+                    message: "Stripe service unavailable. Try again.",
+                    details: raw
+                )
+            }
+            if let serviceError = error as? PaymentServiceResponseError {
+                throw serviceError
+            }
             throw PortalBackendError.decode(body: raw)
         }
-        return onboardingURL
+    }
+
+    private func appearsToBeHTML(_ body: String) -> Bool {
+        let lower = body.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return lower.hasPrefix("<!doctype html") || lower.hasPrefix("<html")
     }
 
     func fetchStripeConnectStatus(businessId: UUID) async throws -> StripeConnectStatus {
