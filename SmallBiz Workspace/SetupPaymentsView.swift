@@ -29,7 +29,7 @@ struct SetupPaymentsView: View {
     @State private var payPalAlertDetails: String?
     @State private var showPayPalError = false
 
-    @State private var manualExpanded = false
+    @State private var manualExpanded = true
     @State private var showingACHSheet = false
 
     var body: some View {
@@ -100,6 +100,9 @@ struct SetupPaymentsView: View {
             }
         }
         .alert("Stripe", isPresented: $showStripeError) {
+            Button("Copy Details") {
+                UIPasteboard.general.string = stripeAlertDetails ?? ""
+            }
             Button("OK", role: .cancel) {}
         } message: {
             Text(stripeAlertMessage ?? "Unable to connect to Stripe right now. Please try again.")
@@ -151,25 +154,9 @@ struct SetupPaymentsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Manual Payments (Reconciliation)")
 
-            VStack(alignment: .leading, spacing: 12) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        manualExpanded.toggle()
-                    }
-                } label: {
-                    HStack {
-                        Text("Manual Payments (Reconciliation)")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: manualExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if manualExpanded {
+            DisclosureGroup(
+                isExpanded: $manualExpanded,
+                content: {
                     VStack(alignment: .leading, spacing: 12) {
                         if let business {
                             squareCard(business)
@@ -180,9 +167,18 @@ struct SetupPaymentsView: View {
                             loadingCard
                         }
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .padding(.top, 8)
+                },
+                label: {
+                    HStack {
+                        Text("Manual Payments (Reconciliation)")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
                 }
-            }
+            )
+            .tint(.secondary)
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -199,25 +195,23 @@ struct SetupPaymentsView: View {
             fallbackSymbol: "creditcard.fill",
             title: "Stripe Connect",
             subtitle: "Accept cards and wallet payments with connected payouts.",
+            tags: ["Visa", "Mastercard", "Apple Pay"],
             statusText: status.label,
-            statusStyle: status.style
+            statusStyle: status.style,
+            primaryAction: .init(
+                title: status.isConnected ? "Manage" : "Connect",
+                isLoading: isStartingStripe,
+                isDisabled: isStartingStripe || isLoadingStripe,
+                action: { Task { await startStripe() } }
+            ),
+            secondaryAction: .init(
+                title: "Refresh Status",
+                isLoading: false,
+                isDisabled: isLoadingStripe || isStartingStripe,
+                action: { Task { await refreshStripeStatus() } }
+            )
         ) {
-            chipRow(["Visa", "Mastercard", "Apple Pay"])
-
-            HStack(spacing: 10) {
-                Button(isStartingStripe ? "Opening…" : (status.isConnected ? "Manage" : "Connect")) {
-                    Task { await startStripe() }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
-                .disabled(isStartingStripe || isLoadingStripe)
-
-                Button("Refresh Status") {
-                    Task { await refreshStripeStatus() }
-                }
-                .buttonStyle(.bordered)
-                .disabled(isLoadingStripe || isStartingStripe)
-            }
+            EmptyView()
         }
     }
 
@@ -227,36 +221,30 @@ struct SetupPaymentsView: View {
             fallbackSymbol: "p.circle.fill",
             title: "PayPal",
             subtitle: "Platform-first PayPal checkout with optional fallback link.",
+            tags: ["PayPal", "Cards"],
             statusText: payPalStatusLabel,
-            statusStyle: payPalStatusStyle
+            statusStyle: payPalStatusStyle,
+            primaryAction: .init(
+                title: "Check Status",
+                isLoading: isLoadingPayPalStatus,
+                isDisabled: isLoadingPayPalStatus,
+                action: { Task { await refreshPayPalStatus() } }
+            ),
+            secondaryAction: .init(
+                title: "Refresh Status",
+                isLoading: false,
+                isDisabled: isLoadingPayPalStatus,
+                action: { Task { await refreshPayPalStatus() } }
+            )
         ) {
-            chipRow(["PayPal", "Cards"])
-
-            HStack(spacing: 10) {
-                Button {
-                    Task { await refreshPayPalStatus() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if isLoadingPayPalStatus {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                        Text("Check Status")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
-                .disabled(isLoadingPayPalStatus)
-
-                Button("Refresh Status") {
-                    Task { await refreshPayPalStatus() }
-                }
-                .buttonStyle(.bordered)
-                .disabled(isLoadingPayPalStatus)
-            }
-
             if let lastChecked = payPalLastCheckedAt {
                 Text("Last checked: \(lastChecked.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !payPalPlatformEnabled && !isLoadingPayPalStatus {
+                Text("Finish PayPal credentials in backend.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -284,12 +272,10 @@ struct SetupPaymentsView: View {
             fallbackSymbol: "squareshape",
             title: "Square",
             subtitle: "Manual Square link with payment reconciliation approval.",
+            tags: ["Cards", "Wallets"],
             statusText: business.squareEnabled ? "Enabled" : "Not connected",
-            statusStyle: business.squareEnabled ? .enabled : .notConnected
-        ) {
-            chipRow(["Cards", "Wallets"])
-            Divider().opacity(0.35)
-            manualToggleRow("Enable Square", isOn: Binding(
+            statusStyle: business.squareEnabled ? .enabled : .notConnected,
+            enabledBinding: Binding(
                 get: { business.squareEnabled },
                 set: { newValue in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -297,23 +283,20 @@ struct SetupPaymentsView: View {
                     }
                     save()
                 }
-            ))
-
-            if business.squareEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("https://square.link/...", text: Binding(
-                        get: { business.squareLink ?? "" },
-                        set: {
-                            business.squareLink = normalizeURL($0)
-                            save()
-                        }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+            ),
+            enabledLabel: "Enabled",
+            hintWhenDisabled: "Enable to add your link/details."
+        ) {
+            TextField("https://square.link/...", text: Binding(
+                get: { business.squareLink ?? "" },
+                set: {
+                    business.squareLink = normalizeURL($0)
+                    save()
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -323,12 +306,10 @@ struct SetupPaymentsView: View {
             fallbackSymbol: "dollarsign.circle.fill",
             title: "Cash App",
             subtitle: "Accept Cash App with manual payment reconciliation.",
+            tags: ["Cash App"],
             statusText: business.cashAppEnabled ? "Enabled" : "Not connected",
-            statusStyle: business.cashAppEnabled ? .enabled : .notConnected
-        ) {
-            chipRow(["Cash App"])
-            Divider().opacity(0.35)
-            manualToggleRow("Enable Cash App", isOn: Binding(
+            statusStyle: business.cashAppEnabled ? .enabled : .notConnected,
+            enabledBinding: Binding(
                 get: { business.cashAppEnabled },
                 set: { newValue in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -336,23 +317,20 @@ struct SetupPaymentsView: View {
                     }
                     save()
                 }
-            ))
-
-            if business.cashAppEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("$handle or URL", text: Binding(
-                        get: { business.cashAppHandleOrLink ?? "" },
-                        set: {
-                            business.cashAppHandleOrLink = normalizeCashAppInput($0)
-                            save()
-                        }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+            ),
+            enabledLabel: "Enabled",
+            hintWhenDisabled: "Enable to add your link/details."
+        ) {
+            TextField("$handle or URL", text: Binding(
+                get: { business.cashAppHandleOrLink ?? "" },
+                set: {
+                    business.cashAppHandleOrLink = normalizeCashAppInput($0)
+                    save()
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -362,12 +340,10 @@ struct SetupPaymentsView: View {
             fallbackSymbol: "v.circle.fill",
             title: "Venmo",
             subtitle: "Use a Venmo profile link and reconcile manual reports.",
+            tags: ["Venmo"],
             statusText: business.venmoEnabled ? "Enabled" : "Not connected",
-            statusStyle: business.venmoEnabled ? .enabled : .notConnected
-        ) {
-            chipRow(["Venmo"])
-            Divider().opacity(0.35)
-            manualToggleRow("Enable Venmo", isOn: Binding(
+            statusStyle: business.venmoEnabled ? .enabled : .notConnected,
+            enabledBinding: Binding(
                 get: { business.venmoEnabled },
                 set: { newValue in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -375,23 +351,20 @@ struct SetupPaymentsView: View {
                     }
                     save()
                 }
-            ))
-
-            if business.venmoEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("@handle or URL", text: Binding(
-                        get: { business.venmoHandleOrLink ?? "" },
-                        set: {
-                            business.venmoHandleOrLink = normalizeVenmoInput($0)
-                            save()
-                        }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+            ),
+            enabledLabel: "Enabled",
+            hintWhenDisabled: "Enable to add your link/details."
+        ) {
+            TextField("@handle or URL", text: Binding(
+                get: { business.venmoHandleOrLink ?? "" },
+                set: {
+                    business.venmoHandleOrLink = normalizeVenmoInput($0)
+                    save()
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -401,12 +374,10 @@ struct SetupPaymentsView: View {
             fallbackSymbol: "building.columns.fill",
             title: "ACH",
             subtitle: "Manual bank transfer with instructions and reconciliation.",
+            tags: ["Bank Transfer"],
             statusText: business.achEnabled ? "Enabled" : "Not connected",
-            statusStyle: business.achEnabled ? .enabled : .notConnected
-        ) {
-            chipRow(["Bank Transfer"])
-            Divider().opacity(0.35)
-            manualToggleRow("Enable ACH", isOn: Binding(
+            statusStyle: business.achEnabled ? .enabled : .notConnected,
+            enabledBinding: Binding(
                 get: { business.achEnabled },
                 set: { newValue in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -414,42 +385,17 @@ struct SetupPaymentsView: View {
                     }
                     save()
                 }
-            ))
-
-            if business.achEnabled {
-                VStack(alignment: .leading, spacing: 12) {
-                    Button("Edit Instructions") {
-                        showingACHSheet = true
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-
-    private func chipRow(_ chips: [String]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(chips, id: \.self) { chip in
-                    Text(chip)
-                        .font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(Capsule())
-                }
-            }
-        }
-    }
-
-    private func manualToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-            Spacer()
-            Toggle("", isOn: isOn)
-                .labelsHidden()
+            ),
+            enabledLabel: "Enabled",
+            hintWhenDisabled: "Enable to add your link/details.",
+            primaryAction: .init(
+                title: "Edit Instructions",
+                isLoading: false,
+                isDisabled: false,
+                action: { showingACHSheet = true }
+            )
+        ) {
+            EmptyView()
         }
     }
 
@@ -506,8 +452,9 @@ struct SetupPaymentsView: View {
             stripeURL = url
             showStripeSafari = true
         } catch {
-            stripeAlertDetails = errorDebugDetails(error)
-            stripeAlertMessage = "Unable to connect to Stripe right now. Please try again."
+            let details = errorDebugDetails(error)
+            stripeAlertDetails = details
+            stripeAlertMessage = mapStripeErrorMessage(details)
             showStripeError = true
         }
     }
@@ -527,8 +474,9 @@ struct SetupPaymentsView: View {
             business.stripePayoutsEnabled = status.payoutsEnabled
             save()
         } catch {
-            stripeAlertDetails = errorDebugDetails(error)
-            stripeAlertMessage = "Unable to connect to Stripe right now. Please try again."
+            let details = errorDebugDetails(error)
+            stripeAlertDetails = details
+            stripeAlertMessage = mapStripeErrorMessage(details)
             showStripeError = true
         }
     }
@@ -537,18 +485,17 @@ struct SetupPaymentsView: View {
         guard !isLoadingPayPalStatus else { return }
         isLoadingPayPalStatus = true
         payPalStatusError = false
+        payPalLastCheckedAt = Date()
         defer { isLoadingPayPalStatus = false }
 
         do {
             let status = try await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
             payPalPlatformEnabled = status.enabled
             payPalEnv = status.env
-            payPalLastCheckedAt = Date()
             business?.paypalEnabled = status.enabled
             save()
         } catch {
             payPalStatusError = true
-            payPalLastCheckedAt = Date()
             payPalAlertDetails = errorDebugDetails(error)
             payPalAlertMessage = "PayPal status unavailable. Please verify backend deployment and environment variables."
             showPayPalError = true
@@ -560,6 +507,14 @@ struct SetupPaymentsView: View {
             return serviceError.details
         }
         return (error as NSError).localizedDescription
+    }
+
+    private func mapStripeErrorMessage(_ details: String) -> String {
+        let lower = details.lowercased()
+        if lower.contains("signed up for connect") || lower.contains("connect") {
+            return "Stripe Connect isn’t enabled for the platform account yet. Enable Connect in the Stripe dashboard (Live mode)."
+        }
+        return "Unable to connect to Stripe right now. Please try again."
     }
 
     @ViewBuilder
@@ -698,13 +653,26 @@ private enum ProviderStatusStyle {
     }
 }
 
+private struct ProviderAction {
+    let title: String
+    let isLoading: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+}
+
 private struct PaymentProviderCard<Content: View>: View {
     let logoName: String?
     let fallbackSymbol: String
     let title: String
     let subtitle: String
+    let tags: [String]
     let statusText: String
     let statusStyle: ProviderStatusStyle
+    let enabledBinding: Binding<Bool>?
+    let enabledLabel: String
+    let hintWhenDisabled: String?
+    let primaryAction: ProviderAction?
+    let secondaryAction: ProviderAction?
     @ViewBuilder let content: Content
 
     init(
@@ -712,16 +680,28 @@ private struct PaymentProviderCard<Content: View>: View {
         fallbackSymbol: String,
         title: String,
         subtitle: String,
+        tags: [String] = [],
         statusText: String,
         statusStyle: ProviderStatusStyle,
+        enabledBinding: Binding<Bool>? = nil,
+        enabledLabel: String = "Enabled",
+        hintWhenDisabled: String? = nil,
+        primaryAction: ProviderAction? = nil,
+        secondaryAction: ProviderAction? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.logoName = logoName
         self.fallbackSymbol = fallbackSymbol
         self.title = title
         self.subtitle = subtitle
+        self.tags = tags
         self.statusText = statusText
         self.statusStyle = statusStyle
+        self.enabledBinding = enabledBinding
+        self.enabledLabel = enabledLabel
+        self.hintWhenDisabled = hintWhenDisabled
+        self.primaryAction = primaryAction
+        self.secondaryAction = secondaryAction
         self.content = content()
     }
 
@@ -763,7 +743,77 @@ private struct PaymentProviderCard<Content: View>: View {
                     .multilineTextAlignment(.trailing)
             }
 
-            content
+            if !tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tags, id: \.self) { chip in
+                            Text(chip)
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
+
+            if let enabledBinding {
+                Divider().opacity(0.35)
+                HStack {
+                    Text(enabledLabel)
+                        .font(.subheadline)
+                    Spacer()
+                    Toggle("", isOn: enabledBinding)
+                        .labelsHidden()
+                }
+            }
+
+            let showDetailContent = enabledBinding?.wrappedValue ?? true
+            if showDetailContent {
+                content
+
+                if primaryAction != nil || secondaryAction != nil {
+                    HStack(spacing: 10) {
+                        if let primaryAction {
+                            Button {
+                                primaryAction.action()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if primaryAction.isLoading {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    }
+                                    Text(primaryAction.title)
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(SBWTheme.brandBlue)
+                            .disabled(primaryAction.isDisabled)
+                        }
+
+                        if let secondaryAction {
+                            Button {
+                                secondaryAction.action()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if secondaryAction.isLoading {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    }
+                                    Text(secondaryAction.title)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(secondaryAction.isDisabled)
+                        }
+                    }
+                }
+            } else if let hintWhenDisabled, !hintWhenDisabled.isEmpty {
+                Text(hintWhenDisabled)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(16)
         .background(
