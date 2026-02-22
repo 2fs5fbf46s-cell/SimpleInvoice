@@ -100,12 +100,14 @@ struct SetupPaymentsView: View {
             }
         }
         .alert("Stripe", isPresented: $showStripeError) {
+            #if DEBUG
             Button("Copy Details") {
                 UIPasteboard.general.string = stripeAlertDetails ?? ""
             }
+            #endif
             Button("OK", role: .cancel) {}
         } message: {
-            Text(stripeAlertMessage ?? "Unable to connect to Stripe right now. Please try again.")
+            Text(stripeAlertMessage ?? "Stripe service unavailable. Try again.")
         }
         .alert("PayPal status check failed", isPresented: $showPayPalError) {
             Button("Copy Details") {
@@ -199,10 +201,10 @@ struct SetupPaymentsView: View {
             statusText: status.label,
             statusStyle: status.style,
             primaryAction: .init(
-                title: status.isConnected ? "Manage" : "Connect",
+                title: stripePrimaryActionTitle,
                 isLoading: isStartingStripe,
                 isDisabled: isStartingStripe || isLoadingStripe,
-                action: { Task { await startStripe() } }
+                action: { Task { await openStripeOnboarding() } }
             ),
             secondaryAction: .init(
                 title: "Refresh Status",
@@ -211,7 +213,11 @@ struct SetupPaymentsView: View {
                 action: { Task { await refreshStripeStatus() } }
             )
         ) {
-            EmptyView()
+            if status.actionRequired {
+                Text("Finish setup to enable payouts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -399,13 +405,26 @@ struct SetupPaymentsView: View {
         }
     }
 
-    private var stripeState: (label: String, style: ProviderStatusStyle, isConnected: Bool) {
+    private var stripeState: (label: String, style: ProviderStatusStyle, isConnected: Bool, isActive: Bool, actionRequired: Bool) {
         let accountId = stripeStatus?.stripeAccountId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if accountId.isEmpty { return ("Not connected", .notConnected, false) }
-        if stripeStatus?.chargesEnabled == true && stripeStatus?.payoutsEnabled == true {
-            return ("Active", .active, true)
+        if accountId.isEmpty { return ("Not connected", .notConnected, false, false, false) }
+
+        let actionRequired = stripeStatus?.actionRequired ?? true
+        let isActive = stripeStatus?.chargesEnabled == true &&
+            stripeStatus?.payoutsEnabled == true &&
+            !actionRequired
+
+        if isActive {
+            return ("Active", .active, true, true, false)
         }
-        return ("Pending", .pending, true)
+        return ("Pending", .pending, true, false, true)
+    }
+
+    private var stripePrimaryActionTitle: String {
+        let state = stripeState
+        if !state.isConnected { return "Connect Stripe" }
+        if state.isConnected && !state.isActive { return "Finish Setup" }
+        return "Manage"
     }
 
     private var payPalStatusLabel: String {
@@ -437,7 +456,7 @@ struct SetupPaymentsView: View {
         try? modelContext.save()
     }
 
-    private func startStripe() async {
+    private func openStripeOnboarding() async {
         guard let business else { return }
         guard !isStartingStripe else { return }
         isStartingStripe = true
@@ -445,10 +464,19 @@ struct SetupPaymentsView: View {
 
         do {
             let returnURL = URL(string: "smallbizworkspace://settings/payments/stripe-return")!
-            let url = try await PortalPaymentsAPI.shared.startStripeConnect(
-                businessId: business.id,
-                returnURL: returnURL
-            )
+            let state = stripeState
+            let url: URL
+            if state.isConnected {
+                url = try await PortalPaymentsAPI.shared.resumeStripeConnect(
+                    businessId: business.id,
+                    returnURL: returnURL
+                )
+            } else {
+                url = try await PortalPaymentsAPI.shared.startStripeConnect(
+                    businessId: business.id,
+                    returnURL: returnURL
+                )
+            }
             stripeURL = url
             showStripeSafari = true
         } catch {
@@ -511,10 +539,19 @@ struct SetupPaymentsView: View {
 
     private func mapStripeErrorMessage(_ details: String) -> String {
         let lower = details.lowercased()
-        if lower.contains("signed up for connect") || lower.contains("connect") {
+        if lower.contains("<!doctype html") ||
+            lower.contains("<html") ||
+            lower.contains("portal backend http 404") ||
+            lower.contains("not found") {
+            return "Stripe service unavailable. Try again."
+        }
+        if lower.contains("signed up for connect") ||
+            lower.contains("connect is not enabled") ||
+            lower.contains("platform_account_not_allowed") ||
+            lower.contains("create new accounts") {
             return "Stripe Connect isn’t enabled for the platform account yet. Enable Connect in the Stripe dashboard (Live mode)."
         }
-        return "Unable to connect to Stripe right now. Please try again."
+        return "Stripe service unavailable. Try again."
     }
 
     @ViewBuilder
