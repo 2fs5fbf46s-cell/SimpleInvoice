@@ -7,6 +7,11 @@ struct PaymentServiceResponseError: LocalizedError {
     var errorDescription: String? { message }
 }
 
+struct AdminBackendDiagnosticResult: Equatable {
+    let status: String
+    let details: String?
+}
+
 struct PayPalStatus: Equatable {
     let connected: Bool
     let merchantIdLast4: String?
@@ -68,6 +73,12 @@ final class PortalPaymentsAPI {
         let stripeAccountId: String?
     }
 
+    private struct APIErrorResponseDTO: Decodable {
+        let ok: Bool?
+        let error: String?
+        let errorCode: String?
+    }
+
     private struct StripeConnectStatusResponseDTO: Decodable {
         let ok: Bool?
         let stripeAccountId: String?
@@ -93,6 +104,21 @@ final class PortalPaymentsAPI {
             throw PortalBackendError.missingAdminKey
         }
         return key
+    }
+
+    private func attachAdminHeaders(_ request: inout URLRequest, adminKey: String) {
+        request.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        request.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+    }
+
+    private func stripeServiceErrorMessage(from data: Data) -> String? {
+        guard let dto = try? decoder().decode(APIErrorResponseDTO.self, from: data) else { return nil }
+        let error = (dto.error ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = (dto.errorCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if error.isEmpty && code.isEmpty { return nil }
+        if error.isEmpty { return code }
+        if code.isEmpty { return error }
+        return "\(error) [\(code)]"
     }
 
     func fetchPayPalStatus(businessId: UUID) async throws -> PayPalStatus {
@@ -198,7 +224,7 @@ final class PortalPaymentsAPI {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        attachAdminHeaders(&req, adminKey: adminKey)
 
         let payload: [String: Any] = [
             "businessId": businessId.uuidString,
@@ -213,6 +239,9 @@ final class PortalPaymentsAPI {
             throw PortalBackendError.http(-1, body: raw, path: "/api/payments/stripe/connect/start")
         }
         guard (200...299).contains(http.statusCode) else {
+            if let message = stripeServiceErrorMessage(from: data) {
+                throw PaymentServiceResponseError(message: message, details: raw)
+            }
             throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/stripe/connect/start")
         }
 
@@ -229,7 +258,7 @@ final class PortalPaymentsAPI {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        attachAdminHeaders(&req, adminKey: adminKey)
 
         let payload: [String: Any] = [
             "businessId": businessId.uuidString,
@@ -255,6 +284,9 @@ final class PortalPaymentsAPI {
                     message: "Stripe service unavailable. Try again.",
                     details: raw
                 )
+            }
+            if let message = stripeServiceErrorMessage(from: data) {
+                throw PaymentServiceResponseError(message: message, details: raw)
             }
             throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/stripe/connect/resume")
         }
@@ -301,7 +333,7 @@ final class PortalPaymentsAPI {
 
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        attachAdminHeaders(&req, adminKey: adminKey)
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
@@ -310,6 +342,9 @@ final class PortalPaymentsAPI {
             throw PortalBackendError.http(-1, body: raw, path: "/api/payments/stripe/connect/status")
         }
         guard (200...299).contains(http.statusCode) else {
+            if let message = stripeServiceErrorMessage(from: data) {
+                throw PaymentServiceResponseError(message: message, details: raw)
+            }
             throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/stripe/connect/status")
         }
 
@@ -363,7 +398,7 @@ final class PortalPaymentsAPI {
 
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        attachAdminHeaders(&req, adminKey: adminKey)
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
@@ -382,7 +417,7 @@ final class PortalPaymentsAPI {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        attachAdminHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(withJSONObject: [
             "reportId": reportId,
             "action": action
@@ -393,6 +428,43 @@ final class PortalPaymentsAPI {
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else {
             throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+    }
+
+    func testAdminBackendAuth() async -> AdminBackendDiagnosticResult {
+        let key: String
+        do {
+            key = try adminKey()
+        } catch {
+            return AdminBackendDiagnosticResult(status: "Unauthorized", details: error.localizedDescription)
+        }
+
+        let url = baseURL.appendingPathComponent("/api/health/admin")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        attachAdminHeaders(&req, adminKey: key)
+
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+            guard let http = resp as? HTTPURLResponse else {
+                return AdminBackendDiagnosticResult(status: "Server Error", details: raw)
+            }
+            switch http.statusCode {
+            case 200:
+                return AdminBackendDiagnosticResult(status: "OK", details: raw)
+            case 401:
+                return AdminBackendDiagnosticResult(status: "Unauthorized", details: raw)
+            case 404:
+                return AdminBackendDiagnosticResult(status: "Not Found", details: raw)
+            default:
+                return AdminBackendDiagnosticResult(status: "Server Error", details: raw)
+            }
+        } catch {
+            return AdminBackendDiagnosticResult(
+                status: "Server Error",
+                details: (error as NSError).localizedDescription
+            )
         }
     }
 }
