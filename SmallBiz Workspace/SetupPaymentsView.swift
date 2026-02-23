@@ -19,6 +19,8 @@ struct SetupPaymentsView: View {
     @State private var stripeURL: URL?
     @State private var showStripeSafari = false
     @State private var awaitingStripeReturn = false
+    @State private var isTestingStripeBackend = false
+    @State private var stripeBackendTestResult: String?
 
     @State private var isLoadingPayPalStatus = false
     @State private var payPalPlatformEnabled = false
@@ -110,9 +112,11 @@ struct SetupPaymentsView: View {
             Text(stripeAlertMessage ?? "Stripe service unavailable. Try again.")
         }
         .alert("PayPal status check failed", isPresented: $showPayPalError) {
+            #if DEBUG
             Button("Copy Details") {
                 UIPasteboard.general.string = payPalAlertDetails ?? ""
             }
+            #endif
             Button("OK", role: .cancel) {}
         } message: {
             Text(payPalAlertMessage ?? "PayPal status unavailable. Please verify backend deployment and environment variables.")
@@ -218,6 +222,31 @@ struct SetupPaymentsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            #if DEBUG
+            Divider().opacity(0.35)
+            HStack(spacing: 10) {
+                Button {
+                    Task { await testStripeBackend() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isTestingStripeBackend {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text("Test Backend")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isTestingStripeBackend)
+
+                if let stripeBackendTestResult {
+                    Text("Result: \(stripeBackendTestResult)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            #endif
         }
     }
 
@@ -507,6 +536,14 @@ struct SetupPaymentsView: View {
             stripeAlertMessage = stripeUserMessage(error: error, details: details)
             showStripeError = true
         }
+    }
+
+    private func testStripeBackend() async {
+        guard !isTestingStripeBackend else { return }
+        isTestingStripeBackend = true
+        defer { isTestingStripeBackend = false }
+        let result = await PortalPaymentsAPI.shared.testAdminBackendAuth()
+        stripeBackendTestResult = result.status
     }
 
     private func refreshPayPalStatus() async {
