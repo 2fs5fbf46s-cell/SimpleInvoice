@@ -276,6 +276,7 @@ final class PortalPaymentsAPI {
     }
 
     func startStripeConnect(businessId: UUID, returnURL: URL) async throws -> URL {
+        _ = returnURL
         let adminKey = try adminKey()
         let url = baseURL.appendingPathComponent("/api/payments/stripe/connect/start")
         var req = URLRequest(url: url)
@@ -283,9 +284,10 @@ final class PortalPaymentsAPI {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         attachAdminHeaders(&req, adminKey: adminKey)
 
+        let safeReturnURL = PortalConfig.shared.baseURL.absoluteString
         let payload: [String: Any] = [
             "businessId": businessId.uuidString,
-            "returnUrl": returnURL.absoluteString
+            "returnUrl": safeReturnURL
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
