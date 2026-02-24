@@ -23,9 +23,13 @@ struct SetupPaymentsView: View {
     @State private var stripeBackendTestResult: String?
 
     @State private var isLoadingPayPalStatus = false
-    @State private var payPalPlatformEnabled = false
-    @State private var payPalEnv: String?
-    @State private var payPalStatusError = false
+    @State private var payPalConnectStatus: PayPalConnectStatusResponse?
+    @State private var isStartingPayPal = false
+    @State private var payPalURL: URL?
+    @State private var showPayPalSafari = false
+    @State private var showPayPalHelpSheet = false
+    @State private var isTestingPayPalBackend = false
+    @State private var payPalBackendTestResult: String?
     @State private var payPalLastCheckedAt: Date?
     @State private var payPalAlertMessage: String?
     @State private var payPalAlertDetails: String?
@@ -100,6 +104,41 @@ struct SetupPaymentsView: View {
                 achEditorSheet(for: business)
                     .presentationDetents([.medium, .large])
             }
+        }
+        .sheet(isPresented: $showPayPalSafari) {
+            if let payPalURL {
+                SafariView(url: payPalURL) {
+                    showPayPalSafari = false
+                    Task { await refreshPayPalStatus() }
+                }
+            } else {
+                Text("Unable to open PayPal onboarding.")
+            }
+        }
+        .sheet(isPresented: $showPayPalHelpSheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Setup PayPal (Admin)")
+                        .font(.headline)
+                    Text("To enable PayPal Connect onboarding, configure partner environment variables in the backend and complete partner approval.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("Required:")
+                        .font(.subheadline.weight(.semibold))
+                    Text("• PAYPAL_PARTNER_CLIENT_ID\n• PAYPAL_PARTNER_CLIENT_SECRET\n• PAYPAL_PARTNER_RETURN_URL_BASE\n• PAYPAL_PARTNER_PRIVACY_URL\n• PAYPAL_PARTNER_USER_AGREEMENT_URL")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(20)
+                .navigationTitle("PayPal Setup")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { showPayPalHelpSheet = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
         .alert("Stripe", isPresented: $showStripeError) {
             #if DEBUG
@@ -255,20 +294,20 @@ struct SetupPaymentsView: View {
             logoName: "paypal_logo",
             fallbackSymbol: "p.circle.fill",
             title: "PayPal",
-            subtitle: "Platform-first PayPal checkout with optional fallback link.",
+            subtitle: "Connect PayPal to route payments to your PayPal account.",
             tags: ["PayPal", "Cards"],
             statusText: payPalStatusLabel,
             statusStyle: payPalStatusStyle,
             primaryAction: .init(
-                title: "Check Status",
-                isLoading: isLoadingPayPalStatus,
-                isDisabled: isLoadingPayPalStatus,
-                action: { Task { await refreshPayPalStatus() } }
+                title: payPalPrimaryActionTitle,
+                isLoading: isStartingPayPal,
+                isDisabled: isLoadingPayPalStatus || isStartingPayPal,
+                action: { Task { await payPalPrimaryActionTapped() } }
             ),
             secondaryAction: .init(
                 title: "Refresh Status",
-                isLoading: false,
-                isDisabled: isLoadingPayPalStatus,
+                isLoading: isLoadingPayPalStatus,
+                isDisabled: isLoadingPayPalStatus || isStartingPayPal,
                 action: { Task { await refreshPayPalStatus() } }
             )
         ) {
@@ -278,11 +317,36 @@ struct SetupPaymentsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if !payPalPlatformEnabled && !isLoadingPayPalStatus {
-                Text("Finish PayPal credentials in backend.")
+            if !isLoadingPayPalStatus {
+                Text(payPalHelperText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            #if DEBUG
+            Divider().opacity(0.35)
+            HStack(spacing: 10) {
+                Button {
+                    Task { await testPayPalBackend() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isTestingPayPalBackend {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text("Test PayPal Backend")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isTestingPayPalBackend)
+
+                if let payPalBackendTestResult {
+                    Text("Result: \(payPalBackendTestResult)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            #endif
 
             TextField(
                 "PayPal.me fallback (optional)",
@@ -458,19 +522,58 @@ struct SetupPaymentsView: View {
 
     private var payPalStatusLabel: String {
         if isLoadingPayPalStatus { return "Checking" }
-        if payPalStatusError { return "Error" }
-        guard payPalPlatformEnabled else { return "Not configured" }
-        if let env = payPalEnv?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            if env == "sandbox" { return "Sandbox" }
-            if env == "live" { return "Live" }
+        let state = payPalState
+        switch state {
+        case .notConfigured:
+            return "Not configured"
+        case .notConnected:
+            return "Not connected"
+        case .pending:
+            return "Pending"
+        case .active:
+            if let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                if env == "sandbox" { return "Sandbox" }
+                if env == "live" { return "Live" }
+            }
+            return "Available"
+        case .error:
+            return "Error"
         }
-        return "Enabled"
     }
 
     private var payPalStatusStyle: ProviderStatusStyle {
         if isLoadingPayPalStatus { return .pending }
-        if payPalStatusError { return .error }
-        return payPalPlatformEnabled ? .active : .notConnected
+        switch payPalState {
+        case .active: return .active
+        case .pending: return .pending
+        case .notConfigured, .notConnected: return .notConnected
+        case .error: return .error
+        }
+    }
+
+    private var payPalHelperText: String {
+        switch payPalState {
+        case .active:
+            let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "unknown"
+            return "Environment: \(env)"
+        case .notConfigured:
+            return "Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in backend."
+        case .notConnected:
+            return "Connect PayPal to route payments to your PayPal account."
+        case .pending:
+            return "Complete onboarding in PayPal, then refresh status."
+        case .error:
+            return sanitizePayPalMessage(payPalConnectStatus?.message)
+        }
+    }
+
+    private func sanitizePayPalMessage(_ message: String?) -> String {
+        let trimmed = (message ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "PayPal status unavailable. Please verify backend deployment and environment variables."
+        }
+        let noNewlines = trimmed.replacingOccurrences(of: "\n", with: " ")
+        return String(noNewlines.prefix(140))
     }
 
     private func resolveBusiness() {
@@ -547,24 +650,148 @@ struct SetupPaymentsView: View {
     }
 
     private func refreshPayPalStatus() async {
+        guard let business else { return }
         guard !isLoadingPayPalStatus else { return }
         isLoadingPayPalStatus = true
-        payPalStatusError = false
-        payPalLastCheckedAt = Date()
-        defer { isLoadingPayPalStatus = false }
+        defer {
+            isLoadingPayPalStatus = false
+            payPalLastCheckedAt = Date()
+        }
 
         do {
-            let status = try await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
-            payPalPlatformEnabled = status.enabled
-            payPalEnv = status.env
-            business?.paypalEnabled = status.enabled
+            let status = try await PortalPaymentsAPI.shared.refreshPayPalConnectStatus(businessId: business.id)
+            payPalConnectStatus = status
+            let platform = try? await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
+            business.paypalEnabled = platform?.canCreateOrder ?? status.canCreateOrder
+            business.paypalMerchantId = status.paypalMerchantId
+            business.paypalOnboardingStatus = status.onboardingStatus
+            business.paypalLinkedAtMs = status.paypalLinkedAtMs
+            business.paypalLastCheckedAtMs = status.paypalLastCheckedAtMs
+            business.paypalEnv = status.env ?? platform?.env
             save()
         } catch {
-            payPalStatusError = true
+            let fallback = "PayPal status unavailable. Please verify backend deployment and environment variables."
+            let message = (error as? PaymentServiceResponseError)?.message ?? fallback
+            payPalConnectStatus = PayPalConnectStatusResponse(
+                ok: false,
+                configured: false,
+                env: nil,
+                canCreateOrder: false,
+                message: message,
+                onboardingStatus: "error",
+                paypalMerchantId: nil,
+                paypalLinkedAtMs: nil,
+                paypalLastCheckedAtMs: nil
+            )
             payPalAlertDetails = errorDebugDetails(error)
-            payPalAlertMessage = "PayPal status unavailable. Please verify backend deployment and environment variables."
+            payPalAlertMessage = fallback
             showPayPalError = true
         }
+    }
+
+    private enum PayPalState {
+        case notConfigured
+        case notConnected
+        case pending
+        case active
+        case error
+    }
+
+    private var payPalState: PayPalState {
+        guard let status = payPalConnectStatus else {
+            return .notConfigured
+        }
+        if !status.ok {
+            return .error
+        }
+        if !status.configured {
+            return .notConfigured
+        }
+        let onboarding = status.onboardingStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if onboarding == "active" {
+            return status.canCreateOrder ? .active : .error
+        }
+        if onboarding == "pending" {
+            return .pending
+        }
+        if onboarding == "error" {
+            return .error
+        }
+        return .notConnected
+    }
+
+    private var payPalPrimaryActionTitle: String {
+        switch payPalState {
+        case .notConfigured: return "Setup PayPal (Admin)"
+        case .notConnected: return "Connect PayPal"
+        case .pending: return "Finish Setup"
+        case .active: return "Manage"
+        case .error: return "Connect PayPal"
+        }
+    }
+
+    private func payPalPrimaryActionTapped() async {
+        guard let business else { return }
+        switch payPalState {
+        case .notConfigured:
+            showPayPalHelpSheet = true
+        case .active:
+            if let dashboardURL = payPalDashboardURL() {
+                payPalURL = dashboardURL
+                showPayPalSafari = true
+            } else {
+                payPalAlertMessage = "PayPal is connected."
+                payPalAlertDetails = "Connected"
+                showPayPalError = true
+            }
+        case .notConnected, .pending, .error:
+            guard !isStartingPayPal else { return }
+            isStartingPayPal = true
+            defer { isStartingPayPal = false }
+            do {
+                let returnURL = URL(string: "https://portal.smallbizworkspace.com/portal/admin/paypal/connected")!
+                let start = try await PortalPaymentsAPI.shared.startPayPalConnect(
+                    businessId: business.id,
+                    returnURL: returnURL
+                )
+                if !start.configured {
+                    showPayPalHelpSheet = true
+                    await refreshPayPalStatus()
+                    return
+                }
+                if let url = start.url {
+                    payPalURL = url
+                    showPayPalSafari = true
+                } else {
+                    payPalAlertMessage = start.message ?? "PayPal is connected."
+                    payPalAlertDetails = start.message ?? "No onboarding URL returned."
+                    showPayPalError = true
+                }
+            } catch {
+                payPalAlertDetails = errorDebugDetails(error)
+                payPalAlertMessage = (error as? PaymentServiceResponseError)?.message ??
+                    "PayPal status unavailable. Please verify backend deployment and environment variables."
+                showPayPalError = true
+            }
+        }
+    }
+
+    private func payPalDashboardURL() -> URL? {
+        let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if env == "sandbox" {
+            return URL(string: "https://www.sandbox.paypal.com")
+        }
+        return URL(string: "https://www.paypal.com/myaccount/summary")
+    }
+
+    private func testPayPalBackend() async {
+        #if DEBUG
+        guard !isTestingPayPalBackend else { return }
+        isTestingPayPalBackend = true
+        defer { isTestingPayPalBackend = false }
+        let result = await PortalPaymentsAPI.shared.testPayPalBackendHealth()
+        payPalBackendTestResult = result.status
+        #endif
     }
 
     private func errorDebugDetails(_ error: Error) -> String {
