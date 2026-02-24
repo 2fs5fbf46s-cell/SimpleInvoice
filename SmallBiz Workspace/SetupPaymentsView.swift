@@ -659,7 +659,7 @@ struct SetupPaymentsView: View {
         }
 
         do {
-            let status = try await PortalPaymentsAPI.shared.refreshPayPalConnectStatus(businessId: business.id)
+            let status = try await PortalPaymentsAPI.shared.paypalConnectStatus(businessId: business.id)
             payPalConnectStatus = status
             let platform = try? await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
             business.paypalEnabled = platform?.canCreateOrder ?? status.canCreateOrder
@@ -750,7 +750,7 @@ struct SetupPaymentsView: View {
             defer { isStartingPayPal = false }
             do {
                 let returnURL = URL(string: "https://portal.smallbizworkspace.com/portal/admin/paypal/connected")!
-                let start = try await PortalPaymentsAPI.shared.startPayPalConnect(
+                let start = try await PortalPaymentsAPI.shared.paypalConnectStart(
                     businessId: business.id,
                     returnURL: returnURL
                 )

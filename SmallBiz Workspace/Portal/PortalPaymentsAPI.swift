@@ -452,7 +452,7 @@ final class PortalPaymentsAPI {
         }
     }
 
-    func startPayPalConnect(businessId: UUID, returnURL: URL) async throws -> PayPalConnectStartResponse {
+    func paypalConnectStart(businessId: UUID, returnURL: URL) async throws -> PayPalConnectStartResponse {
         let adminKey = try adminKey()
         let url = baseURL.appendingPathComponent("/api/payments/paypal/connect/start")
         var req = URLRequest(url: url)
@@ -489,16 +489,18 @@ final class PortalPaymentsAPI {
         )
     }
 
-    func refreshPayPalConnectStatus(businessId: UUID) async throws -> PayPalConnectStatusResponse {
+    func paypalConnectStatus(businessId: UUID) async throws -> PayPalConnectStatusResponse {
         let adminKey = try adminKey()
-        let url = baseURL.appendingPathComponent("/api/payments/paypal/connect/status")
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/payments/paypal/connect/status"),
+            resolvingAgainstBaseURL: false
+        )
+        comps?.queryItems = [URLQueryItem(name: "businessId", value: businessId.uuidString)]
+        guard let url = comps?.url else { throw PortalBackendError.badURL }
+
         var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpMethod = "GET"
         attachAdminHeaders(&req, adminKey: adminKey)
-        req.httpBody = try JSONSerialization.data(withJSONObject: [
-            "businessId": businessId.uuidString
-        ], options: [])
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
@@ -526,6 +528,15 @@ final class PortalPaymentsAPI {
             paypalLinkedAtMs: dto.paypalLinkedAtMs,
             paypalLastCheckedAtMs: dto.paypalLastCheckedAtMs ?? dto.lastCheckedAtMs
         )
+    }
+
+    // Backward-compatible wrappers for existing callers.
+    func startPayPalConnect(businessId: UUID, returnURL: URL) async throws -> PayPalConnectStartResponse {
+        try await paypalConnectStart(businessId: businessId, returnURL: returnURL)
+    }
+
+    func refreshPayPalConnectStatus(businessId: UUID) async throws -> PayPalConnectStatusResponse {
+        try await paypalConnectStatus(businessId: businessId)
     }
 
     #if DEBUG
