@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 12
+    static let currentVersion = 13
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -183,6 +183,31 @@ enum BusinessMigration {
             }
             if business.achInstructions?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
                 business.achInstructions = nil
+            }
+
+            let normalizedPayPalStatus = (business.paypalOnboardingStatus ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if normalizedPayPalStatus != "not_connected" &&
+                normalizedPayPalStatus != "pending" &&
+                normalizedPayPalStatus != "active" &&
+                normalizedPayPalStatus != "error" {
+                business.paypalOnboardingStatus = "not_connected"
+            } else {
+                business.paypalOnboardingStatus = normalizedPayPalStatus
+            }
+
+            if business.paypalMerchantId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.paypalMerchantId = nil
+            }
+            if business.paypalEnv?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                business.paypalEnv = nil
+            }
+            if let linked = business.paypalLinkedAtMs, linked <= 0 {
+                business.paypalLinkedAtMs = nil
+            }
+            if let checked = business.paypalLastCheckedAtMs, checked <= 0 {
+                business.paypalLastCheckedAtMs = nil
             }
         }
 

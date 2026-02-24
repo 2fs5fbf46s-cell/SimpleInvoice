@@ -28,14 +28,45 @@ struct StripeConnectStatus: Equatable {
 }
 
 struct PayPalPlatformStatus: Equatable {
-    let enabled: Bool
+    let ok: Bool
+    let configured: Bool
     let env: String?
+    let clientIdPresent: Bool
+    let secretPresent: Bool
+    let canCreateOrder: Bool
+    let message: String?
+}
+
+struct PayPalConnectStartResponse: Equatable {
+    let ok: Bool
+    let configured: Bool
+    let env: String?
+    let url: URL?
+    let message: String?
+    let onboardingStatus: String?
+    let paypalMerchantId: String?
+}
+
+struct PayPalConnectStatusResponse: Equatable {
+    let ok: Bool
+    let configured: Bool
+    let env: String?
+    let canCreateOrder: Bool
+    let message: String?
+    let onboardingStatus: String
+    let paypalMerchantId: String?
+    let paypalLinkedAtMs: Int64?
+    let paypalLastCheckedAtMs: Int64?
 }
 
 struct PayPalStatusResponse: Decodable {
     let ok: Bool
-    let enabled: Bool
+    let configured: Bool
     let env: String?
+    let clientIdPresent: Bool
+    let secretPresent: Bool
+    let canCreateOrder: Bool
+    let message: String?
 }
 
 struct ManualPaymentReportDTO: Decodable, Identifiable, Equatable {
@@ -71,6 +102,31 @@ final class PortalPaymentsAPI {
         let ok: Bool?
         let url: String?
         let stripeAccountId: String?
+    }
+
+    private struct PayPalConnectStartResponseDTO: Decodable {
+        let ok: Bool?
+        let configured: Bool?
+        let env: String?
+        let url: String?
+        let message: String?
+        let onboardingStatus: String?
+        let paypalMerchantId: String?
+    }
+
+    private struct PayPalConnectStatusResponseDTO: Decodable {
+        let ok: Bool?
+        let configured: Bool?
+        let env: String?
+        let canCreateOrder: Bool?
+        let message: String?
+        let onboardingStatus: String?
+        let status: String?
+        let paypalMerchantId: String?
+        let merchantId: String?
+        let paypalLinkedAtMs: Int64?
+        let paypalLastCheckedAtMs: Int64?
+        let lastCheckedAtMs: Int64?
     }
 
     private struct APIErrorResponseDTO: Decodable {
@@ -109,6 +165,7 @@ final class PortalPaymentsAPI {
     private func attachAdminHeaders(_ request: inout URLRequest, adminKey: String) {
         request.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
         request.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
+        request.setValue("Bearer \(adminKey)", forHTTPHeaderField: "Authorization")
     }
 
     private func stripeServiceErrorMessage(from data: Data) -> String? {
@@ -378,7 +435,15 @@ final class PortalPaymentsAPI {
         }
         do {
             let dto = try decoder().decode(PayPalStatusResponse.self, from: data)
-            return PayPalPlatformStatus(enabled: dto.enabled, env: dto.env)
+            return PayPalPlatformStatus(
+                ok: dto.ok,
+                configured: dto.configured,
+                env: dto.env,
+                clientIdPresent: dto.clientIdPresent,
+                secretPresent: dto.secretPresent,
+                canCreateOrder: dto.canCreateOrder,
+                message: dto.message
+            )
         } catch {
             throw PaymentServiceResponseError(
                 message: friendly,
@@ -386,6 +451,121 @@ final class PortalPaymentsAPI {
             )
         }
     }
+
+    func startPayPalConnect(businessId: UUID, returnURL: URL) async throws -> PayPalConnectStartResponse {
+        let adminKey = try adminKey()
+        let url = baseURL.appendingPathComponent("/api/payments/paypal/connect/start")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        attachAdminHeaders(&req, adminKey: adminKey)
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "businessId": businessId.uuidString,
+            "returnURL": returnURL.absoluteString
+        ], options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: "/api/payments/paypal/connect/start")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            if let apiError = try? decoder().decode(APIErrorResponseDTO.self, from: data),
+               let message = apiError.error, !message.isEmpty {
+                throw PaymentServiceResponseError(message: message, details: raw)
+            }
+            throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/paypal/connect/start")
+        }
+
+        let dto = try decoder().decode(PayPalConnectStartResponseDTO.self, from: data)
+        return PayPalConnectStartResponse(
+            ok: dto.ok ?? true,
+            configured: dto.configured ?? false,
+            env: dto.env,
+            url: dto.url.flatMap(URL.init(string:)),
+            message: dto.message,
+            onboardingStatus: dto.onboardingStatus,
+            paypalMerchantId: dto.paypalMerchantId
+        )
+    }
+
+    func refreshPayPalConnectStatus(businessId: UUID) async throws -> PayPalConnectStatusResponse {
+        let adminKey = try adminKey()
+        let url = baseURL.appendingPathComponent("/api/payments/paypal/connect/status")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        attachAdminHeaders(&req, adminKey: adminKey)
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "businessId": businessId.uuidString
+        ], options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw, path: "/api/payments/paypal/connect/status")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            if let apiError = try? decoder().decode(APIErrorResponseDTO.self, from: data),
+               let message = apiError.error, !message.isEmpty {
+                throw PaymentServiceResponseError(message: message, details: raw)
+            }
+            throw PortalBackendError.http(http.statusCode, body: raw, path: "/api/payments/paypal/connect/status")
+        }
+
+        let dto = try decoder().decode(PayPalConnectStatusResponseDTO.self, from: data)
+        let onboardingStatus = dto.onboardingStatus ?? dto.status ?? "not_connected"
+        return PayPalConnectStatusResponse(
+            ok: dto.ok ?? true,
+            configured: dto.configured ?? false,
+            env: dto.env,
+            canCreateOrder: dto.canCreateOrder ?? true,
+            message: dto.message,
+            onboardingStatus: onboardingStatus,
+            paypalMerchantId: dto.paypalMerchantId ?? dto.merchantId,
+            paypalLinkedAtMs: dto.paypalLinkedAtMs,
+            paypalLastCheckedAtMs: dto.paypalLastCheckedAtMs ?? dto.lastCheckedAtMs
+        )
+    }
+
+    #if DEBUG
+    func testPayPalBackendHealth() async -> AdminBackendDiagnosticResult {
+        let key: String
+        do {
+            key = try adminKey()
+        } catch {
+            return AdminBackendDiagnosticResult(status: "Unauthorized", details: error.localizedDescription)
+        }
+
+        let url = baseURL.appendingPathComponent("/api/health/paypal")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        attachAdminHeaders(&req, adminKey: key)
+
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+            guard let http = resp as? HTTPURLResponse else {
+                return AdminBackendDiagnosticResult(status: "Server Error", details: raw)
+            }
+            switch http.statusCode {
+            case 200:
+                return AdminBackendDiagnosticResult(status: "OK", details: raw)
+            case 401:
+                return AdminBackendDiagnosticResult(status: "Unauthorized", details: raw)
+            case 404:
+                return AdminBackendDiagnosticResult(status: "Not Found", details: raw)
+            default:
+                return AdminBackendDiagnosticResult(status: "Server Error", details: raw)
+            }
+        } catch {
+            return AdminBackendDiagnosticResult(
+                status: "Server Error",
+                details: (error as NSError).localizedDescription
+            )
+        }
+    }
+    #endif
 
     func fetchManualPaymentReports(businessId: UUID) async throws -> [ManualPaymentReportDTO] {
         let adminKey = try adminKey()

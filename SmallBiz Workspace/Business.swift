@@ -14,6 +14,11 @@ final class Business {
     var paypalMeUrl: String? = nil
     var paypalEnabled: Bool = false
     var paypalMeFallback: String? = nil
+    var paypalMerchantId: String? = nil
+    var paypalOnboardingStatus: String? = nil
+    var paypalLinkedAtMs: Int64? = nil
+    var paypalLastCheckedAtMs: Int64? = nil
+    var paypalEnv: String? = nil
     var stripeAccountId: String? = nil
     var stripeOnboardingStatus: String? = nil
     var stripeChargesEnabled: Bool = false
@@ -45,6 +50,11 @@ final class Business {
         paypalMeUrl: String? = nil,
         paypalEnabled: Bool = false,
         paypalMeFallback: String? = nil,
+        paypalMerchantId: String? = nil,
+        paypalOnboardingStatus: String? = nil,
+        paypalLinkedAtMs: Int64? = nil,
+        paypalLastCheckedAtMs: Int64? = nil,
+        paypalEnv: String? = nil,
         stripeAccountId: String? = nil,
         stripeOnboardingStatus: String? = nil,
         stripeChargesEnabled: Bool = false,
@@ -74,6 +84,11 @@ final class Business {
         self.paypalMeUrl = paypalMeUrl
         self.paypalEnabled = paypalEnabled
         self.paypalMeFallback = paypalMeFallback
+        self.paypalMerchantId = paypalMerchantId
+        self.paypalOnboardingStatus = paypalOnboardingStatus
+        self.paypalLinkedAtMs = paypalLinkedAtMs
+        self.paypalLastCheckedAtMs = paypalLastCheckedAtMs
+        self.paypalEnv = paypalEnv
         self.stripeAccountId = stripeAccountId
         self.stripeOnboardingStatus = stripeOnboardingStatus
         self.stripeChargesEnabled = stripeChargesEnabled
