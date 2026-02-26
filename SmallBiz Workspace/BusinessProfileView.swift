@@ -47,14 +47,12 @@ struct BusinessProfileView: View {
     @State private var awaitingStripeReturn = false
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationMessage: String?
-    @State private var showInvoiceTemplateSheet = false
     @State private var isSendingTestPush = false
     @State private var showNotificationAdvanced = false
     
 
     @State private var showEssentialsSection = true
     @State private var showBrandingSection = false
-    @State private var showDefaultsSection = false
     @State private var showWebsiteSection = true
     @State private var showPaymentsSection = true
     @State private var showNotificationsSection = false
@@ -139,8 +137,6 @@ struct BusinessProfileView: View {
                     }
                 }
             }
-            .onChange(of: profile.defaultThankYou) { _, _ in try? modelContext.save() }
-            .onChange(of: profile.defaultTerms) { _, _ in try? modelContext.save() }
             .onChange(of: profile.catalogCategoriesText) { _, _ in try? modelContext.save() }
             .onChange(of: profile.invoicePrefix) { _, _ in try? modelContext.save() }
             .onChange(of: profile.nextInvoiceNumber) { _, _ in try? modelContext.save() }
@@ -170,29 +166,6 @@ struct BusinessProfileView: View {
             }
 
         let withSheets = withContextRefresh
-            .sheet(isPresented: $showInvoiceTemplateSheet) {
-                NavigationStack {
-                    InvoiceTemplatePickerSheet(
-                        mode: .businessDefault,
-                        businessDefault: businessDefaultTemplate,
-                        currentEffective: businessDefaultTemplate,
-                        currentSelection: businessDefaultTemplate,
-                        onSelectTemplate: { selected in
-                            guard let business else { return }
-                            business.defaultInvoiceTemplateKey = selected.rawValue
-                            try? modelContext.save()
-                        },
-                        onUseBusinessDefault: {
-                            // No-op for business mode.
-                        }
-                    )
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showInvoiceTemplateSheet = false }
-                        }
-                    }
-                }
-            }
             .sheet(isPresented: $showPayPalSafari) {
                 if let url = paypalOnboardingURL {
                     SafariView(url: url) {
@@ -261,8 +234,6 @@ struct BusinessProfileView: View {
                 heroHeader(profile)
                 essentialsCard(profile)
                 brandingCard(profile)
-                defaultsCard(profile)
-                businessSwitcherCard
                 notificationsCard
                 advancedOptionsCard(profile)
 
@@ -280,32 +251,10 @@ struct BusinessProfileView: View {
         .animation(.easeInOut(duration: 0.22), value: expansionAnimationKey)
     }
 
-    private var businessSwitcherCard: some View {
-        PremiumCard {
-            SectionHeaderRow(
-                title: "Business Switcher",
-                subtitle: "Choose active business profile",
-                systemImage: "building.2.crop.circle"
-            )
-            NavigationLink {
-                BusinessSwitcherView()
-            } label: {
-                SBWNavigationRow(
-                    title: "Switch Business",
-                    subtitle: business?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                    ? "Current: \(business?.name ?? "")"
-                    : "Select active business"
-                )
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     private var expansionAnimationKey: Int {
         var value = 0
         value += showEssentialsSection ? 1 : 0
         value += showBrandingSection ? 2 : 0
-        value += showDefaultsSection ? 4 : 0
         value += showWebsiteSection ? 8 : 0
         value += showNotificationsSection ? 32 : 0
         value += showAdvancedSection ? 64 : 0
@@ -416,55 +365,6 @@ struct BusinessProfileView: View {
             }
             .tint(.secondary)
         }
-    }
-
-    private func defaultsCard(_ profile: BusinessProfile) -> some View {
-        PremiumCard {
-            DisclosureGroup(isExpanded: $showDefaultsSection) {
-                VStack(spacing: 12) {
-                    Button {
-                        showInvoiceTemplateSheet = true
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Default Invoice Template")
-                                    .font(.subheadline.weight(.semibold))
-                                Text(businessDefaultTemplate.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    FieldRow(title: "Thank You", verticalAlignTop: true) {
-                        TextField("Default Thank You", text: Bindable(profile).defaultThankYou, axis: .vertical)
-                            .lineLimit(2...6)
-                    }
-
-                    FieldRow(title: "Terms", verticalAlignTop: true) {
-                        TextField("Default Terms & Conditions", text: Bindable(profile).defaultTerms, axis: .vertical)
-                            .lineLimit(4...10)
-                    }
-                }
-                .padding(.top, 8)
-            } label: {
-                SectionHeaderRow(title: "Defaults", subtitle: "Pre-fill invoice values", systemImage: "text.badge.checkmark")
-            }
-            .tint(.secondary)
-        }
-    }
-
-    private var businessDefaultTemplate: InvoiceTemplateKey {
-        guard let business,
-              let key = InvoiceTemplateKey.from(business.defaultInvoiceTemplateKey) else {
-            return .modern_clean
-        }
-        return key
     }
 
     private func websitePublishingCard(_ profile: BusinessProfile) -> some View {
@@ -692,6 +592,18 @@ struct BusinessProfileView: View {
         PremiumCard {
             DisclosureGroup(isExpanded: $showAdvancedSection) {
                 VStack(alignment: .leading, spacing: 12) {
+                    NavigationLink {
+                        BusinessSwitcherView()
+                    } label: {
+                        SBWNavigationRow(
+                            title: "Switch Business",
+                            subtitle: business?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                            ? "Current: \(business?.name ?? "")"
+                            : "Select active business"
+                        )
+                    }
+                    .buttonStyle(.plain)
+
                     Text("Invoice Numbers")
                         .font(.subheadline.weight(.semibold))
 
