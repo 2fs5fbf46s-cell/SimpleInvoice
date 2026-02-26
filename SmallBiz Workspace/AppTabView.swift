@@ -30,6 +30,7 @@ struct AppTabView: View {
 
     // MUST be @State so NavigationStack(path:) can push.
     @State private var morePath = NavigationPath()
+    @State private var dashboardResetToken = UUID()
     @ObservedObject private var portalReturn = PortalReturnRouter.shared
     @ObservedObject private var notificationRouter = NotificationRouter.shared
 
@@ -39,6 +40,7 @@ struct AppTabView: View {
             NavigationStack {
                 DashboardView()
             }
+            .id(dashboardResetToken)
             .tag(AppTab.dashboard)
             .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
 
@@ -79,6 +81,10 @@ struct AppTabView: View {
         .background(
             TabBarReselectObserver { reselectedIndex in
                 // Tab order: dashboard(0), invoices(1), create(2), clients(3), more(4)
+                if reselectedIndex == 0 {
+                    // Re-tapping the already-selected Dashboard tab pops to root.
+                    dashboardResetToken = UUID()
+                }
                 if reselectedIndex == 4 {
                     // Re-tapping the already-selected More tab pops to root.
                     morePath = NavigationPath()
@@ -89,6 +95,10 @@ struct AppTabView: View {
         .tint(SBWTheme.brandBlue)
 
         .onChange(of: tab) { _, newValue in
+            if newValue == .dashboard {
+                // Switch to Dashboard = start at root
+                dashboardResetToken = UUID()
+            }
             if newValue == .more {
                 // Switch to More = start at root
                 morePath = NavigationPath()
