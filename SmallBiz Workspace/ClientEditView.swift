@@ -138,10 +138,10 @@ struct ClientEditView: View {
     private var navigationAndSheetsView: some View {
         baseListView
             .navigationDestination(item: $navigateToJob) { job in
-                JobDetailView(job: job)
+                JobSummaryView(job: job)
             }
             .navigationDestination(item: $selectedJob) { job in
-                JobDetailView(job: job)
+                JobSummaryView(job: job)
             }
             .navigationDestination(item: $navigateToExistingClient) { existing in
                 ClientEditView(client: existing)

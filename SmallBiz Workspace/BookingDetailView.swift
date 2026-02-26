@@ -655,7 +655,7 @@ struct BookingDetailView: View {
             InvoiceDetailView(invoice: invoice)
         }
         .navigationDestination(item: $navigateToJob) { job in
-            JobDetailView(job: job)
+            JobSummaryView(job: job)
         }
         .sheet(isPresented: $showDepositSheet) {
             depositSheet

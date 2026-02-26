@@ -24,9 +24,9 @@ struct JobsListView: View {
 
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
-        case booked = "Booked"
+        case booked = "Scheduled"
         case inProgress = "In Progress"
-        case completed = "Completed"
+        case completed = "Done"
         case canceled = "Canceled"
 
         var id: String { rawValue }
@@ -75,12 +75,43 @@ struct JobsListView: View {
 
             List {
                 Section {
-                    Picker("Filter", selection: $filter) {
-                        ForEach(Filter.allCases) { option in
-                            Text(option.rawValue).tag(option)
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search requests", text: $searchText)
+                            .textInputAutocapitalization(.never)
+
+                        Button {
+                            addJobAndOpenSheet()
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 30, height: 30)
+                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
                     }
-                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Filter.allCases) { option in
+                                Button {
+                                    filter = option
+                                } label: {
+                                    Text(option.rawValue)
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(filter == option ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
 
                 if activeBiz.activeBusinessID == nil {
@@ -114,24 +145,14 @@ struct JobsListView: View {
         }
         .navigationTitle("Jobs")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search jobs"
-        )
         .navigationDestination(item: $selectedJob) { job in
-            JobDetailView(job: job)
+            JobSummaryView(job: job)
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { addJobAndOpenSheet() } label: {
-                    Image(systemName: "plus")
-                }
-            }
         }
         .sheet(isPresented: $showingNewJob, onDismiss: { newJobDraft = nil }) {
             NavigationStack {
