@@ -152,7 +152,7 @@ struct ContractsHomeView: View {
         .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(item: $selectedContract) { contract in
-            ContractDetailView(contract: contract)
+            ContractSummaryView(contract: contract)
         }
         .task {
             // Ensure built-in templates exist (safe to call repeatedly)

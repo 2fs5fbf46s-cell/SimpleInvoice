@@ -106,22 +106,22 @@ struct AppTabView: View {
             portalReturn.consumeEstimateRequest()
         }) { estimate in
             NavigationStack {
-                InvoiceDetailView(invoice: estimate)
+                InvoiceOverviewView(invoice: estimate)
             }
         }
         .sheet(item: $deepLinkedInvoice) { invoice in
             NavigationStack {
-                InvoiceDetailView(invoice: invoice)
+                InvoiceOverviewView(invoice: invoice)
             }
         }
         .sheet(item: $deepLinkedContract) { contract in
             NavigationStack {
-                ContractDetailView(contract: contract)
+                ContractSummaryView(contract: contract)
             }
         }
         .sheet(item: $deepLinkedBookingRequest) { request in
             NavigationStack {
-                BookingDetailView(request: request)
+                BookingOverviewView(request: request)
             }
         }
         .sheet(isPresented: $showBookingAdminSheet) {

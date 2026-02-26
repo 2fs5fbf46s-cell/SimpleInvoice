@@ -1104,7 +1104,7 @@ struct ClientContractsView: View {
                 } else {
                     ForEach(filtered) { contract in
                         NavigationLink {
-                            ContractOverviewView(contract: contract)
+                            ContractSummaryView(contract: contract)
                         } label: {
                             SBWNavigationRow(
                                 title: contract.title.isEmpty ? "Contract" : contract.title,

@@ -17,13 +17,14 @@ struct ContractsListView: View {
     @State private var filter: ContractFilter = .all
     @State private var blockedDeleteMessage: String? = nil
     @State private var selectedContract: Contract? = nil
+    @State private var showCreateContract = false
 
     private enum ContractFilter: String, CaseIterable, Identifiable {
         case all = "All"
         case draft = "Draft"
-        case active = "Active"
+        case sent = "Sent"
         case signed = "Signed"
-        case cancelled = "Cancelled"
+        case expired = "Expired"
 
         var id: String { rawValue }
     }
@@ -71,11 +72,11 @@ struct ContractsListView: View {
                 return true
             case .draft:
                 return c.status == .draft
-            case .active:
+            case .sent:
                 return c.status == .sent
             case .signed:
                 return c.status == .signed
-            case .cancelled:
+            case .expired:
                 return c.status == .cancelled
             }
         }
@@ -92,14 +93,44 @@ struct ContractsListView: View {
             SBWTheme.headerWash()
 
             List {
-                // Filter toggle (match other list screens)
                 Section {
-                    Picker("", selection: $filter) {
-                        ForEach(ContractFilter.allCases) { f in
-                            Text(f.rawValue).tag(f)
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search contracts", text: $searchText)
+                            .textInputAutocapitalization(.never)
+
+                        Button {
+                            showCreateContract = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 30, height: 30)
+                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
                     }
-                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(ContractFilter.allCases) { f in
+                                Button {
+                                    filter = f
+                                } label: {
+                                    Text(f.rawValue)
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(filter == f ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
 
                 if activeBiz.activeBusinessID == nil {
@@ -144,24 +175,14 @@ struct ContractsListView: View {
         }
         .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search contracts"
-        )
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    CreateContractStartView()
-                } label: {
-                    Image(systemName: "plus")
-                }
-            }
         }
         .navigationDestination(item: $selectedContract) { contract in
-            ContractDetailView(contract: contract)
+            ContractSummaryView(contract: contract)
+        }
+        .navigationDestination(isPresented: $showCreateContract) {
+            CreateContractStartView()
         }
         .alert("Can’t Delete", isPresented: Binding(
             get: { blockedDeleteMessage != nil },
@@ -178,9 +199,9 @@ struct ContractsListView: View {
     private func row(_ contract: Contract) -> some View {
         let statusText = statusText(for: contract)
         let client = clientName(for: contract)
-        let date = contract.createdAt.formatted(date: .abbreviated, time: .omitted)
+        let date = contract.updatedAt.formatted(date: .abbreviated, time: .omitted)
         let category = contract.templateCategory.isEmpty ? "General" : contract.templateCategory
-        let subtitle = "\(statusText) • \(client) • \(date) • \(category)"
+        let subtitle = "\(client) • \(date) • \(category)"
 
         return HStack(alignment: .top, spacing: 12) {
             // Leading icon chip (matches other tiles/lists)
@@ -193,10 +214,19 @@ struct ContractsListView: View {
             }
             .frame(width: 36, height: 36)
 
-            SBWNavigationRow(
-                title: contract.title.isEmpty ? "Contract" : contract.title,
-                subtitle: subtitle
-            )
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(contract.title.isEmpty ? "Contract" : contract.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer()
+                    SBWStatusPill(text: statusText)
+                }
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
         .padding(.vertical, 4)
         .frame(minHeight: 56, alignment: .topLeading)
@@ -207,7 +237,7 @@ struct ContractsListView: View {
         case .draft: return "DRAFT"
         case .sent: return "SENT"
         case .signed: return "SIGNED"
-        case .cancelled: return "CANCELLED"
+        case .cancelled: return "EXPIRED"
         }
     }
 
