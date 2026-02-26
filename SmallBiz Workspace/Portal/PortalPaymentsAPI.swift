@@ -532,6 +532,24 @@ final class PortalPaymentsAPI {
         )
     }
 
+    func isPayPalPartnerConnectAvailable(businessId: UUID) async -> Bool {
+        do {
+            _ = try await paypalConnectStatus(businessId: businessId)
+            return true
+        } catch {
+            if case PortalBackendError.http(let code, _, _) = error, code == 404 || code == 405 {
+                return false
+            }
+            if let serviceError = error as? PaymentServiceResponseError {
+                let lower = serviceError.details.lowercased()
+                if lower.contains("<!doctype html") || lower.contains("<html") {
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
     // Backward-compatible wrappers for existing callers.
     func startPayPalConnect(businessId: UUID, returnURL: URL) async throws -> PayPalConnectStartResponse {
         try await paypalConnectStart(businessId: businessId, returnURL: returnURL)
