@@ -31,6 +31,7 @@ struct JobSummaryView: View {
     @State private var selectedInvoice: Invoice? = nil
     @State private var sharePayload: JobSharePayload? = nil
     @State private var errorMessage: String? = nil
+    @State private var notesDraft: String = ""
 
     init(job: Job) {
         self.job = job
@@ -81,14 +82,6 @@ struct JobSummaryView: View {
         return linkedInvoices.first
     }
 
-    private var balanceSummaryText: String {
-        let open = linkedInvoices
-            .filter { $0.documentType != "estimate" && !$0.isPaid }
-            .reduce(0) { $0 + $1.total }
-        if open <= 0 { return "No open balance" }
-        return open.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-    }
-
     private var jobAttachments: [JobAttachment] {
         attachments.filter { $0.jobKey == job.id.uuidString }
     }
@@ -113,8 +106,6 @@ struct JobSummaryView: View {
                 if !job.locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     SummaryKit.SummaryKeyValueRow(label: "Location", value: job.locationName)
                 }
-                SummaryKit.SummaryKeyValueRow(label: "Assigned", value: assignedResourcesText)
-                SummaryKit.SummaryKeyValueRow(label: "Balance", value: balanceSummaryText)
             }
             .listRowBackground(Color.clear)
 
@@ -158,9 +149,23 @@ struct JobSummaryView: View {
                 isExpanded: expandedSection == .notes,
                 onToggle: { toggle(.notes) }
             ) {
-                Text(job.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "No notes added." : job.notes)
-                    .font(.subheadline)
-                    .foregroundStyle(job.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
+                VStack(alignment: .leading, spacing: 8) {
+                    TextEditor(text: $notesDraft)
+                        .frame(minHeight: 110)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.white.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .onChange(of: notesDraft) { _, newValue in
+                            let normalized = newValue.trimmingCharacters(in: .newlines)
+                            if job.notes != normalized {
+                                job.notes = normalized
+                                try? modelContext.save()
+                            }
+                        }
+                    Text("Changes save automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .listRowBackground(Color.clear)
 
@@ -294,12 +299,9 @@ struct JobSummaryView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-    }
-
-    private var assignedResourcesText: String {
-        let count = linkedContracts.count
-        if count == 0 { return "Unassigned" }
-        return "\(count) linked contract\(count == 1 ? "" : "s")"
+        .onAppear {
+            notesDraft = job.notes
+        }
     }
 
     private var bookingLinkSummary: String {

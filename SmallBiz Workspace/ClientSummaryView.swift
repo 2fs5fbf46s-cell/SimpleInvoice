@@ -17,6 +17,13 @@ private struct ClientSharePayload: Identifiable {
     let items: [Any]
 }
 
+private struct DraftInvoiceInput {
+    var invoiceNumber: String
+    var issueDate: Date
+    var dueDate: Date
+    var notes: String
+}
+
 struct ClientSummaryView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var client: Client
@@ -35,6 +42,8 @@ struct ClientSummaryView: View {
     @State private var showAllInvoices = false
     @State private var showAllContracts = false
     @State private var showAllJobs = false
+    @State private var showCreateInvoiceDraft = false
+    @State private var draftInvoice = DraftInvoiceInput(invoiceNumber: "", issueDate: .now, dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now, notes: "")
     @State private var sharePayload: ClientSharePayload? = nil
     @State private var notice: String? = nil
     @State private var errorMessage: String? = nil
@@ -119,7 +128,7 @@ struct ClientSummaryView: View {
                         messageOrEmail()
                     },
                     .init(title: "Create Invoice", systemImage: "doc.badge.plus") {
-                        createInvoiceForClient()
+                        startCreateInvoiceDraft()
                     },
                     .init(title: "Edit Client", systemImage: "square.and.pencil") {
                         showEditSheet = true
@@ -349,6 +358,41 @@ struct ClientSummaryView: View {
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
         }
+        .sheet(isPresented: $showCreateInvoiceDraft) {
+            NavigationStack {
+                Form {
+                    Section("Invoice") {
+                        TextField("Invoice Number", text: $draftInvoice.invoiceNumber)
+                            .textInputAutocapitalization(.characters)
+                        DatePicker("Issue Date", selection: $draftInvoice.issueDate, displayedComponents: .date)
+                        DatePicker("Due Date", selection: $draftInvoice.dueDate, displayedComponents: .date)
+                    }
+                    Section("Client") {
+                        Text(clientTitle)
+                        Text(displayOrDash(client.email))
+                            .foregroundStyle(.secondary)
+                    }
+                    Section("Notes") {
+                        TextField("Notes", text: $draftInvoice.notes, axis: .vertical)
+                            .lineLimit(2...6)
+                    }
+                }
+                .navigationTitle("New Invoice")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showCreateInvoiceDraft = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            finalizeCreateInvoiceDraft()
+                        }
+                    }
+                }
+            }
+        }
         .navigationDestination(isPresented: $showAllInvoices) {
             ClientInvoicesView(client: client)
         }
@@ -420,13 +464,24 @@ struct ClientSummaryView: View {
         errorMessage = "No contact method available for this client."
     }
 
-    private func createInvoiceForClient() {
-        let number = nextInvoiceNumber()
+    private func startCreateInvoiceDraft() {
+        draftInvoice.invoiceNumber = nextInvoiceNumber()
+        draftInvoice.issueDate = .now
+        draftInvoice.dueDate = Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now
+        draftInvoice.notes = ""
+        showCreateInvoiceDraft = true
+    }
+
+    private func finalizeCreateInvoiceDraft() {
+        let number = draftInvoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nextInvoiceNumber()
+            : draftInvoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         let invoice = Invoice(
             businessID: client.businessID,
             invoiceNumber: number,
-            issueDate: Date(),
-            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date(),
+            issueDate: draftInvoice.issueDate,
+            dueDate: draftInvoice.dueDate,
+            notes: draftInvoice.notes.trimmingCharacters(in: .whitespacesAndNewlines),
             isPaid: false,
             documentType: "invoice",
             client: client,
@@ -437,6 +492,7 @@ struct ClientSummaryView: View {
         modelContext.insert(invoice)
         do {
             try modelContext.save()
+            showCreateInvoiceDraft = false
             selectedInvoice = invoice
         } catch {
             modelContext.delete(invoice)

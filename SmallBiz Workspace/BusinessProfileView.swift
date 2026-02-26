@@ -263,7 +263,8 @@ struct BusinessProfileView: View {
                 brandingCard(profile)
                 defaultsCard(profile)
                 websitePublishingCard(profile)
-                paymentsShortcutCard
+                paymentsCard
+                businessSwitcherCard
                 notificationsCard
                 advancedOptionsCard(profile)
 
@@ -279,6 +280,27 @@ struct BusinessProfileView: View {
             .padding(.bottom, 24)
         }
         .animation(.easeInOut(duration: 0.22), value: expansionAnimationKey)
+    }
+
+    private var businessSwitcherCard: some View {
+        PremiumCard {
+            SectionHeaderRow(
+                title: "Business Switcher",
+                subtitle: "Choose active business profile",
+                systemImage: "building.2.crop.circle"
+            )
+            NavigationLink {
+                BusinessSwitcherView()
+            } label: {
+                SBWNavigationRow(
+                    title: "Switch Business",
+                    subtitle: business?.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                    ? "Current: \(business?.name ?? "")"
+                    : "Select active business"
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var expansionAnimationKey: Int {
