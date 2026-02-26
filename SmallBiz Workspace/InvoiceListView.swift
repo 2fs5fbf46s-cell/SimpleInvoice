@@ -17,6 +17,7 @@ struct InvoiceListView: View {
 
     @State private var showingNewInvoice = false
     @State private var showingTemplates = false
+    @State private var showingInvoiceSettings = false
 
     // Navigate to the invoice created from a template
     @State private var navigateToInvoice: Invoice? = nil
@@ -25,8 +26,10 @@ struct InvoiceListView: View {
     // MARK: - Filters
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
-        case unpaid = "Unpaid"
+        case draft = "Draft"
+        case sent = "Sent"
         case paid = "Paid"
+        case overdue = "Overdue"
 
         var id: String { rawValue }
     }
@@ -43,14 +46,44 @@ struct InvoiceListView: View {
             SBWTheme.headerWash()
 
             List {
-                // MARK: - Filter Toggle
                 Section {
-                    Picker("Filter", selection: $filter) {
-                        ForEach(Filter.allCases) { f in
-                            Text(f.rawValue).tag(f)
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search invoices", text: $searchText)
+                            .textInputAutocapitalization(.never)
+
+                        Button {
+                            showingNewInvoice = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 30, height: 30)
+                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
                     }
-                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                        ForEach(Filter.allCases) { f in
+                                Button {
+                                    filter = f
+                                } label: {
+                                    Text(f.rawValue)
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(filter == f ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
 
                 // MARK: - Content
@@ -83,11 +116,6 @@ struct InvoiceListView: View {
         }
         .navigationTitle("Invoices")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search invoices"
-        )
         
 
         // MARK: - Toolbar
@@ -110,15 +138,17 @@ struct InvoiceListView: View {
                         Label("Templates", systemImage: "square.grid.2x2")
                     }
                 } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingInvoiceSettings = true
+                } label: {
                     Image(systemName: "gearshape")
                 }
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showingNewInvoice = true } label: {
-                    Image(systemName: "plus")
-                }
-            }
         }
 
         // MARK: - Sheets
@@ -142,13 +172,23 @@ struct InvoiceListView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingInvoiceSettings) {
+            NavigationStack {
+                InvoiceSettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showingInvoiceSettings = false }
+                        }
+                    }
+            }
+        }
 
         // Navigate to created invoice after template selection
         .navigationDestination(item: $navigateToInvoice) { invoice in
-            InvoiceDetailView(invoice: invoice)
+            InvoiceOverviewView(invoice: invoice)
         }
         .navigationDestination(item: $selectedInvoice) { invoice in
-            InvoiceDetailView(invoice: invoice)
+            InvoiceOverviewView(invoice: invoice)
         }
     }
 
@@ -162,10 +202,14 @@ struct InvoiceListView: View {
         switch filter {
         case .all:
             base = nonEstimates
+        case .draft:
+            base = nonEstimates.filter { !($0.isPaid) && ($0.items ?? []).isEmpty }
+        case .sent:
+            base = nonEstimates.filter { !($0.isPaid) && !($0.dueDate < Date()) && !($0.items ?? []).isEmpty }
         case .paid:
             base = nonEstimates.filter { $0.isPaid }
-        case .unpaid:
-            base = nonEstimates.filter { !$0.isPaid }
+        case .overdue:
+            base = nonEstimates.filter { !$0.isPaid && $0.dueDate < Date() }
         }
 
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -220,27 +264,22 @@ struct InvoiceListView: View {
             }
             .frame(width: 36, height: 36)
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    let isFinal = isFinalDraft(invoice)
+            VStack(alignment: .leading, spacing: 4) {
+                let isFinal = isFinalDraft(invoice)
+                HStack {
                     Text(invoice.invoiceNumber.isEmpty
                          ? (isFinal ? "Final Invoice" : "Invoice")
                          : "\(isFinal ? "Final Invoice" : "Invoice") \(invoice.invoiceNumber)")
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    SBWStatusPill(text: statusText)
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                Text(subtitle.replacingOccurrences(of: "\(statusText) • ", with: ""))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
         .padding(.vertical, 4)
