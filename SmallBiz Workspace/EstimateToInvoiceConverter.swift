@@ -31,11 +31,9 @@ enum EstimateToInvoiceConverter {
         estimate.invoiceNumber = "\(prefix)-\(year)-\(String(format: "%04d", next))"
         profile.nextInvoiceNumber += 1
 
+        // Convert in place while preserving estimate-entered financial/date fields.
+        // This prevents invoice defaults from being reapplied during conversion.
         estimate.documentType = "invoice"
-        estimate.issueDate = .now
-        if estimate.dueDate < estimate.issueDate {
-            estimate.dueDate = Calendar.current.date(byAdding: .day, value: 14, to: estimate.issueDate) ?? estimate.issueDate
-        }
 
         _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
             invoice: estimate,

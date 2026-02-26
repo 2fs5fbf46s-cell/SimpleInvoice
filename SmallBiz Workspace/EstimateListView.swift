@@ -14,6 +14,7 @@ struct EstimateListView: View {
     private var invoices: [Invoice]
 
     @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
 
     // Navigate to the estimate we just created
     @State private var navigateToEstimate: Invoice? = nil
@@ -31,6 +32,7 @@ struct EstimateListView: View {
     @State private var showingCreateEstimate = false
     @State private var draftName: String = ""
     @State private var draftClient: Client? = nil
+    @State private var showingEstimateSettings = false
 
     // MARK: - Filters
     private enum Filter: String, CaseIterable, Identifiable {
@@ -55,14 +57,46 @@ struct EstimateListView: View {
             SBWTheme.headerWash()
 
             List {
-                // MARK: - Filter Toggle
                 Section {
-                    Picker("Filter", selection: $filter) {
-                        ForEach(Filter.allCases) { f in
-                            Text(f.rawValue).tag(f)
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search estimates", text: $searchText)
+                            .textInputAutocapitalization(.never)
+
+                        Button {
+                            draftName = ""
+                            draftClient = nil
+                            showingCreateEstimate = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 30, height: 30)
+                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
                     }
-                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Filter.allCases) { f in
+                                Button {
+                                    filter = f
+                                } label: {
+                                    Text(f.rawValue)
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(filter == f ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
 
                 // MARK: - Content
@@ -116,11 +150,6 @@ struct EstimateListView: View {
         }
         .navigationTitle("Estimates")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search estimates"
-        )
 
         // MARK: - Toolbar (matches InvoiceListView style)
         .toolbar {
@@ -139,28 +168,24 @@ struct EstimateListView: View {
                     }
 
                 } label: {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "ellipsis.circle")
                 }
             }
-
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    // reset draft fields each time
-                    draftName = ""
-                    draftClient = nil
-                    showingCreateEstimate = true
+                    showingEstimateSettings = true
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "gearshape")
                 }
             }
         }
 
         // Navigate to created estimate (template-style navigation)
         .navigationDestination(item: $navigateToEstimate) { estimate in
-            InvoiceDetailView(invoice: estimate)
+            InvoiceOverviewView(invoice: estimate)
         }
         .navigationDestination(item: $selectedEstimate) { estimate in
-            InvoiceDetailView(invoice: estimate)
+            InvoiceOverviewView(invoice: estimate)
         }
 
         // MARK: - Rename Alert
@@ -198,6 +223,16 @@ struct EstimateListView: View {
                 onCancel: { showingCreateEstimate = false },
                 onCreate: { createEstimateFromDraft() }
             )
+        }
+        .sheet(isPresented: $showingEstimateSettings) {
+            NavigationStack {
+                InvoiceSettingsView(mode: .estimate)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showingEstimateSettings = false }
+                        }
+                    }
+            }
         }
 
         // MARK: - New Estimate Detail Sheet (supports Cancel-delete behavior)
@@ -299,10 +334,19 @@ struct EstimateListView: View {
             }
             .frame(width: 36, height: 36)
 
-            SBWNavigationRow(
-                title: "Estimate \(estimate.invoiceNumber)",
-                subtitle: subtitle
-            )
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Estimate \(estimate.invoiceNumber)")
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer()
+                    SBWStatusPill(text: statusText)
+                }
+                Text(subtitle.replacingOccurrences(of: "\(statusText) • ", with: ""))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
         .padding(.vertical, 4)
         .frame(minHeight: 56, alignment: .topLeading)
@@ -363,16 +407,21 @@ struct EstimateListView: View {
             let trimmedName = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
             let numberOrName = trimmedName.isEmpty ? generateEstimateNumber() : trimmedName
 
+            let profile = profiles.first(where: { $0.businessID == bizID })
+            let business = businesses.first(where: { $0.id == bizID })
+            let validityDays = max(1, business?.defaultEstimateValidityDays ?? 14)
+            let defaultTaxRate = max(0, NSDecimalNumber(decimal: business?.defaultTaxRate ?? 0).doubleValue)
+
             let estimate = Invoice(
                 businessID: bizID,
                 invoiceNumber: numberOrName,
                 issueDate: .now,
-                dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
-                paymentTerms: "Net 14",
+                dueDate: Calendar.current.date(byAdding: .day, value: validityDays, to: .now) ?? .now,
+                paymentTerms: "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")",
                 notes: "",
-                thankYou: "",
-                termsAndConditions: "",
-                taxRate: 0,
+                thankYou: profile?.defaultThankYou ?? "",
+                termsAndConditions: profile?.defaultTerms ?? "",
+                taxRate: defaultTaxRate,
                 discountAmount: 0,
                 isPaid: false,
                 documentType: "estimate",

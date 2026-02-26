@@ -9,6 +9,7 @@ final class Business {
 
     var defaultTaxRate: Decimal = 0
     var currencyCode: String = "USD"
+    var defaultEstimateValidityDays: Int = 14
     var defaultInvoiceTemplateKey: String = InvoiceTemplateKey.modern_clean.rawValue
 
     var paypalMeUrl: String? = nil
@@ -46,6 +47,7 @@ final class Business {
         isActive: Bool = true,
         defaultTaxRate: Decimal = 0,
         currencyCode: String = "USD",
+        defaultEstimateValidityDays: Int = 14,
         defaultInvoiceTemplateKey: String = InvoiceTemplateKey.modern_clean.rawValue,
         paypalMeUrl: String? = nil,
         paypalEnabled: Bool = false,
@@ -80,6 +82,7 @@ final class Business {
         self.isActive = isActive
         self.defaultTaxRate = defaultTaxRate
         self.currencyCode = currencyCode
+        self.defaultEstimateValidityDays = defaultEstimateValidityDays
         self.defaultInvoiceTemplateKey = defaultInvoiceTemplateKey
         self.paypalMeUrl = paypalMeUrl
         self.paypalEnabled = paypalEnabled
