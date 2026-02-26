@@ -3,6 +3,7 @@ import SwiftData
 
 struct CatalogItemListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     @Query(sort: \CatalogItem.name) private var items: [CatalogItem]
     @Query private var profiles: [BusinessProfile]
@@ -44,8 +45,10 @@ struct CatalogItemListView: View {
 
     private var filteredItems: [CatalogItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let bizID = activeBiz.activeBusinessID else { return [] }
 
         return items.filter { item in
+            guard item.businessID == bizID else { return false }
             let cat = normalizedCategory(item.category)
 
             let matchesCategory = (selectedCategory == "All") || (cat == selectedCategory)
@@ -140,6 +143,11 @@ struct CatalogItemListView: View {
     }
 
     private func add() {
+        guard let bizID = activeBiz.activeBusinessID else {
+            print("❌ No active business selected")
+            return
+        }
+
         let item = CatalogItem(
             name: "",
             details: "",
@@ -147,7 +155,9 @@ struct CatalogItemListView: View {
             defaultQuantity: 1,
             category: "General"
         )
+        item.businessID = bizID
         modelContext.insert(item)
+        debugLogInsertedCatalogItem(item, activeBusinessID: bizID, source: "CatalogItemListView.add")
 
         do {
             try modelContext.save()
@@ -167,5 +177,12 @@ struct CatalogItemListView: View {
         } catch {
             print("Failed to save deletes: \(error)")
         }
+    }
+
+    private func debugLogInsertedCatalogItem(_ item: CatalogItem, activeBusinessID: UUID, source: String) {
+#if DEBUG
+        let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "General" : item.category
+        print("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) activeBusinessID=\(activeBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
+#endif
     }
 }
