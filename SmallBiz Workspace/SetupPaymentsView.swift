@@ -41,6 +41,10 @@ struct SetupPaymentsView: View {
     @State private var showingSquareSheet = false
     @State private var showingCashAppSheet = false
     @State private var showingVenmoSheet = false
+    @State private var showingPayPalConfigSheet = false
+#if DEBUG
+    @State private var showDiagnostics = false
+#endif
 
     var body: some View {
         ZStack {
@@ -54,7 +58,7 @@ struct SetupPaymentsView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 18) {
                     header
 
                     sectionLabel("Card Payments")
@@ -80,6 +84,10 @@ struct SetupPaymentsView: View {
                     } else {
                         loadingCard
                     }
+
+                    #if DEBUG
+                    diagnosticsSection
+                    #endif
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -140,6 +148,12 @@ struct SetupPaymentsView: View {
         .sheet(isPresented: $showingVenmoSheet) {
             if let business {
                 venmoEditorSheet(for: business)
+                    .presentationDetents([.medium])
+            }
+        }
+        .sheet(isPresented: $showingPayPalConfigSheet) {
+            if let business {
+                payPalConfigSheet(for: business)
                     .presentationDetents([.medium])
             }
         }
@@ -253,7 +267,6 @@ struct SetupPaymentsView: View {
             statusText: status.label,
             statusStyle: status.style,
             enabledBinding: $stripeEnabled,
-            enabledLabel: "Enabled",
             hintWhenDisabled: "Enable to configure Stripe.",
             primaryAction: .init(
                 title: stripePrimaryActionTitle,
@@ -267,31 +280,13 @@ struct SetupPaymentsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            #if DEBUG
-            Divider().opacity(0.35)
-            HStack(spacing: 10) {
-                Button {
-                    Task { await testStripeBackend() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if isTestingStripeBackend {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text("Test Backend")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(isTestingStripeBackend)
-
-                if let stripeBackendTestResult {
-                    Text("Result: \(stripeBackendTestResult)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+            Button("Refresh Status") {
+                Task { await refreshStripeStatus() }
             }
-            #endif
+            .buttonStyle(.plain)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .disabled(isLoadingStripe || isStartingStripe)
         }
     }
 
@@ -311,7 +306,6 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            enabledLabel: "Enabled",
             hintWhenDisabled: "Enable to configure PayPal.",
             primaryAction: .init(
                 title: payPalPrimaryActionTitle,
@@ -331,46 +325,27 @@ struct SetupPaymentsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            #if DEBUG
-            Divider().opacity(0.35)
-            HStack(spacing: 10) {
-                Button {
-                    Task { await testPayPalBackend() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if isTestingPayPalBackend {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text("Test PayPal Backend")
-                    }
+            HStack(spacing: 14) {
+                Button("Refresh Status") {
+                    Task { await refreshPayPalStatus() }
                 }
-                .buttonStyle(.bordered)
-                .disabled(isTestingPayPalBackend)
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .disabled(isLoadingPayPalStatus || isStartingPayPal)
 
-                if let payPalBackendTestResult {
-                    Text("Result: \(payPalBackendTestResult)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                Button("Configure") {
+                    showingPayPalConfigSheet = true
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+                if isLoadingPayPalStatus {
+                    ProgressView()
+                        .controlSize(.small)
                 }
             }
-            #endif
-
-            TextField(
-                "PayPal.me fallback (optional)",
-                text: Binding(
-                    get: { business.paypalMeFallback ?? "" },
-                    set: {
-                        business.paypalMeFallback = normalizeURL($0)
-                        business.paypalMeUrl = business.paypalMeFallback
-                        save()
-                    }
-                )
-            )
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -390,12 +365,11 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            enabledLabel: "Enabled",
             hintWhenDisabled: "Enable to configure Square.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
-                isDisabled: false,
+                isDisabled: !business.squareEnabled,
                 action: { showingSquareSheet = true }
             )
         ) {
@@ -419,12 +393,11 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            enabledLabel: "Enabled",
             hintWhenDisabled: "Enable to configure Cash App.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
-                isDisabled: false,
+                isDisabled: !business.cashAppEnabled,
                 action: { showingCashAppSheet = true }
             )
         ) {
@@ -448,12 +421,11 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            enabledLabel: "Enabled",
             hintWhenDisabled: "Enable to configure Venmo.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
-                isDisabled: false,
+                isDisabled: !business.venmoEnabled,
                 action: { showingVenmoSheet = true }
             )
         ) {
@@ -477,12 +449,11 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            enabledLabel: "Enabled",
             hintWhenDisabled: "Enable to configure ACH.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
-                isDisabled: false,
+                isDisabled: !business.achEnabled,
                 action: { showingACHSheet = true }
             )
         ) {
@@ -931,14 +902,6 @@ struct SetupPaymentsView: View {
     private func achEditorSheet(for business: Business) -> some View {
         NavigationStack {
             Form {
-                Toggle("Enable ACH", isOn: Binding(
-                    get: { business.achEnabled },
-                    set: {
-                        business.achEnabled = $0
-                        save()
-                    }
-                ))
-
                 TextField("Recipient Name", text: Binding(
                     get: { business.achRecipientName ?? "" },
                     set: {
@@ -990,6 +953,88 @@ struct SetupPaymentsView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func payPalConfigSheet(for business: Business) -> some View {
+        NavigationStack {
+            Form {
+                TextField(
+                    "PayPal.me fallback (optional)",
+                    text: Binding(
+                        get: { business.paypalMeFallback ?? "" },
+                        set: {
+                            business.paypalMeFallback = normalizeURL($0)
+                            business.paypalMeUrl = business.paypalMeFallback
+                            save()
+                        }
+                    )
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            }
+            .navigationTitle("PayPal")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { showingPayPalConfigSheet = false }
+                }
+            }
+        }
+    }
+
+#if DEBUG
+    private var diagnosticsSection: some View {
+        DisclosureGroup("Diagnostics", isExpanded: $showDiagnostics) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await testStripeBackend() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isTestingStripeBackend {
+                                ProgressView().controlSize(.small)
+                            }
+                            Text("Test Stripe Backend")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isTestingStripeBackend)
+
+                    if let stripeBackendTestResult {
+                        Text(stripeBackendTestResult)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await testPayPalBackend() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isTestingPayPalBackend {
+                                ProgressView().controlSize(.small)
+                            }
+                            Text("Test PayPal Backend")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isTestingPayPalBackend)
+
+                    if let payPalBackendTestResult {
+                        Text(payPalBackendTestResult)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.top, 8)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+#endif
 
     private func normalizeURL(_ raw: String?) -> String? {
         let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1079,10 +1124,8 @@ private struct PaymentProviderCard<Content: View>: View {
     let statusText: String
     let statusStyle: ProviderStatusStyle
     let enabledBinding: Binding<Bool>?
-    let enabledLabel: String
     let hintWhenDisabled: String?
     let primaryAction: ProviderAction?
-    let secondaryAction: ProviderAction?
     @ViewBuilder let content: Content
 
     init(
@@ -1094,10 +1137,8 @@ private struct PaymentProviderCard<Content: View>: View {
         statusText: String,
         statusStyle: ProviderStatusStyle,
         enabledBinding: Binding<Bool>? = nil,
-        enabledLabel: String = "Enabled",
         hintWhenDisabled: String? = nil,
         primaryAction: ProviderAction? = nil,
-        secondaryAction: ProviderAction? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.logoName = logoName
@@ -1108,16 +1149,14 @@ private struct PaymentProviderCard<Content: View>: View {
         self.statusText = statusText
         self.statusStyle = statusStyle
         self.enabledBinding = enabledBinding
-        self.enabledLabel = enabledLabel
         self.hintWhenDisabled = hintWhenDisabled
         self.primaryAction = primaryAction
-        self.secondaryAction = secondaryAction
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 Group {
                     if let logoName {
                         Image(logoName)
@@ -1134,13 +1173,8 @@ private struct PaymentProviderCard<Content: View>: View {
                 .frame(width: 34, height: 34)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(title)
+                    .font(.headline)
 
                 Spacer(minLength: 8)
 
@@ -1150,8 +1184,17 @@ private struct PaymentProviderCard<Content: View>: View {
                     .padding(.vertical, 5)
                     .background(Capsule().fill(statusStyle.background))
                     .foregroundStyle(statusStyle.foreground)
-                    .multilineTextAlignment(.trailing)
+                    .lineLimit(1)
+
+                if let enabledBinding {
+                    Toggle("", isOn: enabledBinding)
+                        .labelsHidden()
+                }
             }
+
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             if !tags.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1168,56 +1211,25 @@ private struct PaymentProviderCard<Content: View>: View {
                 }
             }
 
-            if let enabledBinding {
-                Divider().opacity(0.35)
-                HStack {
-                    Text(enabledLabel)
-                        .font(.subheadline)
-                    Spacer()
-                    Toggle("", isOn: enabledBinding)
-                        .labelsHidden()
-                }
-            }
-
             let showDetailContent = enabledBinding?.wrappedValue ?? true
             if showDetailContent {
                 content
 
-                if primaryAction != nil || secondaryAction != nil {
-                    HStack(spacing: 10) {
-                        if let primaryAction {
-                            Button {
-                                primaryAction.action()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    if primaryAction.isLoading {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    }
-                                    Text(primaryAction.title)
-                                }
+                if let primaryAction {
+                    Button {
+                        primaryAction.action()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if primaryAction.isLoading {
+                                ProgressView()
+                                    .controlSize(.small)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(SBWTheme.brandBlue)
-                            .disabled(primaryAction.isDisabled)
-                        }
-
-                        if let secondaryAction {
-                            Button {
-                                secondaryAction.action()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    if secondaryAction.isLoading {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    }
-                                    Text(secondaryAction.title)
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(secondaryAction.isDisabled)
+                            Text(primaryAction.title)
                         }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SBWTheme.brandBlue)
+                    .disabled(primaryAction.isDisabled)
                 }
             } else if let hintWhenDisabled, !hintWhenDisabled.isEmpty {
                 Text(hintWhenDisabled)
@@ -1225,9 +1237,9 @@ private struct PaymentProviderCard<Content: View>: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 6)
         )
