@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import MessageUI
 
 struct SBWCardContainer<Content: View>: View {
     @ViewBuilder var content: Content
@@ -122,10 +123,19 @@ private enum InvoiceSummarySheet: String, Identifiable {
 struct InvoiceOverviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var invoice: Invoice
+    @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
     @Query private var allAttachments: [InvoiceAttachment]
 
     @State private var expandedSection: InvoiceSummarySection? = nil
     @State private var activeSheet: InvoiceSummarySheet? = nil
+    @State private var shareItems: [Any]? = nil
+    @State private var showingMail = false
+    @State private var mailAttachment: Data? = nil
+    @State private var mailFilename: String = ""
+    @State private var exportError: String? = nil
+    @State private var portalError: String? = nil
+    @State private var portalNotice: String? = nil
 
     private var titleText: String {
         invoice.documentType == "estimate" ? "Estimate" : "Invoice"
@@ -163,7 +173,7 @@ struct InvoiceOverviewView: View {
                 SBWSectionHeaderRow(title: "Primary Actions")
                 SBWPrimaryActionRow(actions: [
                     .init(title: invoice.documentType == "estimate" ? "Send" : "Send", systemImage: "paperplane") {
-                        activeSheet = .advanced
+                        sendPrimaryAction()
                     },
                     .init(title: invoice.documentType == "estimate" ? "Convert" : (invoice.isPaid ? "Mark Unpaid" : "Mark Paid"), systemImage: invoice.documentType == "estimate" ? "arrow.triangle.2.circlepath" : "checkmark.circle") {
                         if invoice.documentType == "estimate" {
@@ -174,9 +184,14 @@ struct InvoiceOverviewView: View {
                         try? modelContext.save()
                     },
                     .init(title: "Share Portal", systemImage: "rectangle.portrait.and.arrow.right") {
-                        activeSheet = .advanced
+                        sharePortalPrimaryAction()
                     }
                 ])
+                if let portalNotice {
+                    Text(portalNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .listRowBackground(Color.clear)
 
@@ -243,6 +258,13 @@ struct InvoiceOverviewView: View {
         }
         .navigationTitle("\(titleText) Summary")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingMail) { mailSheet }
+        .sheet(isPresented: Binding(
+            get: { shareItems != nil },
+            set: { if !$0 { shareItems = nil } }
+        )) {
+            ShareSheet(items: shareItems ?? [])
+        }
         .sheet(item: $activeSheet) { sheet in
             NavigationStack {
                 Group {
@@ -260,6 +282,22 @@ struct InvoiceOverviewView: View {
                     }
                 }
             }
+        }
+        .alert("Send Error", isPresented: Binding(
+            get: { exportError != nil },
+            set: { if !$0 { exportError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "")
+        }
+        .alert("Portal", isPresented: Binding(
+            get: { portalError != nil },
+            set: { if !$0 { portalError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(portalError ?? "")
         }
     }
 
@@ -426,6 +464,149 @@ struct InvoiceOverviewView: View {
 
     private func currency(fromCents cents: Int) -> String {
         (Double(cents) / 100.0).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+    }
+
+    private var mailSheet: some View {
+        Group {
+            if let data = mailAttachment, MFMailComposeViewController.canSendMail() {
+                MailComposerView(
+                    subject: "\(invoice.documentType == "estimate" ? "Estimate" : "Invoice") \(invoice.invoiceNumber)",
+                    body: "Hi,\n\nAttached is \(invoice.documentType == "estimate" ? "estimate" : "invoice") \(invoice.invoiceNumber).\n\nThank you.",
+                    attachmentData: data,
+                    attachmentMimeType: "application/pdf",
+                    attachmentFileName: mailFilename.isEmpty ? "\(invoice.invoiceNumber).pdf" : mailFilename
+                )
+            } else {
+                VStack(spacing: 12) {
+                    ContentUnavailableView(
+                        "Mail Not Available",
+                        systemImage: "envelope.badge",
+                        description: Text("Set up Apple Mail on your device, or use Share instead.")
+                    )
+                    Button("Close") { showingMail = false }
+                }
+                .padding()
+            }
+        }
+    }
+
+    private func sendPrimaryAction() {
+        do {
+            let pdfData = InvoicePDFService.makePDFData(
+                invoice: invoice,
+                profiles: profiles,
+                context: modelContext,
+                businesses: businesses
+            )
+            mailAttachment = pdfData
+            mailFilename = "\(invoice.invoiceNumber).pdf"
+
+            if invoice.documentType == "estimate" {
+                let normalized = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if normalized == "draft" {
+                    invoice.estimateStatus = "sent"
+                    try? modelContext.save()
+                }
+            }
+
+            if MFMailComposeViewController.canSendMail() {
+                showingMail = true
+            } else {
+                let url = try writeInvoicePDFTempURL(suffix: "send")
+                shareItems = [url]
+            }
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    private func sharePortalPrimaryAction() {
+        Task {
+            do {
+                let url = try await buildPortalLink(mode: nil)
+                shareItems = [url]
+                showPortalNotice("Sharing portal link…")
+            } catch {
+                portalError = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func buildPortalLink(mode: String? = nil) async throws -> URL {
+        if invoice.client?.portalEnabled == false {
+            throw NSError(
+                domain: "Portal",
+                code: 403,
+                userInfo: [NSLocalizedDescriptionKey: "Client portal is disabled for this client."]
+            )
+        }
+
+        let amountCents = Int((invoice.total * 100).rounded())
+        guard amountCents > 0 else {
+            throw NSError(
+                domain: "Portal",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "This invoice total is $0.00. Add line items / amount before requesting payment."
+                ]
+            )
+        }
+
+        let businessName = resolvedPortalBusinessName()
+        let token = try await PortalBackend.shared.createInvoicePortalToken(
+            invoice: invoice,
+            business: businesses.first(where: { $0.id == invoice.businessID }),
+            businessName: businessName
+        )
+
+        let modeValue = (mode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? mode!
+            : "live"
+
+        if invoice.documentType == "estimate" {
+            return PortalBackend.shared.portalEstimateURL(
+                estimateId: invoice.id.uuidString,
+                token: token,
+                mode: modeValue
+            )
+        }
+        return PortalBackend.shared.portalInvoiceURL(
+            invoiceId: invoice.id.uuidString,
+            token: token,
+            mode: modeValue
+        )
+    }
+
+    private func resolvedPortalBusinessName() -> String? {
+        let snapshotName = invoice.businessSnapshot?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !snapshotName.isEmpty { return snapshotName }
+        if let profile = profiles.first(where: { $0.businessID == invoice.businessID }) {
+            let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? nil : name
+        }
+        return nil
+    }
+
+    private func writeInvoicePDFTempURL(suffix: String) throws -> URL {
+        let pdfData = InvoicePDFService.makePDFData(
+            invoice: invoice,
+            profiles: profiles,
+            context: modelContext,
+            businesses: businesses
+        )
+        let base = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeBase = base.isEmpty ? "Invoice" : base.replacingOccurrences(of: " ", with: "-")
+        let filename = "\(safeBase)-\(suffix).pdf"
+        return try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
+    }
+
+    @MainActor
+    private func showPortalNotice(_ text: String) {
+        portalNotice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if portalNotice == text { portalNotice = nil }
+        }
     }
 }
 
