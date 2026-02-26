@@ -262,8 +262,6 @@ struct BusinessProfileView: View {
                 essentialsCard(profile)
                 brandingCard(profile)
                 defaultsCard(profile)
-                websitePublishingCard(profile)
-                paymentsCard
                 businessSwitcherCard
                 notificationsCard
                 advancedOptionsCard(profile)
@@ -721,10 +719,6 @@ struct BusinessProfileView: View {
                         Label("Reset number to 001", systemImage: "arrow.counterclockwise")
                     }
                     .buttonStyle(.bordered)
-
-                    NavigationLink("Switch business") {
-                        BusinessSwitcherView()
-                    }
 
                     DisclosureGroup("Debug / Metadata", isExpanded: $showDebugMetadata) {
                         VStack(alignment: .leading, spacing: 8) {
