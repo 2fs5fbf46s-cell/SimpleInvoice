@@ -287,7 +287,6 @@ struct BusinessProfileView: View {
         value += showBrandingSection ? 2 : 0
         value += showDefaultsSection ? 4 : 0
         value += showWebsiteSection ? 8 : 0
-        value += showPaymentsSection ? 16 : 0
         value += showNotificationsSection ? 32 : 0
         value += showAdvancedSection ? 64 : 0
         value += showDebugMetadata ? 128 : 0
@@ -559,7 +558,7 @@ struct BusinessProfileView: View {
     private var paymentsShortcutCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeaderRow(
-                title: "Payments",
+                title: "Setup Online Payments",
                 subtitle: "Manage setup in one place",
                 systemImage: "creditcard.fill"
             )
