@@ -450,6 +450,7 @@ struct BookingDetailView: View {
 
     @Query(sort: \Client.name) private var clients: [Client]
     @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
     @Query private var jobs: [Job]
     @Query private var invoices: [Invoice]
 
@@ -1085,17 +1086,24 @@ struct BookingDetailView: View {
                 modelContext: modelContext
             )
             let number = generateEstimateDraftNumber()
+            let profile = profileEnsured(businessID: bizID)
+            let business = businesses.first(where: { $0.id == bizID })
+            let validityDays = max(1, business?.defaultEstimateValidityDays ?? 14)
+            let defaultPaymentTermsRaw = profile.defaultEstimatePaymentTerms.trimmingCharacters(in: .whitespacesAndNewlines)
+            let defaultPaymentTerms = defaultPaymentTermsRaw.isEmpty
+                ? "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")"
+                : defaultPaymentTermsRaw
 
             let estimate = Invoice(
                 businessID: bizID,
                 invoiceNumber: number,
                 issueDate: .now,
-                dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now,
-                paymentTerms: "Net 14",
-                notes: buildBookingNotes(),
-                thankYou: "",
-                termsAndConditions: "",
-                taxRate: 0,
+                dueDate: Calendar.current.date(byAdding: .day, value: validityDays, to: .now) ?? .now,
+                paymentTerms: defaultPaymentTerms,
+                notes: profile.defaultEstimateNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? buildBookingNotes() : profile.defaultEstimateNotes,
+                thankYou: profile.defaultEstimateThankYou,
+                termsAndConditions: profile.defaultEstimateTerms,
+                taxRate: max(0, NSDecimalNumber(decimal: business?.defaultTaxRate ?? 0).doubleValue),
                 discountAmount: 0,
                 isPaid: false,
                 documentType: "estimate",

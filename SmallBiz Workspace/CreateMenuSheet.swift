@@ -13,6 +13,7 @@ struct CreateMenuSheet: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
 
     // Navigation target created here
     @State private var createdInvoice: Invoice? = nil
@@ -328,6 +329,34 @@ struct CreateMenuSheet: View {
 
     private func preloadDefaults(into invoice: Invoice) {
         guard let p = getOrCreateProfileForActiveBusiness() else { return }
+        let business = businesses.first(where: { $0.id == invoice.businessID })
+
+        if invoice.documentType == "estimate" {
+            let validityDays = max(1, business?.defaultEstimateValidityDays ?? 14)
+            let defaultTermsText = p.defaultEstimatePaymentTerms.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if invoice.dueDate <= invoice.issueDate {
+                invoice.dueDate = Calendar.current.date(byAdding: .day, value: validityDays, to: invoice.issueDate) ?? invoice.issueDate
+            }
+            if invoice.paymentTerms.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                invoice.paymentTerms = defaultTermsText.isEmpty
+                    ? "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")"
+                    : defaultTermsText
+            }
+            if invoice.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                invoice.notes = p.defaultEstimateNotes
+            }
+            if invoice.thankYou.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                invoice.thankYou = p.defaultEstimateThankYou
+            }
+            if invoice.termsAndConditions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                invoice.termsAndConditions = p.defaultEstimateTerms
+            }
+            if invoice.taxRate == 0 {
+                invoice.taxRate = max(0, NSDecimalNumber(decimal: business?.defaultTaxRate ?? 0).doubleValue)
+            }
+            return
+        }
 
         if invoice.thankYou.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             invoice.thankYou = p.defaultThankYou
