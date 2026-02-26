@@ -155,23 +155,30 @@ struct InvoiceOverviewView: View {
 
     var body: some View {
         List {
-            SBWCardContainer {
-                SBWSectionHeaderRow(title: "Overview", subtitle: "Summary")
-                HStack {
-                    Text("\(titleText) \(invoice.invoiceNumber)")
-                        .font(.title3.weight(.semibold))
-                    Spacer()
-                    SBWStatusPill(text: statusText)
-                }
-                summaryRow("Amount", invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))
-                summaryRow("Due", invoice.dueDate.formatted(date: .abbreviated, time: .omitted))
-                summaryRow("Client", invoice.client?.name ?? "No Client")
+            SummaryKit.SummaryCard {
+                SummaryKit.SummaryHeader(
+                    title: "\(titleText) \(invoice.invoiceNumber)",
+                    subtitle: "Summary",
+                    status: statusText
+                )
+                SummaryKit.SummaryKeyValueRow(
+                    label: "Amount",
+                    value: invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+                )
+                SummaryKit.SummaryKeyValueRow(
+                    label: "Due",
+                    value: invoice.dueDate.formatted(date: .abbreviated, time: .omitted)
+                )
+                SummaryKit.SummaryKeyValueRow(
+                    label: "Client",
+                    value: invoice.client?.name ?? "No Client"
+                )
             }
             .listRowBackground(Color.clear)
 
-            SBWCardContainer {
-                SBWSectionHeaderRow(title: "Primary Actions")
-                SBWPrimaryActionRow(actions: [
+            SummaryKit.SummaryCard {
+                SummaryKit.SummaryHeader(title: "Primary Actions")
+                SummaryKit.PrimaryActionRow(actions: [
                     .init(title: invoice.documentType == "estimate" ? "Send" : "Send", systemImage: "paperplane") {
                         sendPrimaryAction()
                     },
@@ -195,7 +202,7 @@ struct InvoiceOverviewView: View {
             }
             .listRowBackground(Color.clear)
 
-            InvoiceSummaryDisclosureCard(
+            SummaryKit.CollapsibleSectionCard(
                 title: "Line Items",
                 subtitle: "Preview items and totals",
                 icon: "list.bullet.rectangle",
@@ -206,7 +213,7 @@ struct InvoiceOverviewView: View {
             }
             .listRowBackground(Color.clear)
 
-            InvoiceSummaryDisclosureCard(
+            SummaryKit.CollapsibleSectionCard(
                 title: "Payments & Receipts",
                 subtitle: "Paid status and remaining balance",
                 icon: "creditcard",
@@ -217,7 +224,7 @@ struct InvoiceOverviewView: View {
             }
             .listRowBackground(Color.clear)
 
-            InvoiceSummaryDisclosureCard(
+            SummaryKit.CollapsibleSectionCard(
                 title: "Attachments",
                 subtitle: "Recent files",
                 icon: "paperclip",
@@ -228,7 +235,7 @@ struct InvoiceOverviewView: View {
             }
             .listRowBackground(Color.clear)
 
-            InvoiceSummaryDisclosureCard(
+            SummaryKit.CollapsibleSectionCard(
                 title: "Activity / Timeline",
                 subtitle: "Recent invoice events",
                 icon: "clock.arrow.circlepath",
@@ -239,7 +246,7 @@ struct InvoiceOverviewView: View {
             }
             .listRowBackground(Color.clear)
 
-            InvoiceSummaryDisclosureCard(
+            SummaryKit.CollapsibleSectionCard(
                 title: "Advanced",
                 subtitle: "Rare actions and diagnostics",
                 icon: "slider.horizontal.3",
