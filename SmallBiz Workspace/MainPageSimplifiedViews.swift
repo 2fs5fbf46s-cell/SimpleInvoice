@@ -1225,8 +1225,32 @@ struct JobOverviewView: View {
 }
 
 struct BookingOverviewView: View {
+    @Query private var profiles: [BusinessProfile]
     let request: BookingRequestItem
     var onStatusChange: (String) -> Void = { _ in }
+    @State private var expandedSection: BookingSummarySection? = nil
+    @State private var activeDetailSheet: BookingDetailSheet? = nil
+    @State private var showStatusSheet = false
+    @State private var draftStatus: String = ""
+    @State private var shareItems: [Any]? = nil
+    @State private var showMessageOptions = false
+    @State private var messageNotice: String? = nil
+
+    private enum BookingSummarySection: Hashable {
+        case attachments
+        case checklist
+        case history
+        case advanced
+    }
+
+    private enum BookingDetailSheet: String, Identifiable {
+        case attachments
+        case checklist
+        case history
+        case advanced
+
+        var id: String { rawValue }
+    }
 
     private var statusText: String {
         let raw = request.status.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1242,41 +1266,107 @@ struct BookingOverviewView: View {
 
     var body: some View {
         List {
-            SBWCardContainer {
-                SBWSectionHeaderRow(title: "Overview")
-                HStack {
-                    Text(clientText)
-                        .font(.title3.weight(.semibold))
-                    Spacer()
-                    SBWStatusPill(text: statusText)
-                }
+            SummaryKit.SummaryCard {
+                SummaryKit.SummaryHeader(
+                    title: clientText,
+                    subtitle: "Booking Summary",
+                    status: statusText
+                )
                 infoRow("Service", request.serviceType ?? "Not set")
                 infoRow("Email", request.clientEmail ?? "Not set")
                 infoRow("Phone", request.clientPhone ?? "Not set")
+                infoRow("Requested", requestedScheduleText)
             }
             .listRowBackground(Color.clear)
 
-            SBWCardContainer {
-                SBWSectionHeaderRow(title: "Primary Actions")
-                SBWPrimaryActionRow(actions: [
+            SummaryKit.SummaryCard {
+                SummaryKit.SummaryHeader(title: "Primary Actions")
+                SummaryKit.PrimaryActionRow(actions: [
                     .init(title: "Update Status", systemImage: "arrow.triangle.2.circlepath") {
-                        onStatusChange("approved")
+                        draftStatus = normalizedStatusRaw(request.status)
+                        showStatusSheet = true
                     },
-                    .init(title: "Message", systemImage: "message") {},
-                    .init(title: "Share", systemImage: "square.and.arrow.up") {}
+                    .init(title: "Message", systemImage: "message") {
+                        showMessageOptions = true
+                    },
+                    .init(title: "Share", systemImage: "square.and.arrow.up") {
+                        shareBookingSummary()
+                    }
                 ])
-                NavigationLink("Open Full Booking Workspace") {
-                    BookingDetailView(request: request, onStatusChange: onStatusChange)
+                if let messageNotice {
+                    Text(messageNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .listRowBackground(Color.clear)
 
-            SBWCardContainer {
-                SBWSectionHeaderRow(title: "Details")
-                NavigationLink("Attachments") { BookingDetailView(request: request, onStatusChange: onStatusChange) }
-                NavigationLink("Checklist") { BookingDetailView(request: request, onStatusChange: onStatusChange) }
-                NavigationLink("History") { BookingDetailView(request: request, onStatusChange: onStatusChange) }
-                NavigationLink("Advanced") { BookingDetailView(request: request, onStatusChange: onStatusChange) }
+            SummaryKit.CollapsibleSectionCard(
+                title: "Attachments",
+                subtitle: "Files and media",
+                icon: "paperclip",
+                isExpanded: expandedSection == .attachments,
+                onToggle: { toggleSection(.attachments) }
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Open full attachment management.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("View All") { activeDetailSheet = .attachments }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .listRowBackground(Color.clear)
+
+            SummaryKit.CollapsibleSectionCard(
+                title: "Checklist",
+                subtitle: "Next steps",
+                icon: "checklist",
+                isExpanded: expandedSection == .checklist,
+                onToggle: { toggleSection(.checklist) }
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Use booking workspace checklist.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Open") { activeDetailSheet = .checklist }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .listRowBackground(Color.clear)
+
+            SummaryKit.CollapsibleSectionCard(
+                title: "History",
+                subtitle: "Status and timeline",
+                icon: "clock.arrow.circlepath",
+                isExpanded: expandedSection == .history,
+                onToggle: { toggleSection(.history) }
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    infoRow("Created", createdAtText)
+                    infoRow("Current Status", statusText)
+                    Button("View All") { activeDetailSheet = .history }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .listRowBackground(Color.clear)
+
+            SummaryKit.CollapsibleSectionCard(
+                title: "Advanced",
+                subtitle: "IDs and diagnostics",
+                icon: "slider.horizontal.3",
+                isExpanded: expandedSection == .advanced,
+                onToggle: { toggleSection(.advanced) }
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    infoRow("Request ID", request.requestId)
+                    infoRow("Business ID", request.businessId)
+                    if let slug = request.slug, !slug.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        infoRow("Slug", slug)
+                    }
+                    Button("Open Advanced") { activeDetailSheet = .advanced }
+                        .buttonStyle(.bordered)
+                }
             }
             .listRowBackground(Color.clear)
         }
@@ -1288,6 +1378,77 @@ struct BookingOverviewView: View {
         }
         .navigationTitle("Booking Summary")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $activeDetailSheet) { _ in
+            NavigationStack {
+                BookingDetailView(request: request, onStatusChange: onStatusChange)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { activeDetailSheet = nil }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showStatusSheet) {
+            NavigationStack {
+                List {
+                    Section("Status") {
+                        Picker("Status", selection: $draftStatus) {
+                            Text("Pending").tag("pending")
+                            Text("Approved").tag("approved")
+                            Text("Deposit Requested").tag("deposit_requested")
+                            Text("Declined").tag("declined")
+                        }
+                        .pickerStyle(.inline)
+                    }
+                }
+                .navigationTitle("Update Status")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showStatusSheet = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            onStatusChange(draftStatus)
+                            showStatusSheet = false
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { shareItems != nil },
+            set: { if !$0 { shareItems = nil } }
+        )) {
+            ShareSheet(items: shareItems ?? [])
+        }
+        .confirmationDialog("Contact", isPresented: $showMessageOptions, titleVisibility: .visible) {
+            if let email = normalized(request.clientEmail) {
+                Button("Open Mail") {
+                    if let url = URL(string: "mailto:\(email)") {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                Button("Copy Email") {
+                    UIPasteboard.general.string = email
+                    showBookingNotice("Email copied")
+                }
+            }
+            if let phone = normalized(request.clientPhone) {
+                Button("Open Messages") {
+                    let digits = phone.filter(\.isNumber)
+                    if let url = URL(string: "sms:\(digits)") {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                Button("Copy Phone") {
+                    UIPasteboard.general.string = phone
+                    showBookingNotice("Phone copied")
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose how to contact this customer.")
+        }
     }
 
     private func infoRow(_ label: String, _ value: String) -> some View {
@@ -1297,6 +1458,68 @@ struct BookingOverviewView: View {
             Spacer()
             Text(value)
                 .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private var createdAtText: String {
+        guard let ms = request.createdAtMs else { return "Unknown" }
+        let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var requestedScheduleText: String {
+        let start = normalized(request.requestedStart) ?? "TBD"
+        let end = normalized(request.requestedEnd) ?? "TBD"
+        return "\(start) - \(end)"
+    }
+
+    private func toggleSection(_ section: BookingSummarySection) {
+        expandedSection = (expandedSection == section) ? nil : section
+    }
+
+    private func normalizedStatusRaw(_ raw: String) -> String {
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if key.isEmpty { return "pending" }
+        return key
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func shareBookingSummary() {
+        let summary = """
+        Booking: \(clientText)
+        Status: \(statusText)
+        Service: \(request.serviceType ?? "Not set")
+        Email: \(request.clientEmail ?? "Not set")
+        Phone: \(request.clientPhone ?? "Not set")
+        """
+        var items: [Any] = [summary]
+        if let portal = bookingPortalURL() {
+            items.append(portal)
+        }
+        shareItems = items
+    }
+
+    private func bookingPortalURL() -> URL? {
+        guard let biz = UUID(uuidString: request.businessId),
+              let profile = profiles.first(where: { $0.businessID == biz }) else {
+            return nil
+        }
+        let raw = profile.bookingURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, let base = URL(string: raw) else { return nil }
+        guard let slug = normalized(request.slug) else { return base }
+        if base.absoluteString.contains(slug) { return base }
+        return URL(string: "\(base.absoluteString)/\(slug)")
+    }
+
+    private func showBookingNotice(_ text: String) {
+        messageNotice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if messageNotice == text { messageNotice = nil }
         }
     }
 }
