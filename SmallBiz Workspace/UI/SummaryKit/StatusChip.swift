@@ -24,6 +24,7 @@ struct StatusChip: View {
             case "paid": self = .paid
             case "unpaid": self = .unpaid
             case "signed": self = .signed
+            case "expired": self = .overdue
             case "overdue": self = .overdue
             case "error", "failed": self = .error
             default: self = .custom(text)
