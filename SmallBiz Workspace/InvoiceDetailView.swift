@@ -73,6 +73,7 @@ struct InvoiceDetailView: View {
     @State private var navigateToClientSettings: Client? = nil
     @State private var selectedLineItem: LineItem? = nil
     @State private var selectedLinkedContract: Contract? = nil
+    @State private var convertedInvoice: Invoice? = nil
 
 
     // Open job workspace folder in Files
@@ -164,6 +165,9 @@ struct InvoiceDetailView: View {
         }
         .navigationDestination(item: $selectedLinkedContract) { contract in
             ContractDetailView(contract: contract)
+        }
+        .navigationDestination(item: $convertedInvoice) { converted in
+            InvoiceOverviewView(invoice: converted)
         }
         
         .sheet(isPresented: $showPortal, onDismiss: {
@@ -1655,11 +1659,14 @@ struct InvoiceDetailView: View {
 
     private func convertEstimateToInvoice() {
         do {
-            try EstimateToInvoiceConverter.convert(
+            let created = try EstimateToInvoiceConverter.convert(
                 estimate: invoice,
                 profiles: profiles,
                 context: modelContext
             )
+            if created.id != invoice.id {
+                convertedInvoice = created
+            }
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
             Task { await indexInvoiceIfPossible() }
         } catch {

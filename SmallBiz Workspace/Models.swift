@@ -17,6 +17,10 @@ final class BusinessProfile {
     var portalEnabled: Bool = true
     var defaultThankYou: String = "Thank you for your business!"
     var defaultTerms: String = "Payment is due by the due date listed on this invoice."
+    var defaultEstimatePaymentTerms: String = "Valid for 14 days"
+    var defaultEstimateNotes: String = ""
+    var defaultEstimateThankYou: String = "Thank you for considering this estimate."
+    var defaultEstimateTerms: String = "Pricing and scope are valid for the period shown on this estimate."
 
     // Booking Portal
     var bookingSlug: String = ""
@@ -61,6 +65,10 @@ Other
         address: String = "",
         defaultThankYou: String = "Thank you for your business!",
         defaultTerms: String = "Payment is due by the due date listed on this invoice.",
+        defaultEstimatePaymentTerms: String = "Valid for 14 days",
+        defaultEstimateNotes: String = "",
+        defaultEstimateThankYou: String = "Thank you for considering this estimate.",
+        defaultEstimateTerms: String = "Pricing and scope are valid for the period shown on this estimate.",
         bookingSlug: String = "",
         bookingURL: String = "",
         bookingEnabled: Bool = true,
@@ -96,6 +104,10 @@ Other
         self.address = address
         self.defaultThankYou = defaultThankYou
         self.defaultTerms = defaultTerms
+        self.defaultEstimatePaymentTerms = defaultEstimatePaymentTerms
+        self.defaultEstimateNotes = defaultEstimateNotes
+        self.defaultEstimateThankYou = defaultEstimateThankYou
+        self.defaultEstimateTerms = defaultEstimateTerms
         self.bookingSlug = bookingSlug
         self.bookingURL = bookingURL
         self.bookingEnabled = bookingEnabled
@@ -219,6 +231,7 @@ final class Invoice {
     var isPaid: Bool = false
     var documentType: String = "invoice"   // "invoice" | "estimate"
     var sourceBookingRequestId: String? = nil
+    var sourceEstimateId: String? = nil
     var sourceBookingDepositAmountCents: Int? = nil
     var sourceBookingDepositPaidAtMs: Int? = nil
     var sourceBookingDepositInvoiceId: String? = nil
@@ -275,6 +288,7 @@ final class Invoice {
         isPaid: Bool = false,
         documentType: String = "invoice",
         sourceBookingRequestId: String? = nil,
+        sourceEstimateId: String? = nil,
         pdfRelativePath: String = "",
         invoiceTemplateKeyOverride: String? = nil,
         portalNeedsUpload: Bool = true,
@@ -301,6 +315,7 @@ final class Invoice {
         self.isPaid = isPaid
         self.documentType = documentType
         self.sourceBookingRequestId = sourceBookingRequestId
+        self.sourceEstimateId = sourceEstimateId
         self.pdfRelativePath = pdfRelativePath
         self.invoiceTemplateKeyOverride = invoiceTemplateKeyOverride
         self.portalNeedsUpload = portalNeedsUpload

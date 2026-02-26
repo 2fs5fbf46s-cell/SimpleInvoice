@@ -226,7 +226,7 @@ struct EstimateListView: View {
         }
         .sheet(isPresented: $showingEstimateSettings) {
             NavigationStack {
-                InvoiceSettingsView(mode: .estimate)
+                EstimateDefaultsView()
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { showingEstimateSettings = false }
@@ -411,16 +411,23 @@ struct EstimateListView: View {
             let business = businesses.first(where: { $0.id == bizID })
             let validityDays = max(1, business?.defaultEstimateValidityDays ?? 14)
             let defaultTaxRate = max(0, NSDecimalNumber(decimal: business?.defaultTaxRate ?? 0).doubleValue)
+            let defaultPaymentTermsRaw = profile?.defaultEstimatePaymentTerms.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let defaultPaymentTerms = defaultPaymentTermsRaw.isEmpty
+                ? "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")"
+                : defaultPaymentTermsRaw
+            let defaultNotes = profile?.defaultEstimateNotes ?? ""
+            let defaultThankYou = profile?.defaultEstimateThankYou ?? ""
+            let defaultTerms = profile?.defaultEstimateTerms ?? ""
 
             let estimate = Invoice(
                 businessID: bizID,
                 invoiceNumber: numberOrName,
                 issueDate: .now,
                 dueDate: Calendar.current.date(byAdding: .day, value: validityDays, to: .now) ?? .now,
-                paymentTerms: "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")",
-                notes: "",
-                thankYou: profile?.defaultThankYou ?? "",
-                termsAndConditions: profile?.defaultTerms ?? "",
+                paymentTerms: defaultPaymentTerms,
+                notes: defaultNotes,
+                thankYou: defaultThankYou,
+                termsAndConditions: defaultTerms,
                 taxRate: defaultTaxRate,
                 discountAmount: 0,
                 isPaid: false,

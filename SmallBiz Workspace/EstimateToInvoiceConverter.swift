@@ -3,10 +3,10 @@ import SwiftData
 
 @MainActor
 enum EstimateToInvoiceConverter {
-    static func convert(estimate: Invoice, profiles: [BusinessProfile], context: ModelContext) throws {
-        guard estimate.documentType == "estimate" else { return }
+    static func convert(estimate: Invoice, profiles: [BusinessProfile], context: ModelContext) throws -> Invoice {
+        guard estimate.documentType == "estimate" else { return estimate }
         let status = estimate.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard status == "accepted" else { return }
+        guard status == "accepted" else { return estimate }
 
         var profilesForSnapshot = profiles
         let profile: BusinessProfile
@@ -28,19 +28,58 @@ enum EstimateToInvoiceConverter {
 
         let prefix = profile.invoicePrefix.isEmpty ? "SI" : profile.invoicePrefix
         let next = profile.nextInvoiceNumber
-        estimate.invoiceNumber = "\(prefix)-\(year)-\(String(format: "%04d", next))"
+        let newInvoiceNumber = "\(prefix)-\(year)-\(String(format: "%04d", next))"
         profile.nextInvoiceNumber += 1
 
-        // Convert in place while preserving estimate-entered financial/date fields.
-        // This prevents invoice defaults from being reapplied during conversion.
-        estimate.documentType = "invoice"
+        let copiedItems: [LineItem] = (estimate.items ?? []).map { item in
+            LineItem(
+                itemDescription: item.itemDescription,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice
+            )
+        }
+
+        let invoice = Invoice(
+            businessID: estimate.businessID,
+            businessSnapshotData: estimate.businessSnapshotData,
+            invoiceNumber: newInvoiceNumber,
+            issueDate: estimate.issueDate,
+            dueDate: estimate.dueDate,
+            paymentTerms: estimate.paymentTerms,
+            notes: estimate.notes,
+            thankYou: estimate.thankYou,
+            termsAndConditions: estimate.termsAndConditions,
+            taxRate: estimate.taxRate,
+            discountAmount: estimate.discountAmount,
+            isPaid: false,
+            documentType: "invoice",
+            sourceBookingRequestId: estimate.sourceBookingRequestId,
+            sourceEstimateId: estimate.id.uuidString,
+            pdfRelativePath: "",
+            invoiceTemplateKeyOverride: estimate.invoiceTemplateKeyOverride,
+            portalNeedsUpload: true,
+            portalUploadInFlight: false,
+            portalLastUploadedAtMs: nil,
+            portalLastUploadError: nil,
+            portalLastUploadedBlobUrl: nil,
+            portalLastUploadedHash: nil,
+            client: estimate.client,
+            job: estimate.job,
+            items: copiedItems
+        )
+        invoice.sourceBookingDepositAmountCents = estimate.sourceBookingDepositAmountCents
+        invoice.sourceBookingDepositPaidAtMs = estimate.sourceBookingDepositPaidAtMs
+        invoice.sourceBookingDepositInvoiceId = estimate.sourceBookingDepositInvoiceId
+
+        context.insert(invoice)
 
         _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
-            invoice: estimate,
+            invoice: invoice,
             profiles: profilesForSnapshot,
             context: context
         )
 
         try context.save()
+        return invoice
     }
 }
