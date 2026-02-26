@@ -14,6 +14,7 @@ struct ClientListView: View {
 
     @Query(sort: \Client.name, order: .forward) private var allClients: [Client]
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
+    @Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]) private var invoices: [Invoice]
 
     @State private var searchText: String = ""
     @State private var filter: Filter = .all
@@ -26,8 +27,8 @@ struct ClientListView: View {
 
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
-        case withJobs = "With Jobs"
-        case noJobs = "No Jobs"
+        case recent = "Recent"
+        case favorites = "Favorites"
 
         var id: String { rawValue }
     }
@@ -44,10 +45,10 @@ struct ClientListView: View {
         switch filter {
         case .all:
             base = scopedClients
-        case .withJobs:
-            base = scopedClients.filter { jobsCount(for: $0) > 0 }
-        case .noJobs:
-            base = scopedClients.filter { jobsCount(for: $0) == 0 }
+        case .recent:
+            base = scopedClients.filter { lastActivity(for: $0) > Calendar.current.date(byAdding: .day, value: -45, to: .now)! }
+        case .favorites:
+            base = scopedClients.filter { $0.portalEnabled }
         }
 
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -175,10 +176,10 @@ struct ClientListView: View {
             .presentationDetents([.medium, .large])
         }
         .navigationDestination(item: $openExistingClient) { client in
-            ClientEditView(client: client)
+            ClientSummaryView(client: client)
         }
         .navigationDestination(item: $selectedClient) { client in
-            ClientEditView(client: client)
+            ClientSummaryView(client: client)
         }
         .overlay(alignment: .top) {
             if showOpenExistingBanner {
@@ -195,8 +196,10 @@ struct ClientListView: View {
         let count = jobsCount(for: client)
         let name = client.name.isEmpty ? "Client" : client.name
         let contact = client.email.isEmpty ? client.phone : client.email
+        let outstanding = outstandingBalance(for: client)
         let subtitle = [count > 0 ? "\(count) job\(count == 1 ? "" : "s")" : nil,
-                        contact.isEmpty ? nil : contact]
+                        contact.isEmpty ? nil : contact,
+                        outstanding > 0 ? "Outstanding \(outstanding.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))" : nil]
             .compactMap { $0 }
             .joined(separator: " • ")
 
@@ -263,6 +266,24 @@ struct ClientListView: View {
         return jobs.reduce(0) { partial, job in
             partial + ((job.clientID == id) ? 1 : 0)
         }
+    }
+
+    private func outstandingBalance(for client: Client) -> Double {
+        invoices
+            .filter { $0.client?.id == client.id && !$0.isPaid && $0.documentType != "estimate" }
+            .reduce(0) { $0 + $1.total }
+    }
+
+    private func lastActivity(for client: Client) -> Date {
+        let jobDate = jobs
+            .filter { $0.clientID == client.id }
+            .map(\.startDate)
+            .max() ?? .distantPast
+        let invoiceDate = invoices
+            .filter { $0.client?.id == client.id }
+            .map(\.issueDate)
+            .max() ?? .distantPast
+        return max(jobDate, invoiceDate)
     }
 }
 
