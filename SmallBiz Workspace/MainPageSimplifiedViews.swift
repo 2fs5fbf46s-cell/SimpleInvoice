@@ -71,14 +71,33 @@ struct SBWPrimaryActionRow: View {
         HStack(spacing: 8) {
             ForEach(actions) { item in
                 Button(role: item.role, action: item.action) {
-                    Label(item.title, systemImage: item.systemImage)
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 6) {
+                        Image(systemName: item.systemImage)
+                        Text(item.title)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .sbwPrimaryActionButtonLayout()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(SBWTheme.brandBlue)
             }
         }
+    }
+}
+
+private struct SBWPrimaryActionButtonLayoutModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
+            .padding(.horizontal, 4)
+    }
+}
+
+private extension View {
+    func sbwPrimaryActionButtonLayout() -> some View {
+        modifier(SBWPrimaryActionButtonLayoutModifier())
     }
 }
 
@@ -415,6 +434,7 @@ struct InvoiceLineItemsView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var invoice: Invoice
     var showsDoneButton: Bool = false
+    @State private var selectedLineItem: LineItem? = nil
 
     var body: some View {
         List {
@@ -424,7 +444,12 @@ struct InvoiceLineItemsView: View {
                     ForEach(items) { item in
                         let title = item.itemDescription.isEmpty ? "Item" : item.itemDescription
                         let detail = "\(item.quantity.formatted(.number)) x \(item.unitPrice.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))"
-                        SBWNavigationRow(title: title, subtitle: detail)
+                        Button {
+                            selectedLineItem = item
+                        } label: {
+                            SBWNavigationRow(title: title, subtitle: detail)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .onDelete(perform: deleteItems)
                 } else {
@@ -448,6 +473,9 @@ struct InvoiceLineItemsView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Line Items")
+        .navigationDestination(item: $selectedLineItem) { item in
+            LineItemEditView(item: item)
+        }
         .toolbar {
             if showsDoneButton {
                 ToolbarItem(placement: .topBarTrailing) {
