@@ -16,9 +16,8 @@ struct SavedItemsView: View {
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
 
-    // Clients-style draft -> sheet editor
-    @State private var showingEditor = false
     @State private var editorItem: CatalogItem? = nil
+    @State private var draftItemID: UUID? = nil
 
     // MARK: - Scoping
 
@@ -94,7 +93,6 @@ struct SavedItemsView: View {
                     ForEach(filteredItems) { item in
                         Button {
                             editorItem = item
-                            showingEditor = true
                         } label: {
                             row(item)
                         }
@@ -136,36 +134,34 @@ struct SavedItemsView: View {
                 .accessibilityLabel("Add Saved Item")
             }
         }
-        .sheet(isPresented: $showingEditor, onDismiss: {
-            // Clean up draft if cancelled/empty
+        .sheet(item: $editorItem, onDismiss: {
             deleteIfEmptyDraft()
-            editorItem = nil
-        }) {
+        }) { item in
             NavigationStack {
-                if let editorItem {
-                    CatalogItemEditorSheet(
-                        item: editorItem,
-                        categories: categories,
-                        onCancel: {
-                            // Force delete if it’s still empty
+                CatalogItemEditorSheet(
+                    item: item,
+                    categories: categories,
+                    onCancel: {
+                        deleteIfEmptyDraft(forceDelete: true)
+                        editorItem = nil
+                    },
+                    onDone: { draft in
+                        applyDraft(draft, to: item)
+
+                        if item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             deleteIfEmptyDraft(forceDelete: true)
-                            showingEditor = false
-                        },
-                        onDone: {
-                            // If name empty, treat like cancel
-                            if editorItem.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                deleteIfEmptyDraft(forceDelete: true)
-                                showingEditor = false
-                                return
-                            }
-                            do { try modelContext.save(); showingEditor = false }
-                            catch { print("Failed to save item edits: \(error)") }
+                            editorItem = nil
+                            return
                         }
-                    )
-                } else {
-                    ProgressView("Loading…")
-                        .navigationTitle("Saved Item")
-                }
+
+                        do {
+                            try modelContext.save()
+                            editorItem = nil
+                        } catch {
+                            print("Failed to save item edits: \(error)")
+                        }
+                    }
+                )
             }
             .presentationDetents([.medium, .large])
         }
@@ -308,15 +304,20 @@ struct SavedItemsView: View {
         draft.businessID = bizID
 
         modelContext.insert(draft)
+        draftItemID = draft.id
+        debugLogInsertedCatalogItem(draft, activeBusinessID: bizID, source: "SavedItemsView.addDraftAndOpenEditor")
         editorItem = draft
-        showingEditor = true
 
         do { try modelContext.save() }
         catch { print("Failed to save draft item: \(error)") }
     }
 
     private func deleteIfEmptyDraft(forceDelete: Bool = false) {
-        guard let item = editorItem else { return }
+        guard let draftItemID else { return }
+        guard let item = items.first(where: { $0.id == draftItemID }) else {
+            self.draftItemID = nil
+            return
+        }
 
         let nameEmpty = item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let detailsEmpty = item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -330,6 +331,7 @@ struct SavedItemsView: View {
             do { try modelContext.save() }
             catch { print("Failed to delete empty draft: \(error)") }
         }
+        self.draftItemID = nil
     }
 
     private func deleteFiltered(at offsets: IndexSet) {
@@ -338,6 +340,23 @@ struct SavedItemsView: View {
 
         do { try modelContext.save() }
         catch { print("Failed to save deletes: \(error)") }
+    }
+
+    private func applyDraft(_ draft: CatalogItemDraft, to item: CatalogItem) {
+        item.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.details = draft.details.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.unitPrice = draft.unitPrice
+        item.defaultQuantity = draft.defaultQuantity
+
+        let normalizedCategory = draft.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.category = normalizedCategory.isEmpty ? "General" : normalizedCategory
+    }
+
+    private func debugLogInsertedCatalogItem(_ item: CatalogItem, activeBusinessID: UUID, source: String) {
+#if DEBUG
+        let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "General" : item.category
+        print("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) activeBusinessID=\(activeBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
+#endif
     }
 }
 
@@ -538,13 +557,26 @@ private struct WrapRow<Item: Hashable, Content: View>: View {
 // MARK: - Editor Sheet (unique name to avoid redeclare conflicts)
 
 private struct CatalogItemEditorSheet: View {
-    @Environment(\.modelContext) private var modelContext
-
-    @Bindable var item: CatalogItem
+    let item: CatalogItem
     let categories: [String]
 
     let onCancel: () -> Void
-    let onDone: () -> Void
+    let onDone: (CatalogItemDraft) -> Void
+
+    @State private var draft: CatalogItemDraft
+
+    init(
+        item: CatalogItem,
+        categories: [String],
+        onCancel: @escaping () -> Void,
+        onDone: @escaping (CatalogItemDraft) -> Void
+    ) {
+        self.item = item
+        self.categories = categories
+        self.onCancel = onCancel
+        self.onDone = onDone
+        self._draft = State(initialValue: CatalogItemDraft(item: item))
+    }
 
     var body: some View {
         ZStack {
@@ -557,8 +589,8 @@ private struct CatalogItemEditorSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Item")
                                 .font(.headline)
-                            TextField("Name", text: $item.name)
-                            TextField("Details", text: $item.details, axis: .vertical)
+                            TextField("Name", text: $draft.name)
+                            TextField("Details", text: $draft.details, axis: .vertical)
                                 .lineLimit(2...6)
                         }
                     }
@@ -567,11 +599,11 @@ private struct CatalogItemEditorSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Pricing")
                                 .font(.headline)
-                            TextField("Unit Price", value: $item.unitPrice, format: .number)
+                            TextField("Unit Price", value: $draft.unitPrice, format: .number)
                                 .keyboardType(.decimalPad)
 
-                            Stepper(value: $item.defaultQuantity, in: 1...999, step: 1) {
-                                Text("Default Qty: \(item.defaultQuantity, format: .number)")
+                            Stepper(value: $draft.defaultQuantity, in: 1...999, step: 1) {
+                                Text("Default Qty: \(draft.defaultQuantity, format: .number)")
                             }
                         }
                     }
@@ -580,7 +612,7 @@ private struct CatalogItemEditorSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Category")
                                 .font(.headline)
-                            Picker("Category", selection: $item.category) {
+                            Picker("Category", selection: $draft.category) {
                                 ForEach(categories, id: \.self) { c in
                                     Text(c).tag(c)
                                 }
@@ -600,7 +632,7 @@ private struct CatalogItemEditorSheet: View {
                 Button("Cancel") { onCancel() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { onDone() }
+                Button("Done") { onDone(draft) }
                     .fontWeight(.semibold)
             }
         }
@@ -618,6 +650,22 @@ private struct CatalogItemEditorSheet: View {
                             .stroke(SBWTheme.cardStroke, lineWidth: 1)
                     )
             )
+    }
+}
+
+private struct CatalogItemDraft {
+    var name: String
+    var details: String
+    var unitPrice: Double
+    var defaultQuantity: Double
+    var category: String
+
+    init(item: CatalogItem) {
+        self.name = item.name
+        self.details = item.details
+        self.unitPrice = item.unitPrice
+        self.defaultQuantity = item.defaultQuantity
+        self.category = item.category
     }
 }
 
