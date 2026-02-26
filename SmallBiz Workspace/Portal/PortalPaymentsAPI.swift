@@ -408,12 +408,15 @@ final class PortalPaymentsAPI {
         }
 
         let dto = try decoder().decode(StripeConnectStatusResponseDTO.self, from: data)
+        let chargesEnabled = dto.chargesEnabled ?? false
+        let payoutsEnabled = dto.payoutsEnabled ?? false
+        let computedActionRequired = dto.actionRequired ?? !(chargesEnabled && payoutsEnabled)
         return StripeConnectStatus(
             stripeAccountId: dto.stripeAccountId,
-            chargesEnabled: dto.chargesEnabled ?? false,
-            payoutsEnabled: dto.payoutsEnabled ?? false,
+            chargesEnabled: chargesEnabled,
+            payoutsEnabled: payoutsEnabled,
             onboardingStatus: dto.onboardingStatus ?? "not_connected",
-            actionRequired: dto.actionRequired ?? false,
+            actionRequired: computedActionRequired,
             detailsSubmitted: dto.detailsSubmitted
         )
     }
@@ -523,7 +526,7 @@ final class PortalPaymentsAPI {
             ok: dto.ok ?? true,
             configured: dto.configured ?? false,
             env: dto.env,
-            canCreateOrder: dto.canCreateOrder ?? true,
+            canCreateOrder: dto.canCreateOrder ?? false,
             message: dto.message,
             onboardingStatus: onboardingStatus,
             paypalMerchantId: dto.paypalMerchantId ?? dto.merchantId,

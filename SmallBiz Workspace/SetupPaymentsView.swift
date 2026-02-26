@@ -20,6 +20,7 @@ struct SetupPaymentsView: View {
     @State private var showStripeSafari = false
     @State private var awaitingStripeReturn = false
     @State private var stripeEnabled = true
+    @State private var stripeStatusError = false
     @State private var isTestingStripeBackend = false
     @State private var stripeBackendTestResult: String?
 
@@ -36,6 +37,7 @@ struct SetupPaymentsView: View {
     @State private var payPalAlertMessage: String?
     @State private var payPalAlertDetails: String?
     @State private var showPayPalError = false
+    @State private var payPalStatusNote: String?
 
     @State private var showingACHSheet = false
     @State private var showingSquareSheet = false
@@ -71,6 +73,7 @@ struct SetupPaymentsView: View {
                     }
 
                     sectionLabel("Peer-to-Peer")
+                        .padding(.top, 8)
                     if let business {
                         cashAppCard(business)
                         venmoCard(business)
@@ -79,6 +82,7 @@ struct SetupPaymentsView: View {
                     }
 
                     sectionLabel("Bank")
+                        .padding(.top, 8)
                     if let business {
                         achCard(business)
                     } else {
@@ -99,16 +103,10 @@ struct SetupPaymentsView: View {
         .navigationTitle("Setup Payments")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            resolveBusiness()
-            Task { await refreshStripeStatus() }
-            Task { await refreshPayPalStatus() }
-            Task { await refreshPayPalCapability() }
+            reloadForActiveBusiness()
         }
         .onChange(of: activeBiz.activeBusinessID) { _, _ in
-            resolveBusiness()
-            Task { await refreshStripeStatus() }
-            Task { await refreshPayPalStatus() }
-            Task { await refreshPayPalCapability() }
+            reloadForActiveBusiness()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -256,6 +254,31 @@ struct SetupPaymentsView: View {
             .padding(.top, 2)
     }
 
+    private func inlineHelperRow(
+        text: String,
+        isBusy: Bool = false,
+        actionTitle: String = "Refresh",
+        actionDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button(actionTitle, action: action)
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(SBWTheme.brandBlue.opacity(0.85))
+                .disabled(actionDisabled)
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+    }
+
     private func stripeCard(_ business: Business) -> some View {
         let status = stripeState
         return PaymentProviderCard(
@@ -266,7 +289,12 @@ struct SetupPaymentsView: View {
             tags: ["Visa", "Mastercard", "Apple Pay"],
             statusText: status.label,
             statusStyle: status.style,
-            enabledBinding: $stripeEnabled,
+            enabledBinding: Binding(
+                get: { stripeEnabled },
+                set: { value in
+                    handleStripeToggle(value, business: business)
+                }
+            ),
             hintWhenDisabled: "Enable to configure Stripe.",
             primaryAction: .init(
                 title: stripePrimaryActionTitle,
@@ -275,18 +303,14 @@ struct SetupPaymentsView: View {
                 action: { Task { await openStripeOnboarding() } }
             )
         ) {
-            if status.actionRequired {
-                Text("Finish setup to enable payouts.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Button("Refresh Status") {
+            inlineHelperRow(
+                text: stripeHelperText,
+                isBusy: isLoadingStripe,
+                actionTitle: "Refresh",
+                actionDisabled: isLoadingStripe || isStartingStripe
+            ) {
                 Task { await refreshStripeStatus() }
             }
-            .buttonStyle(.plain)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .disabled(isLoadingStripe || isStartingStripe)
         }
     }
 
@@ -314,37 +338,24 @@ struct SetupPaymentsView: View {
                 action: { Task { await payPalPrimaryActionTapped() } }
             )
         ) {
+            if let note = payPalStatusNote, !note.isEmpty {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if let lastChecked = payPalLastCheckedAt {
                 Text("Last checked: \(lastChecked.formatted(date: .omitted, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            if !isLoadingPayPalStatus {
-                Text(payPalHelperText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 14) {
-                Button("Refresh Status") {
-                    Task { await refreshPayPalStatus() }
-                }
-                .buttonStyle(.plain)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .disabled(isLoadingPayPalStatus || isStartingPayPal)
-
-                Button("Configure") {
-                    showingPayPalConfigSheet = true
-                }
-                .buttonStyle(.plain)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-                if isLoadingPayPalStatus {
-                    ProgressView()
-                        .controlSize(.small)
-                }
+            inlineHelperRow(
+                text: payPalHelperText,
+                isBusy: isLoadingPayPalStatus,
+                actionTitle: "Refresh",
+                actionDisabled: isLoadingPayPalStatus || isStartingPayPal
+            ) {
+                Task { await refreshPayPalStatus() }
             }
         }
     }
@@ -462,13 +473,20 @@ struct SetupPaymentsView: View {
     }
 
     private var stripeState: (label: String, style: ProviderStatusStyle, isConnected: Bool, isActive: Bool, actionRequired: Bool) {
-        let accountId = stripeStatus?.stripeAccountId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if accountId.isEmpty { return ("Not connected", .notConnected, false, false, false) }
+        guard stripeEnabled else { return ("Disabled", .disabled, false, false, false) }
+
+        let accountId = normalizedStripeAccountId
+        guard !accountId.isEmpty else { return ("Needs setup", .pending, false, false, true) }
+
+        if stripeStatusError {
+            return ("Error", .error, true, false, true)
+        }
 
         let actionRequired = stripeStatus?.actionRequired ?? true
-        let isActive = stripeStatus?.chargesEnabled == true &&
-            stripeStatus?.payoutsEnabled == true &&
-            !actionRequired
+        let detailsSubmitted = stripeStatus?.detailsSubmitted ?? false
+        let chargesEnabled = stripeStatus?.chargesEnabled ?? business?.stripeChargesEnabled ?? false
+        let payoutsEnabled = stripeStatus?.payoutsEnabled ?? business?.stripePayoutsEnabled ?? false
+        let isActive = chargesEnabled && payoutsEnabled && !actionRequired && detailsSubmitted
 
         if isActive {
             return ("Active", .active, true, true, false)
@@ -478,55 +496,80 @@ struct SetupPaymentsView: View {
 
     private var stripePrimaryActionTitle: String {
         let state = stripeState
+        if !stripeEnabled { return "Connect Stripe" }
         if !state.isConnected { return "Connect Stripe" }
         if state.isConnected && !state.isActive { return "Finish Setup" }
         return "Manage"
     }
 
+    private var stripeHelperText: String {
+        let state = stripeState
+        if !stripeEnabled {
+            return "Enable Stripe to accept card payments."
+        }
+        if !state.isConnected {
+            return "Connect Stripe to start accepting payments."
+        }
+        if state.isActive {
+            return "Stripe is connected and payouts are enabled."
+        }
+        return "Finish setup to enable payouts."
+    }
+
     private var payPalStatusLabel: String {
+        guard business?.paypalEnabled == true else { return "Disabled" }
         if isLoadingPayPalStatus { return "Checking" }
         let state = payPalState
         switch state {
         case .notConfigured:
             return "Not configured"
         case .notConnected:
-            return "Not connected"
+            return "Needs setup"
         case .pending:
             return "Pending"
         case .active:
-            if let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-                if env == "sandbox" { return "Sandbox" }
-                if env == "live" { return "Live" }
-            }
-            return "Available"
+            return "Active"
         case .error:
             return "Error"
+        case .disabled:
+            return "Disabled"
         }
     }
 
     private var payPalStatusStyle: ProviderStatusStyle {
+        guard business?.paypalEnabled == true else { return .disabled }
         if isLoadingPayPalStatus { return .pending }
         switch payPalState {
         case .active: return .active
         case .pending: return .pending
-        case .notConfigured, .notConnected: return .notConnected
+        case .notConnected: return .pending
+        case .notConfigured: return .notConnected
         case .error: return .error
+        case .disabled: return .disabled
         }
     }
 
     private var payPalHelperText: String {
+        guard business?.paypalEnabled == true else {
+            return "Enable PayPal to offer checkout with PayPal."
+        }
         switch payPalState {
         case .active:
             let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "unknown"
             return "Environment: \(env)"
         case .notConfigured:
-            return "Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in backend."
+            if payPalPartnerAvailable {
+                return "Add PAYPAL_PARTNER_CLIENT_ID and PAYPAL_PARTNER_CLIENT_SECRET."
+            }
+            return "Partner onboarding is not enabled yet."
         case .notConnected:
-            return "Connect PayPal to route payments to your PayPal account."
+            return "Connect PayPal to finish merchant setup."
         case .pending:
             return "Complete onboarding in PayPal, then refresh status."
         case .error:
             return sanitizePayPalMessage(payPalConnectStatus?.message)
+        case .disabled:
+            return "Enable PayPal to offer checkout with PayPal."
         }
     }
 
@@ -552,6 +595,47 @@ struct SetupPaymentsView: View {
         business = businesses.first(where: { $0.id == id }) ?? businesses.first
     }
 
+    private var normalizedStripeAccountId: String {
+        if let accountFromStatus = stripeStatus?.stripeAccountId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountFromStatus.isEmpty {
+            return accountFromStatus
+        }
+        return business?.stripeAccountId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func resetTransientStateForActiveBusiness() {
+        stripeStatus = nil
+        stripeStatusError = false
+        stripeAlertMessage = nil
+        stripeAlertDetails = nil
+        showStripeError = false
+        stripeURL = nil
+        showStripeSafari = false
+        awaitingStripeReturn = false
+
+        payPalConnectStatus = nil
+        payPalPartnerAvailable = false
+        payPalLastCheckedAt = nil
+        payPalStatusNote = nil
+        payPalAlertMessage = nil
+        payPalAlertDetails = nil
+        showPayPalError = false
+        payPalURL = nil
+        showPayPalSafari = false
+
+        stripeEnabled = !normalizedStripeAccountId.isEmpty
+    }
+
+    private func reloadForActiveBusiness() {
+        resolveBusiness()
+        resetTransientStateForActiveBusiness()
+        Task {
+            await refreshStripeStatus()
+            await refreshPayPalCapability()
+            await refreshPayPalStatus()
+        }
+    }
+
     private func save() {
         try? modelContext.save()
     }
@@ -563,6 +647,7 @@ struct SetupPaymentsView: View {
         defer { isStartingStripe = false }
 
         do {
+            stripeStatusError = false
             let returnURL = URL(string: "smallbizworkspace://settings/payments/stripe-return")!
             let state = stripeState
             let url: URL
@@ -583,26 +668,40 @@ struct SetupPaymentsView: View {
             let details = errorDebugDetails(error)
             stripeAlertDetails = details
             stripeAlertMessage = stripeUserMessage(error: error, details: details)
+            stripeStatusError = true
             showStripeError = true
+        }
+    }
+
+    private func handleStripeToggle(_ enabled: Bool, business: Business) {
+        stripeEnabled = enabled
+        guard enabled else { return }
+        let accountId = business.stripeAccountId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if accountId.isEmpty {
+            Task { await openStripeOnboarding() }
         }
     }
 
     private func refreshStripeStatus() async {
         guard let business else { return }
         guard !isLoadingStripe else { return }
+        let businessID = business.id
         isLoadingStripe = true
         defer { isLoadingStripe = false }
 
         do {
             let status = try await PortalPaymentsAPI.shared.fetchStripeConnectStatus(businessId: business.id)
+            guard self.business?.id == businessID else { return }
             stripeStatus = status
+            stripeStatusError = false
             business.stripeAccountId = status.stripeAccountId
             business.stripeOnboardingStatus = status.onboardingStatus
             business.stripeChargesEnabled = status.chargesEnabled
             business.stripePayoutsEnabled = status.payoutsEnabled
-            stripeEnabled = !((status.stripeAccountId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             save()
         } catch {
+            guard self.business?.id == businessID else { return }
+            stripeStatusError = true
             let details = errorDebugDetails(error)
             stripeAlertDetails = details
             stripeAlertMessage = stripeUserMessage(error: error, details: details)
@@ -621,27 +720,30 @@ struct SetupPaymentsView: View {
     private func refreshPayPalStatus() async {
         guard let business else { return }
         guard !isLoadingPayPalStatus else { return }
+        let businessID = business.id
         isLoadingPayPalStatus = true
         defer {
             isLoadingPayPalStatus = false
-            payPalLastCheckedAt = Date()
         }
 
         do {
             let status = try await PortalPaymentsAPI.shared.paypalConnectStatus(businessId: business.id)
+            guard self.business?.id == businessID else { return }
             payPalPartnerAvailable = true
             payPalConnectStatus = status
+            payPalStatusNote = nil
             let platform = try? await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
-            business.paypalEnabled = platform?.canCreateOrder ?? status.canCreateOrder
             business.paypalMerchantId = status.paypalMerchantId
             business.paypalOnboardingStatus = status.onboardingStatus
             business.paypalLinkedAtMs = status.paypalLinkedAtMs
             business.paypalLastCheckedAtMs = status.paypalLastCheckedAtMs
             business.paypalEnv = status.env ?? platform?.env
             save()
+            payPalLastCheckedAt = Date()
         } catch {
+            guard self.business?.id == businessID else { return }
             let fallback = "PayPal status unavailable. Please verify backend deployment and environment variables."
-            let message = (error as? PaymentServiceResponseError)?.message ?? fallback
+            let message = payPalUserMessage(error: error, fallback: fallback)
             if case PortalBackendError.http(let code, _, _) = error, code == 404 || code == 405 {
                 payPalPartnerAvailable = false
                 let platform = try? await PortalPaymentsAPI.shared.fetchPayPalPlatformStatus()
@@ -657,11 +759,17 @@ struct SetupPaymentsView: View {
                     paypalLinkedAtMs: business.paypalLinkedAtMs,
                     paypalLastCheckedAtMs: nowMs
                 )
-                business.paypalEnabled = platform?.canCreateOrder ?? false
                 business.paypalEnv = platform?.env
                 business.paypalLastCheckedAtMs = nowMs
+                payPalStatusNote = "Partner onboarding is not enabled yet."
+                payPalLastCheckedAt = Date()
                 save()
                 return
+            }
+            if case PortalBackendError.http(let code, _, _) = error, code == 401 {
+                payPalStatusNote = "Backend authorization failed. Check admin key."
+            } else {
+                payPalStatusNote = nil
             }
             payPalConnectStatus = PayPalConnectStatusResponse(
                 ok: false,
@@ -675,17 +783,22 @@ struct SetupPaymentsView: View {
                 paypalLastCheckedAtMs: nil
             )
             payPalAlertDetails = errorDebugDetails(error)
-            payPalAlertMessage = fallback
+            payPalAlertMessage = message
             showPayPalError = true
+            payPalLastCheckedAt = Date()
         }
     }
 
     private func refreshPayPalCapability() async {
         guard let business else { return }
-        payPalPartnerAvailable = await PortalPaymentsAPI.shared.isPayPalPartnerConnectAvailable(businessId: business.id)
+        let businessID = business.id
+        let available = await PortalPaymentsAPI.shared.isPayPalPartnerConnectAvailable(businessId: business.id)
+        guard self.business?.id == businessID else { return }
+        payPalPartnerAvailable = available
     }
 
     private enum PayPalState {
+        case disabled
         case notConfigured
         case notConnected
         case pending
@@ -694,13 +807,16 @@ struct SetupPaymentsView: View {
     }
 
     private var payPalState: PayPalState {
+        guard business?.paypalEnabled == true else {
+            return .disabled
+        }
         guard let status = payPalConnectStatus else {
             return .notConfigured
         }
         if !status.ok {
             return .error
         }
-        if !status.configured {
+        if !payPalPartnerAvailable || !status.configured {
             return .notConfigured
         }
         let onboarding = status.onboardingStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -717,8 +833,9 @@ struct SetupPaymentsView: View {
     }
 
     private var payPalPrimaryActionTitle: String {
-        if !payPalPartnerAvailable { return "Configure" }
+        if !payPalPartnerAvailable { return "Setup PayPal (Admin)" }
         switch payPalState {
+        case .disabled: return "Enable PayPal"
         case .notConfigured: return "Setup PayPal (Admin)"
         case .notConnected: return "Connect PayPal"
         case .pending: return "Finish Setup"
@@ -729,11 +846,14 @@ struct SetupPaymentsView: View {
 
     private func payPalPrimaryActionTapped() async {
         guard let business else { return }
+        guard business.paypalEnabled else { return }
         guard payPalPartnerAvailable else {
             showPayPalHelpSheet = true
             return
         }
         switch payPalState {
+        case .disabled:
+            return
         case .notConfigured:
             showPayPalHelpSheet = true
         case .active:
@@ -803,6 +923,15 @@ struct SetupPaymentsView: View {
     }
 
     private func stripeUserMessage(error: Error, details: String) -> String {
+        if case PortalBackendError.missingAdminKey = error {
+            return "Backend authorization failed. Check admin key."
+        }
+        if case PortalBackendError.badURL = error {
+            return "Backend returned an invalid link. Verify backend deployment and route."
+        }
+        if case PortalBackendError.http(let code, _, _) = error, code == 401 {
+            return "Backend authorization failed. Check admin key."
+        }
         if let serviceError = error as? PaymentServiceResponseError {
             return serviceError.message
         }
@@ -813,6 +942,12 @@ struct SetupPaymentsView: View {
         let lower = details.lowercased()
         if lower.contains("http 405") || lower.contains("method not allowed") {
             return "Stripe setup service misconfigured (method not allowed)."
+        }
+        if lower.contains("http 401") || lower.contains("unauthorized") {
+            return "Backend authorization failed. Check admin key."
+        }
+        if lower.contains("invalid portal backend url") || lower.contains("badurl") || lower.contains("invalid url") {
+            return "Backend returned an invalid link. Verify backend deployment and route."
         }
         if lower.contains("<!doctype html") ||
             lower.contains("<html") ||
@@ -827,6 +962,22 @@ struct SetupPaymentsView: View {
             return "Stripe Connect isn’t enabled for the platform account yet. Enable Connect in the Stripe dashboard (Live mode)."
         }
         return "Stripe service unavailable. Try again."
+    }
+
+    private func payPalUserMessage(error: Error, fallback: String) -> String {
+        if case PortalBackendError.missingAdminKey = error {
+            return "Backend authorization failed. Check admin key."
+        }
+        if case PortalBackendError.badURL = error {
+            return "Backend returned an invalid link. Verify backend deployment and route."
+        }
+        if case PortalBackendError.http(let code, _, _) = error, code == 401 {
+            return "Backend authorization failed. Check admin key."
+        }
+        if let serviceError = error as? PaymentServiceResponseError {
+            return serviceError.message
+        }
+        return fallback
     }
 
     @ViewBuilder
@@ -1078,6 +1229,7 @@ struct SetupPaymentsView: View {
 }
 
 private enum ProviderStatusStyle {
+    case disabled
     case active
     case enabled
     case pending
@@ -1087,6 +1239,7 @@ private enum ProviderStatusStyle {
 
     var background: Color {
         switch self {
+        case .disabled: return Color.white.opacity(0.1)
         case .active: return Color.green.opacity(0.2)
         case .enabled: return Color.blue.opacity(0.2)
         case .pending: return Color.orange.opacity(0.2)
@@ -1098,6 +1251,7 @@ private enum ProviderStatusStyle {
 
     var foreground: Color {
         switch self {
+        case .disabled: return .secondary
         case .active: return .green
         case .enabled: return .blue
         case .pending: return .orange
