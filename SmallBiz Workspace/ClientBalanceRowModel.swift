@@ -1,69 +1,109 @@
 import Foundation
 
+enum OutstandingMode {
+    case outstandingAll
+    case overdueOnly
+
+    var isOverdueOnly: Bool {
+        self == .overdueOnly
+    }
+}
+
 struct ClientBalanceRowModel: Identifiable {
-    let client: Client
+    let client: Client?
+    let clientID: UUID
     let totalCents: Int
     let invoiceCount: Int
 
-    var id: UUID { client.id }
+    var id: UUID { clientID }
 }
 
-enum ClientBalanceScope {
-    case outstanding
-    case overdue
+struct OutstandingInvoiceRowModel: Identifiable {
+    let invoice: Invoice
+    let amountCents: Int
+    let isOverdue: Bool
+    let overdueDays: Int
+
+    var id: UUID { invoice.id }
 }
 
-enum ClientBalanceAggregation {
-    static func rows(invoices: [Invoice], scope: ClientBalanceScope, now: Date = Date()) -> [ClientBalanceRowModel] {
-        var buckets: [UUID: (client: Client, totalCents: Int, invoiceCount: Int)] = [:]
+enum OutstandingAggregation {
+    static func clientRows(invoices: [Invoice], mode: OutstandingMode, now: Date = Date()) -> [ClientBalanceRowModel] {
+        var buckets: [UUID: (client: Client?, totalCents: Int, invoiceCount: Int)] = [:]
 
-        for invoice in invoices {
-            guard shouldInclude(invoice: invoice, scope: scope, now: now) else { continue }
-            guard let client = invoice.client else { continue }
-
+        for invoice in invoices where shouldInclude(invoice: invoice, mode: mode, now: now) {
+            guard let clientID = invoice.client?.id else { continue }
             let remaining = max(0, invoice.remainingDueCents)
-            guard remaining > 0 else { continue }
 
-            let key = client.id
-            if var bucket = buckets[key] {
+            if var bucket = buckets[clientID] {
                 bucket.totalCents += remaining
                 bucket.invoiceCount += 1
-                buckets[key] = bucket
+                if bucket.client == nil { bucket.client = invoice.client }
+                buckets[clientID] = bucket
             } else {
-                buckets[key] = (client: client, totalCents: remaining, invoiceCount: 1)
+                buckets[clientID] = (client: invoice.client, totalCents: remaining, invoiceCount: 1)
             }
         }
 
-        return buckets.values
+        return buckets.map {
+            ClientBalanceRowModel(
+                client: $0.value.client,
+                clientID: $0.key,
+                totalCents: $0.value.totalCents,
+                invoiceCount: $0.value.invoiceCount
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.totalCents == rhs.totalCents {
+                let lhsName = lhs.client?.name ?? ""
+                let rhsName = rhs.client?.name ?? ""
+                return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
+            }
+            return lhs.totalCents > rhs.totalCents
+        }
+    }
+
+    static func invoiceRows(
+        invoices: [Invoice],
+        businessID: UUID,
+        clientID: UUID,
+        mode: OutstandingMode,
+        now: Date = Date()
+    ) -> [OutstandingInvoiceRowModel] {
+        invoices
+            .filter { $0.businessID == businessID }
+            .filter { $0.client?.id == clientID }
+            .filter { shouldInclude(invoice: $0, mode: mode, now: now) }
             .map {
-                ClientBalanceRowModel(
-                    client: $0.client,
-                    totalCents: $0.totalCents,
-                    invoiceCount: $0.invoiceCount
+                let overdueDays = $0.dueDate < now ? max(1, Calendar.autoupdatingCurrent.dateComponents([.day], from: $0.dueDate, to: now).day ?? 1) : 0
+                return OutstandingInvoiceRowModel(
+                    invoice: $0,
+                    amountCents: max(0, $0.remainingDueCents),
+                    isOverdue: $0.dueDate < now,
+                    overdueDays: overdueDays
                 )
             }
             .sorted { lhs, rhs in
-                if lhs.totalCents == rhs.totalCents {
-                    return lhs.client.name.localizedCaseInsensitiveCompare(rhs.client.name) == .orderedAscending
-                }
-                return lhs.totalCents > rhs.totalCents
+                lhs.invoice.dueDate < rhs.invoice.dueDate
             }
     }
 
-    private static func shouldInclude(invoice: Invoice, scope: ClientBalanceScope, now: Date) -> Bool {
+    static func summary(for rows: [OutstandingInvoiceRowModel]) -> (totalCents: Int, count: Int) {
+        let total = rows.reduce(0) { $0 + $1.amountCents }
+        return (total, rows.count)
+    }
+
+    private static func shouldInclude(invoice: Invoice, mode: OutstandingMode, now: Date) -> Bool {
         let type = invoice.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard type != "estimate" else { return false }
         guard !invoice.isPaid else { return false }
-
-        // Sent/unpaid invoice heuristic used across the app: unpaid and contains line items.
         guard !((invoice.items ?? []).isEmpty) else { return false }
+        guard max(0, invoice.remainingDueCents) > 0 else { return false }
 
-        switch scope {
-        case .outstanding:
-            return true
-        case .overdue:
+        if mode.isOverdueOnly {
             return invoice.dueDate < now
         }
+        return true
     }
 }
 
