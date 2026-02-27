@@ -49,12 +49,34 @@ struct BookingsListView: View {
 
             List {
                 Section {
-                    Picker("Status", selection: $selectedStatus) {
-                        ForEach(BookingAdminStatus.allCases) { status in
-                            Text(status.label).tag(status)
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search bookings", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(BookingAdminStatus.allCases) { status in
+                                Button {
+                                    selectedStatus = status
+                                } label: {
+                                    Text(status.label)
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(selectedStatus == status ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 if isLoading {
@@ -95,13 +117,8 @@ struct BookingsListView: View {
         }
         .navigationTitle("Bookings")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search bookings"
-        )
         .navigationDestination(item: $selectedRequest) { request in
-            BookingDetailView(request: request) { newStatus in
+            BookingOverviewView(request: request) { newStatus in
                 updateStatus(for: request.requestId, newStatus: newStatus)
             }
         }

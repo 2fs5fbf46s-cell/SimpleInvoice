@@ -21,8 +21,6 @@ struct SetupPaymentsView: View {
     @State private var awaitingStripeReturn = false
     @State private var stripeEnabled = true
     @State private var stripeStatusError = false
-    @State private var isTestingStripeBackend = false
-    @State private var stripeBackendTestResult: String?
 
     @State private var isLoadingPayPalStatus = false
     @State private var payPalConnectStatus: PayPalConnectStatusResponse?
@@ -31,8 +29,6 @@ struct SetupPaymentsView: View {
     @State private var showPayPalSafari = false
     @State private var showPayPalHelpSheet = false
     @State private var payPalPartnerAvailable = false
-    @State private var isTestingPayPalBackend = false
-    @State private var payPalBackendTestResult: String?
     @State private var payPalLastCheckedAt: Date?
     @State private var payPalAlertMessage: String?
     @State private var payPalAlertDetails: String?
@@ -44,9 +40,6 @@ struct SetupPaymentsView: View {
     @State private var showingCashAppSheet = false
     @State private var showingVenmoSheet = false
     @State private var showingPayPalConfigSheet = false
-#if DEBUG
-    @State private var showDiagnostics = false
-#endif
 
     var body: some View {
         ZStack {
@@ -90,7 +83,22 @@ struct SetupPaymentsView: View {
                     }
 
                     #if DEBUG
-                    diagnosticsSection
+                    NavigationLink {
+                        SetupPaymentsDiagnosticsView(businessId: business?.id)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "waveform.path.ecg")
+                                .foregroundStyle(.secondary)
+                            Text("Diagnostics")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 10)
+                    }
                     #endif
                 }
                 .padding(.horizontal, 16)
@@ -296,12 +304,7 @@ struct SetupPaymentsView: View {
                 }
             ),
             hintWhenDisabled: "Enable to configure Stripe.",
-            primaryAction: .init(
-                title: stripePrimaryActionTitle,
-                isLoading: isStartingStripe,
-                isDisabled: isStartingStripe || isLoadingStripe,
-                action: { Task { await openStripeOnboarding() } }
-            )
+            primaryAction: nil
         ) {
             inlineHelperRow(
                 text: stripeHelperText,
@@ -310,6 +313,22 @@ struct SetupPaymentsView: View {
                 actionDisabled: isLoadingStripe || isStartingStripe
             ) {
                 Task { await refreshStripeStatus() }
+            }
+            HStack(spacing: 12) {
+                Button {
+                    Task { await openStripeOnboarding() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isStartingStripe {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(stripePrimaryActionTitle)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+                .disabled(isStartingStripe || isLoadingStripe)
             }
         }
     }
@@ -331,12 +350,7 @@ struct SetupPaymentsView: View {
                 }
             ),
             hintWhenDisabled: "Enable to configure PayPal.",
-            primaryAction: .init(
-                title: payPalPrimaryActionTitle,
-                isLoading: isStartingPayPal,
-                isDisabled: isLoadingPayPalStatus || isStartingPayPal,
-                action: { Task { await payPalPrimaryActionTapped() } }
-            )
+            primaryAction: nil
         ) {
             if let note = payPalStatusNote, !note.isEmpty {
                 Text(note)
@@ -357,18 +371,37 @@ struct SetupPaymentsView: View {
             ) {
                 Task { await refreshPayPalStatus() }
             }
+            HStack(spacing: 12) {
+                Button {
+                    Task { await payPalPrimaryActionTapped() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isStartingPayPal {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(payPalPrimaryActionTitle)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+                .disabled(isLoadingPayPalStatus || isStartingPayPal)
+            }
         }
     }
 
     private func squareCard(_ business: Business) -> some View {
-        PaymentProviderCard(
+        let configured = isSquareConfigured(for: business)
+        let statusText = manualStatusText(isEnabled: business.squareEnabled, isConfigured: configured)
+        let statusStyle = manualStatusStyle(isEnabled: business.squareEnabled, isConfigured: configured)
+        return PaymentProviderCard(
             logoName: "square_logo",
             fallbackSymbol: "squareshape",
             title: "Square",
             subtitle: "Share a Square payment link and reconcile reports.",
             tags: ["Cards", "Wallets"],
-            statusText: business.squareEnabled ? "Active" : "Disabled",
-            statusStyle: business.squareEnabled ? .active : .notConnected,
+            statusText: statusText,
+            statusStyle: statusStyle,
             enabledBinding: Binding(
                 get: { business.squareEnabled },
                 set: { newValue in
@@ -384,19 +417,24 @@ struct SetupPaymentsView: View {
                 action: { showingSquareSheet = true }
             )
         ) {
-            EmptyView()
+            Text(squareSummaryText(for: business, configured: configured))
+                .font(.caption)
+                .foregroundColor(configured ? .secondary : .orange)
         }
     }
 
     private func cashAppCard(_ business: Business) -> some View {
-        PaymentProviderCard(
+        let configured = isCashAppConfigured(for: business)
+        let statusText = manualStatusText(isEnabled: business.cashAppEnabled, isConfigured: configured)
+        let statusStyle = manualStatusStyle(isEnabled: business.cashAppEnabled, isConfigured: configured)
+        return PaymentProviderCard(
             logoName: "cashapp_logo",
             fallbackSymbol: "dollarsign.circle.fill",
             title: "Cash App",
             subtitle: "Accept Cash App transfers with reconciliation.",
             tags: ["Cash App"],
-            statusText: business.cashAppEnabled ? "Active" : "Disabled",
-            statusStyle: business.cashAppEnabled ? .active : .notConnected,
+            statusText: statusText,
+            statusStyle: statusStyle,
             enabledBinding: Binding(
                 get: { business.cashAppEnabled },
                 set: { newValue in
@@ -412,19 +450,24 @@ struct SetupPaymentsView: View {
                 action: { showingCashAppSheet = true }
             )
         ) {
-            EmptyView()
+            Text(cashAppSummaryText(for: business, configured: configured))
+                .font(.caption)
+                .foregroundColor(configured ? .secondary : .orange)
         }
     }
 
     private func venmoCard(_ business: Business) -> some View {
-        PaymentProviderCard(
+        let configured = isVenmoConfigured(for: business)
+        let statusText = manualStatusText(isEnabled: business.venmoEnabled, isConfigured: configured)
+        let statusStyle = manualStatusStyle(isEnabled: business.venmoEnabled, isConfigured: configured)
+        return PaymentProviderCard(
             logoName: "venmo_logo",
             fallbackSymbol: "v.circle.fill",
             title: "Venmo",
             subtitle: "Use a Venmo profile link and reconcile reports.",
             tags: ["Venmo"],
-            statusText: business.venmoEnabled ? "Active" : "Disabled",
-            statusStyle: business.venmoEnabled ? .active : .notConnected,
+            statusText: statusText,
+            statusStyle: statusStyle,
             enabledBinding: Binding(
                 get: { business.venmoEnabled },
                 set: { newValue in
@@ -440,19 +483,24 @@ struct SetupPaymentsView: View {
                 action: { showingVenmoSheet = true }
             )
         ) {
-            EmptyView()
+            Text(venmoSummaryText(for: business, configured: configured))
+                .font(.caption)
+                .foregroundColor(configured ? .secondary : .orange)
         }
     }
 
     private func achCard(_ business: Business) -> some View {
-        PaymentProviderCard(
+        let configured = isACHConfigured(for: business)
+        let statusText = manualStatusText(isEnabled: business.achEnabled, isConfigured: configured)
+        let statusStyle = manualStatusStyle(isEnabled: business.achEnabled, isConfigured: configured)
+        return PaymentProviderCard(
             logoName: "ach_logo",
             fallbackSymbol: "building.columns.fill",
             title: "ACH",
             subtitle: "Manual bank transfer with instructions and reconciliation.",
             tags: ["Bank Transfer"],
-            statusText: business.achEnabled ? "Active" : "Disabled",
-            statusStyle: business.achEnabled ? .active : .notConnected,
+            statusText: statusText,
+            statusStyle: statusStyle,
             enabledBinding: Binding(
                 get: { business.achEnabled },
                 set: { newValue in
@@ -468,7 +516,9 @@ struct SetupPaymentsView: View {
                 action: { showingACHSheet = true }
             )
         ) {
-            EmptyView()
+            Text(achSummaryText(for: business, configured: configured))
+                .font(.caption)
+                .foregroundColor(configured ? .secondary : .orange)
         }
     }
 
@@ -518,11 +568,13 @@ struct SetupPaymentsView: View {
 
     private var payPalStatusLabel: String {
         guard business?.paypalEnabled == true else { return "Disabled" }
-        if isLoadingPayPalStatus { return "Checking" }
+        if isLoadingPayPalStatus { return payPalState == .active ? "Active" : "Pending" }
         let state = payPalState
         switch state {
+        case .unavailable:
+            return "Unavailable"
         case .notConfigured:
-            return "Not configured"
+            return "Needs setup"
         case .notConnected:
             return "Needs setup"
         case .pending:
@@ -543,6 +595,7 @@ struct SetupPaymentsView: View {
         case .active: return .active
         case .pending: return .pending
         case .notConnected: return .pending
+        case .unavailable: return .notConnected
         case .notConfigured: return .notConnected
         case .error: return .error
         case .disabled: return .disabled
@@ -554,6 +607,8 @@ struct SetupPaymentsView: View {
             return "Enable PayPal to offer checkout with PayPal."
         }
         switch payPalState {
+        case .unavailable:
+            return "Partner onboarding is not enabled yet. You can still use a PayPal.me fallback."
         case .active:
             let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "unknown"
             return "Environment: \(env)"
@@ -563,7 +618,7 @@ struct SetupPaymentsView: View {
             }
             return "Partner onboarding is not enabled yet."
         case .notConnected:
-            return "Connect PayPal to finish merchant setup."
+            return "Finish setup to link your PayPal merchant account."
         case .pending:
             return "Complete onboarding in PayPal, then refresh status."
         case .error:
@@ -576,6 +631,67 @@ struct SetupPaymentsView: View {
     private var payPalPlatformReadyText: String {
         guard let status = payPalConnectStatus else { return "not configured" }
         return status.canCreateOrder ? "enabled" : "not configured"
+    }
+
+    private func manualStatusText(isEnabled: Bool, isConfigured: Bool) -> String {
+        if !isEnabled { return "Disabled" }
+        return isConfigured ? "Active" : "Needs setup"
+    }
+
+    private func manualStatusStyle(isEnabled: Bool, isConfigured: Bool) -> ProviderStatusStyle {
+        if !isEnabled { return .disabled }
+        return isConfigured ? .active : .pending
+    }
+
+    private func isSquareConfigured(for business: Business) -> Bool {
+        normalizeURL(business.squareLink) != nil
+    }
+
+    private func isCashAppConfigured(for business: Business) -> Bool {
+        normalizeCashAppInput(business.cashAppHandleOrLink ?? "") != nil
+    }
+
+    private func isVenmoConfigured(for business: Business) -> Bool {
+        normalizeVenmoInput(business.venmoHandleOrLink ?? "") != nil
+    }
+
+    private func isACHConfigured(for business: Business) -> Bool {
+        !(business.achInstructions ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func squareSummaryText(for business: Business, configured: Bool) -> String {
+        guard business.squareEnabled else { return "Enable to configure." }
+        if configured, let link = normalizeURL(business.squareLink) {
+            return "Configured: \(link)"
+        }
+        return "Needs setup: add your Square payment link."
+    }
+
+    private func cashAppSummaryText(for business: Business, configured: Bool) -> String {
+        guard business.cashAppEnabled else { return "Enable to configure." }
+        if configured, let value = normalizeCashAppInput(business.cashAppHandleOrLink ?? "") {
+            return "Configured: \(value)"
+        }
+        return "Needs setup: add your Cash App handle or link."
+    }
+
+    private func venmoSummaryText(for business: Business, configured: Bool) -> String {
+        guard business.venmoEnabled else { return "Enable to configure." }
+        if configured, let value = normalizeVenmoInput(business.venmoHandleOrLink ?? "") {
+            return "Configured: \(value)"
+        }
+        return "Needs setup: add your Venmo handle or link."
+    }
+
+    private func achSummaryText(for business: Business, configured: Bool) -> String {
+        guard business.achEnabled else { return "Enable to configure." }
+        if configured {
+            if let last4 = business.achAccountLast4, !last4.isEmpty {
+                return "Configured: instructions saved (Acct ••••\(last4))"
+            }
+            return "Configured: bank transfer instructions saved."
+        }
+        return "Needs setup: add bank transfer instructions."
     }
 
     private func sanitizePayPalMessage(_ message: String?) -> String {
@@ -662,8 +778,7 @@ struct SetupPaymentsView: View {
                     returnURL: returnURL
                 )
             }
-            stripeURL = url
-            showStripeSafari = true
+            openStripeURL(url)
         } catch {
             let details = errorDebugDetails(error)
             stripeAlertDetails = details
@@ -676,8 +791,12 @@ struct SetupPaymentsView: View {
     private func handleStripeToggle(_ enabled: Bool, business: Business) {
         stripeEnabled = enabled
         guard enabled else { return }
-        let accountId = business.stripeAccountId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let accountId = normalizedStripeAccountId
         if accountId.isEmpty {
+            Task { await openStripeOnboarding() }
+            return
+        }
+        if stripeState.actionRequired {
             Task { await openStripeOnboarding() }
         }
     }
@@ -707,14 +826,6 @@ struct SetupPaymentsView: View {
             stripeAlertMessage = stripeUserMessage(error: error, details: details)
             showStripeError = true
         }
-    }
-
-    private func testStripeBackend() async {
-        guard !isTestingStripeBackend else { return }
-        isTestingStripeBackend = true
-        defer { isTestingStripeBackend = false }
-        let result = await PortalPaymentsAPI.shared.testAdminBackendAuth()
-        stripeBackendTestResult = result.status
     }
 
     private func refreshPayPalStatus() async {
@@ -799,6 +910,7 @@ struct SetupPaymentsView: View {
 
     private enum PayPalState {
         case disabled
+        case unavailable
         case notConfigured
         case notConnected
         case pending
@@ -811,12 +923,15 @@ struct SetupPaymentsView: View {
             return .disabled
         }
         guard let status = payPalConnectStatus else {
-            return .notConfigured
+            return payPalPartnerAvailable ? .notConfigured : .unavailable
         }
         if !status.ok {
             return .error
         }
-        if !payPalPartnerAvailable || !status.configured {
+        if !payPalPartnerAvailable {
+            return .unavailable
+        }
+        if !status.configured {
             return .notConfigured
         }
         let onboarding = status.onboardingStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -833,9 +948,10 @@ struct SetupPaymentsView: View {
     }
 
     private var payPalPrimaryActionTitle: String {
-        if !payPalPartnerAvailable { return "Setup PayPal (Admin)" }
+        if !payPalPartnerAvailable { return "Configure" }
         switch payPalState {
         case .disabled: return "Enable PayPal"
+        case .unavailable: return "Configure"
         case .notConfigured: return "Setup PayPal (Admin)"
         case .notConnected: return "Connect PayPal"
         case .pending: return "Finish Setup"
@@ -848,18 +964,19 @@ struct SetupPaymentsView: View {
         guard let business else { return }
         guard business.paypalEnabled else { return }
         guard payPalPartnerAvailable else {
-            showPayPalHelpSheet = true
+            showingPayPalConfigSheet = true
             return
         }
         switch payPalState {
         case .disabled:
             return
+        case .unavailable:
+            showingPayPalConfigSheet = true
         case .notConfigured:
             showPayPalHelpSheet = true
         case .active:
             if let dashboardURL = payPalDashboardURL() {
-                payPalURL = dashboardURL
-                showPayPalSafari = true
+                openPayPalURL(dashboardURL)
             } else {
                 payPalAlertMessage = "PayPal is connected."
                 payPalAlertDetails = "Connected"
@@ -881,8 +998,7 @@ struct SetupPaymentsView: View {
                     return
                 }
                 if let url = start.url {
-                    payPalURL = url
-                    showPayPalSafari = true
+                    openPayPalURL(url)
                 } else {
                     payPalAlertMessage = start.message ?? "PayPal is connected."
                     payPalAlertDetails = start.message ?? "No onboarding URL returned."
@@ -905,14 +1021,28 @@ struct SetupPaymentsView: View {
         return URL(string: "https://www.paypal.com/myaccount/summary")
     }
 
-    private func testPayPalBackend() async {
-        #if DEBUG
-        guard !isTestingPayPalBackend else { return }
-        isTestingPayPalBackend = true
-        defer { isTestingPayPalBackend = false }
-        let result = await PortalPaymentsAPI.shared.testPayPalBackendHealth()
-        payPalBackendTestResult = result.status
-        #endif
+    private func openStripeURL(_ url: URL) {
+        let scheme = url.scheme?.lowercased()
+        guard scheme == "https" || scheme == "http" else {
+            stripeAlertMessage = "Backend returned an invalid link. Verify backend deployment and route."
+            stripeAlertDetails = "Invalid URL: \(url.absoluteString)"
+            showStripeError = true
+            return
+        }
+        stripeURL = url
+        showStripeSafari = true
+    }
+
+    private func openPayPalURL(_ url: URL) {
+        let scheme = url.scheme?.lowercased()
+        guard scheme == "https" || scheme == "http" else {
+            payPalAlertMessage = "Backend returned an invalid link. Verify backend deployment and route."
+            payPalAlertDetails = "Invalid URL: \(url.absoluteString)"
+            showPayPalError = true
+            return
+        }
+        payPalURL = url
+        showPayPalSafari = true
     }
 
     private func errorDebugDetails(_ error: Error) -> String {
@@ -982,210 +1112,71 @@ struct SetupPaymentsView: View {
 
     @ViewBuilder
     private func squareEditorSheet(for business: Business) -> some View {
-        NavigationStack {
-            Form {
-                TextField("https://square.link/...", text: Binding(
-                    get: { business.squareLink ?? "" },
-                    set: {
-                        business.squareLink = normalizeURL($0)
-                        save()
-                    }
-                ))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            }
-            .navigationTitle("Square")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showingSquareSheet = false }
-                }
-            }
-        }
+        SquareConfigSheet(
+            initialLink: business.squareLink ?? "",
+            onSave: { normalized in
+                business.squareLink = normalized
+                save()
+                showingSquareSheet = false
+            },
+            onCancel: { showingSquareSheet = false }
+        )
     }
 
     @ViewBuilder
     private func cashAppEditorSheet(for business: Business) -> some View {
-        NavigationStack {
-            Form {
-                TextField("$handle or URL", text: Binding(
-                    get: { business.cashAppHandleOrLink ?? "" },
-                    set: {
-                        business.cashAppHandleOrLink = normalizeCashAppInput($0)
-                        save()
-                    }
-                ))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            }
-            .navigationTitle("Cash App")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showingCashAppSheet = false }
-                }
-            }
-        }
+        CashAppConfigSheet(
+            initialValue: business.cashAppHandleOrLink ?? "",
+            onSave: { normalized in
+                business.cashAppHandleOrLink = normalized
+                save()
+                showingCashAppSheet = false
+            },
+            onCancel: { showingCashAppSheet = false }
+        )
     }
 
     @ViewBuilder
     private func venmoEditorSheet(for business: Business) -> some View {
-        NavigationStack {
-            Form {
-                TextField("@handle or URL", text: Binding(
-                    get: { business.venmoHandleOrLink ?? "" },
-                    set: {
-                        business.venmoHandleOrLink = normalizeVenmoInput($0)
-                        save()
-                    }
-                ))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            }
-            .navigationTitle("Venmo")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showingVenmoSheet = false }
-                }
-            }
-        }
+        VenmoConfigSheet(
+            initialValue: business.venmoHandleOrLink ?? "",
+            onSave: { normalized in
+                business.venmoHandleOrLink = normalized
+                save()
+                showingVenmoSheet = false
+            },
+            onCancel: { showingVenmoSheet = false }
+        )
     }
 
     @ViewBuilder
     private func achEditorSheet(for business: Business) -> some View {
-        NavigationStack {
-            Form {
-                TextField("Recipient Name", text: Binding(
-                    get: { business.achRecipientName ?? "" },
-                    set: {
-                        business.achRecipientName = emptyToNil($0)
-                        save()
-                    }
-                ))
-
-                TextField("Bank Name", text: Binding(
-                    get: { business.achBankName ?? "" },
-                    set: {
-                        business.achBankName = emptyToNil($0)
-                        save()
-                    }
-                ))
-
-                TextField("Account Last 4", text: Binding(
-                    get: { business.achAccountLast4 ?? "" },
-                    set: {
-                        business.achAccountLast4 = sanitizeLast4($0)
-                        save()
-                    }
-                ))
-                .keyboardType(.numberPad)
-
-                TextField("Routing Last 4", text: Binding(
-                    get: { business.achRoutingLast4 ?? "" },
-                    set: {
-                        business.achRoutingLast4 = sanitizeLast4($0)
-                        save()
-                    }
-                ))
-                .keyboardType(.numberPad)
-
-                TextEditor(text: Binding(
-                    get: { business.achInstructions ?? "" },
-                    set: {
-                        business.achInstructions = emptyToNil($0)
-                        save()
-                    }
-                ))
-                .frame(minHeight: 120)
-            }
-            .navigationTitle("ACH Instructions")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showingACHSheet = false }
-                }
-            }
-        }
+        ACHConfigSheet(
+            initialInstructions: business.achInstructions ?? "",
+            initialLast4: business.achAccountLast4 ?? "",
+            onSave: { instructions, last4 in
+                business.achInstructions = emptyToNil(instructions)
+                business.achAccountLast4 = sanitizeLast4(last4)
+                save()
+                showingACHSheet = false
+            },
+            onCancel: { showingACHSheet = false }
+        )
     }
 
     @ViewBuilder
     private func payPalConfigSheet(for business: Business) -> some View {
-        NavigationStack {
-            Form {
-                TextField(
-                    "PayPal.me fallback (optional)",
-                    text: Binding(
-                        get: { business.paypalMeFallback ?? "" },
-                        set: {
-                            business.paypalMeFallback = normalizeURL($0)
-                            business.paypalMeUrl = business.paypalMeFallback
-                            save()
-                        }
-                    )
-                )
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            }
-            .navigationTitle("PayPal")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showingPayPalConfigSheet = false }
-                }
-            }
-        }
+        PayPalFallbackConfigSheet(
+            initialValue: business.paypalMeFallback ?? "",
+            onSave: { normalized in
+                business.paypalMeFallback = normalized
+                business.paypalMeUrl = normalized
+                save()
+                showingPayPalConfigSheet = false
+            },
+            onCancel: { showingPayPalConfigSheet = false }
+        )
     }
-
-#if DEBUG
-    private var diagnosticsSection: some View {
-        DisclosureGroup("Diagnostics", isExpanded: $showDiagnostics) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    Button {
-                        Task { await testStripeBackend() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isTestingStripeBackend {
-                                ProgressView().controlSize(.small)
-                            }
-                            Text("Test Stripe Backend")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isTestingStripeBackend)
-
-                    if let stripeBackendTestResult {
-                        Text(stripeBackendTestResult)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        Task { await testPayPalBackend() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isTestingPayPalBackend {
-                                ProgressView().controlSize(.small)
-                            }
-                            Text("Test PayPal Backend")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isTestingPayPalBackend)
-
-                    if let payPalBackendTestResult {
-                        Text(payPalBackendTestResult)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            .padding(.top, 8)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-#endif
 
     private func normalizeURL(_ raw: String?) -> String? {
         let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
