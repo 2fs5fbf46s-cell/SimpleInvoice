@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MoreView: View {
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @State private var searchText = ""
 
     private struct MoreItem: Identifiable {
@@ -53,19 +54,19 @@ struct MoreView: View {
                 title: "Clients",
                 systemImage: "person.2",
                 keyword: "Customers",
-                destination: AnyView(ClientListView())
+                destination: AnyView(ClientListView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
                 title: "Contracts",
                 systemImage: "doc.text",
                 keyword: "Contracts",
-                destination: AnyView(ContractsHomeView())
+                destination: AnyView(ContractsHomeView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
                 title: "Estimates",
                 systemImage: "doc.text.fill",
                 keyword: "Estimates",
-                destination: AnyView(EstimateListView())
+                destination: AnyView(EstimateListView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
                 title: "Files",
@@ -77,19 +78,19 @@ struct MoreView: View {
                 title: "Inventory",
                 systemImage: "tray",
                 keyword: "Saved Items",
-                destination: AnyView(SavedItemsView())
+                destination: AnyView(SavedItemsView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
                 title: "Invoices",
                 systemImage: "doc.text.fill",
                 keyword: "Invoices",
-                destination: AnyView(InvoiceListView())
+                destination: AnyView(InvoiceListView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
                 title: "Jobs",
                 systemImage: "tray.full",
                 keyword: "Jobs",
-                destination: AnyView(JobsListView())
+                destination: AnyView(JobsListView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
                 title: "Portal Preview",

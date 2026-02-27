@@ -153,7 +153,7 @@ struct DashboardView: View {
                     // Main tiles grid
                     LazyVGrid(columns: columns, spacing: 12) {
 
-                        NavigationLink { InvoiceListView() } label: {
+                        NavigationLink { InvoiceListView(businessID: activeBiz.activeBusinessID) } label: {
                             TileCard(
                                 title: "Invoices",
                                 subtitle: "View & send",
@@ -171,7 +171,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink { EstimateListView() } label: {
+                        NavigationLink { EstimateListView(businessID: activeBiz.activeBusinessID) } label: {
                             TileCard(
                                 title: "Estimates",
                                 subtitle: "Quotes",
@@ -180,7 +180,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink { ClientListView() } label: {
+                        NavigationLink { ClientListView(businessID: activeBiz.activeBusinessID) } label: {
                             TileCard(
                                 title: "Customers",
                                 subtitle: "Clients",
@@ -198,7 +198,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink { JobsListView() } label: {
+                        NavigationLink { JobsListView(businessID: activeBiz.activeBusinessID) } label: {
                             TileCard(
                                 title: "Jobs",
                                 subtitle: "Projects",
@@ -207,7 +207,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink { ContractsHomeView() } label: {
+                        NavigationLink { ContractsHomeView(businessID: activeBiz.activeBusinessID) } label: {
                             TileCard(
                                 title: "Contracts",
                                 subtitle: "View & send",
@@ -216,7 +216,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink { SavedItemsView() } label: {
+                        NavigationLink { SavedItemsView(businessID: activeBiz.activeBusinessID) } label: {
                             TileCard(
                                 title: "Inventory",
                                 subtitle: "Services & materials",

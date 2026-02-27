@@ -52,7 +52,7 @@ struct AppTabView: View {
             .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
 
             NavigationStack(path: $invoicesPath) {
-                InvoiceListView()
+                InvoiceListView(businessID: activeBiz.activeBusinessID)
             }
             .id(invoicesResetID)
             .tag(AppTab.invoices)
@@ -64,7 +64,7 @@ struct AppTabView: View {
                 .tabItem { Label("Create", systemImage: "plus.circle.fill") }
 
             NavigationStack(path: $clientsPath) {
-                ClientListView()
+                ClientListView(businessID: activeBiz.activeBusinessID)
             }
             .id(clientsResetID)
             .tag(AppTab.clients)

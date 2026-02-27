@@ -10,8 +10,7 @@ struct InvoiceListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
-    @Query(sort: \Invoice.issueDate, order: .reverse)
-    private var invoices: [Invoice]
+    @Query private var invoices: [Invoice]
 
     @Query private var profiles: [BusinessProfile]
 
@@ -37,6 +36,19 @@ struct InvoiceListView: View {
     @State private var filter: Filter = .all
     @State private var searchText: String = ""
 
+    init(businessID: UUID? = nil) {
+        if let businessID {
+            _invoices = Query(
+                filter: #Predicate<Invoice> { invoice in
+                    invoice.businessID == businessID
+                },
+                sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+            )
+        } else {
+            _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
+        }
+    }
+
     var body: some View {
         ZStack {
             // Background
@@ -54,6 +66,7 @@ struct InvoiceListView: View {
                             .textInputAutocapitalization(.never)
 
                         Button {
+                            Haptics.lightTap()
                             showingNewInvoice = true
                         } label: {
                             Image(systemName: "plus")
@@ -99,6 +112,18 @@ struct InvoiceListView: View {
                         systemImage: "doc.text",
                         description: Text("Try changing the filter or create a new invoice.")
                     )
+                    Button("Create Invoice") {
+                        Haptics.lightTap()
+                        showingNewInvoice = true
+                    }
+                    .buttonStyle(.plain)
+                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
+                        Button("Clear Filters") {
+                            searchText = ""
+                            filter = .all
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     ForEach(filteredInvoices) { invoice in
                         Button {
@@ -229,8 +254,10 @@ struct InvoiceListView: View {
     }
 
     private var scopedInvoices: [Invoice] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return invoices.filter { $0.businessID == bizID }
+        if let bizID = activeBiz.activeBusinessID {
+            return invoices.filter { $0.businessID == bizID }
+        }
+        return invoices
     }
 
     private func isFinalDraft(_ invoice: Invoice) -> Bool {
@@ -252,9 +279,38 @@ struct InvoiceListView: View {
         let finalBadge = isFinalDraft(invoice) ? "FINAL • " : ""
         let subtitle = "\(finalBadge)\(statusText) • \(clientName) • \(date) • \(total)"
 
-        return HStack(alignment: .top, spacing: 12) {
+        return InvoiceRowView(
+            invoiceTitle: invoice.invoiceNumber.isEmpty
+                ? (isFinalDraft(invoice) ? "Final Invoice" : "Invoice")
+                : "\(isFinalDraft(invoice) ? "Final Invoice" : "Invoice") \(invoice.invoiceNumber)",
+            statusText: statusText,
+            subtitle: subtitle.replacingOccurrences(of: "\(statusText) • ", with: "")
+        )
+    }
 
-            // Leading icon chip (matches Dashboard/Jobs/Estimates)
+    // MARK: - Deletes
+
+    private func deleteInvoices(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(filteredInvoices[index])
+        }
+        do {
+            try modelContext.save()
+            Haptics.success()
+        } catch {
+            Haptics.error()
+            print("Failed to save deletes: \(error)")
+        }
+    }
+}
+
+private struct InvoiceRowView: View {
+    let invoiceTitle: String
+    let statusText: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(SBWTheme.chipFill(for: "Invoices"))
@@ -265,18 +321,15 @@ struct InvoiceListView: View {
             .frame(width: 36, height: 36)
 
             VStack(alignment: .leading, spacing: 4) {
-                let isFinal = isFinalDraft(invoice)
                 HStack {
-                    Text(invoice.invoiceNumber.isEmpty
-                         ? (isFinal ? "Final Invoice" : "Invoice")
-                         : "\(isFinal ? "Final Invoice" : "Invoice") \(invoice.invoiceNumber)")
+                    Text(invoiceTitle)
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     SBWStatusPill(text: statusText)
                 }
-                Text(subtitle.replacingOccurrences(of: "\(statusText) • ", with: ""))
+                Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -284,16 +337,6 @@ struct InvoiceListView: View {
         }
         .padding(.vertical, 4)
         .frame(minHeight: 56, alignment: .topLeading)
-    }
-
-    // MARK: - Deletes
-
-    private func deleteInvoices(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(filteredInvoices[index])
-        }
-        do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
     }
 }
 
@@ -372,12 +415,14 @@ private extension InvoiceListView {
 
             modelContext.insert(invoice)
             try modelContext.save()
+            Haptics.success()
 
             showingTemplates = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 navigateToInvoice = invoice
             }
         } catch {
+            Haptics.error()
             print("Failed to create invoice from template: \(error)")
         }
     }

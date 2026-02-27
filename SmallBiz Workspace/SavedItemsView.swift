@@ -10,7 +10,7 @@ struct SavedItemsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
-    @Query(sort: \CatalogItem.name) private var items: [CatalogItem]
+    @Query private var items: [CatalogItem]
     @Query private var profiles: [BusinessProfile]
 
     @State private var searchText: String = ""
@@ -18,6 +18,19 @@ struct SavedItemsView: View {
 
     @State private var editorItem: CatalogItem? = nil
     @State private var draftItemID: UUID? = nil
+
+    init(businessID: UUID? = nil) {
+        if let businessID {
+            _items = Query(
+                filter: #Predicate<CatalogItem> { item in
+                    item.businessID == businessID
+                },
+                sort: [SortDescriptor(\CatalogItem.name)]
+            )
+        } else {
+            _items = Query(sort: [SortDescriptor(\CatalogItem.name)])
+        }
+    }
 
     // MARK: - Scoping
 
@@ -88,7 +101,15 @@ struct SavedItemsView: View {
                                           ? "Tap + to add your first saved item."
                                           : "Try a different search.")
                     )
-                    .listRowBackground(Color.clear)
+                    Button("Add Item") { addDraftAndOpenEditor() }
+                        .buttonStyle(.plain)
+                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedCategory != "All" {
+                        Button("Clear Filters") {
+                            searchText = ""
+                            selectedCategory = "All"
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     ForEach(filteredItems) { item in
                         Button {
@@ -127,6 +148,7 @@ struct SavedItemsView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    Haptics.lightTap()
                     addDraftAndOpenEditor()
                 } label: {
                     Image(systemName: "plus")
@@ -156,17 +178,16 @@ struct SavedItemsView: View {
 
                         do {
                             try modelContext.save()
+                            Haptics.success()
                             editorItem = nil
                         } catch {
+                            Haptics.error()
                             print("Failed to save item edits: \(error)")
                         }
                     }
                 )
             }
             .presentationDetents([.medium, .large])
-        }
-        .onChange(of: activeProfile?.catalogCategoriesText ?? "") { _, _ in
-            try? modelContext.save()
         }
     }
 

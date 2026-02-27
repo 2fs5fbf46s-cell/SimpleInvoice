@@ -10,8 +10,7 @@ struct EstimateListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
-    @Query(sort: \Invoice.issueDate, order: .reverse)
-    private var invoices: [Invoice]
+    @Query private var invoices: [Invoice]
 
     @Query private var profiles: [BusinessProfile]
     @Query private var businesses: [Business]
@@ -47,6 +46,20 @@ struct EstimateListView: View {
 
     @State private var filter: Filter = .all
     @State private var searchText: String = ""
+    @State private var isRefreshingFromPortal = false
+
+    init(businessID: UUID? = nil) {
+        if let businessID {
+            _invoices = Query(
+                filter: #Predicate<Invoice> { invoice in
+                    invoice.businessID == businessID
+                },
+                sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+            )
+        } else {
+            _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -65,6 +78,7 @@ struct EstimateListView: View {
                             .textInputAutocapitalization(.never)
 
                         Button {
+                            Haptics.lightTap()
                             draftName = ""
                             draftClient = nil
                             showingCreateEstimate = true
@@ -112,6 +126,19 @@ struct EstimateListView: View {
                         systemImage: "doc.text",
                         description: Text("Try changing the filter or create a new estimate.")
                     )
+                    Button("Create Estimate") {
+                        draftName = ""
+                        draftClient = nil
+                        showingCreateEstimate = true
+                    }
+                    .buttonStyle(.plain)
+                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
+                        Button("Clear Filters") {
+                            searchText = ""
+                            filter = .all
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     ForEach(filteredEstimates) { estimate in
                         Button {
@@ -144,7 +171,7 @@ struct EstimateListView: View {
             }
             .scrollContentBackground(.hidden)
             .refreshable {
-                await refreshFilteredEstimatesFromPortal()
+                await guardedRefreshFilteredEstimatesFromPortal()
                 EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             }
         }
@@ -204,6 +231,7 @@ struct EstimateListView: View {
 
                 do { try modelContext.save() }
                 catch { print("Failed to save rename: \(error)") }
+                Haptics.success()
 
                 renamingEstimate = nil
             }
@@ -255,8 +283,8 @@ struct EstimateListView: View {
                             }
 
                             ToolbarItem(placement: .topBarTrailing) {
-                                Button("Done") {
-                                    if let estimate = newEstimate {
+                            Button("Done") {
+                                if let estimate = newEstimate {
                                         PortalAutoSyncService.markInvoiceNeedsUploadIfChanged(invoice: estimate, business: nil)
                                         try? modelContext.save()
                                         let estimateID = estimate.id
@@ -267,6 +295,7 @@ struct EstimateListView: View {
                                             )
                                         }
                                     }
+                                    Haptics.success()
                                     showingNewEstimate = false
                                 }
                                 .fontWeight(.semibold)
@@ -279,15 +308,25 @@ struct EstimateListView: View {
         }
         .task {
             EstimateDecisionSync.applyPendingDecisions(in: modelContext)
-            await refreshFilteredEstimatesFromPortal()
+            await guardedRefreshFilteredEstimatesFromPortal()
         }
     }
 
     // MARK: - Data (scoped + filtered)
 
     private var scopedInvoices: [Invoice] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return invoices.filter { $0.businessID == bizID }
+        if let bizID = activeBiz.activeBusinessID {
+            return invoices.filter { $0.businessID == bizID }
+        }
+        return invoices
+    }
+
+    @MainActor
+    private func guardedRefreshFilteredEstimatesFromPortal() async {
+        guard isRefreshingFromPortal == false else { return }
+        isRefreshingFromPortal = true
+        defer { isRefreshingFromPortal = false }
+        await refreshFilteredEstimatesFromPortal()
     }
 
     private var filteredEstimates: [Invoice] {
