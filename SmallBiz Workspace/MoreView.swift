@@ -1,14 +1,32 @@
 import SwiftUI
 
 struct MoreView: View {
+    @Binding var path: NavigationPath
     @State private var searchText = ""
+
+    private enum MoreRoute: String, Hashable {
+        case notifications
+        case bookingPortal
+        case businessProfile
+        case setupPayments
+        case website
+        case clientPortal
+        case clients
+        case contracts
+        case estimates
+        case files
+        case inventory
+        case invoices
+        case jobs
+        case portalPreview
+    }
 
     private struct MoreItem: Identifiable {
         let id = UUID()
         let title: String
         let systemImage: String
         let keyword: String   // drives chipFill consistency
-        let destination: AnyView
+        let route: MoreRoute
     }
 
     private var items: [MoreItem] {
@@ -17,85 +35,85 @@ struct MoreView: View {
                 title: "Notifications",
                 systemImage: "bell.badge",
                 keyword: "Notifications",
-                destination: AnyView(NotificationsView())
+                route: .notifications
             ),
             MoreItem(
                 title: "Booking Portal",
                 systemImage: "calendar.badge.clock",
                 keyword: "Booking Portal",
-                destination: AnyView(BookingPortalView())
+                route: .bookingPortal
             ),
             MoreItem(
                 title: "Business Profile",
                 systemImage: "building.2",
                 keyword: "Business Profile",
-                destination: AnyView(BusinessProfileView())
+                route: .businessProfile
             ),
             MoreItem(
                 title: "Setup Payments",
                 systemImage: "creditcard.fill",
                 keyword: "Payments",
-                destination: AnyView(SetupPaymentsView())
+                route: .setupPayments
             ),
             MoreItem(
                 title: "Website",
                 systemImage: "globe",
                 keyword: "Website",
-                destination: AnyView(WebsiteCustomizationView())
+                route: .website
             ),
             MoreItem(
                 title: "Client Portal",
                 systemImage: "person.2.badge.gearshape",
                 keyword: "Client Portal",
-                destination: AnyView(PortalDirectoryLauncherView())
+                route: .clientPortal
             ),
             MoreItem(
                 title: "Clients",
                 systemImage: "person.2",
                 keyword: "Customers",
-                destination: AnyView(ClientListView())
+                route: .clients
             ),
             MoreItem(
                 title: "Contracts",
                 systemImage: "doc.text",
                 keyword: "Contracts",
-                destination: AnyView(ContractsHomeView())
+                route: .contracts
             ),
             MoreItem(
                 title: "Estimates",
                 systemImage: "doc.text.fill",
                 keyword: "Estimates",
-                destination: AnyView(EstimateListView())
+                route: .estimates
             ),
             MoreItem(
                 title: "Files",
                 systemImage: "folder",
                 keyword: "Files",
-                destination: AnyView(FilesHomeView())
+                route: .files
             ),
             MoreItem(
                 title: "Inventory",
                 systemImage: "tray",
                 keyword: "Saved Items",
-                destination: AnyView(SavedItemsView())
+                route: .inventory
             ),
             MoreItem(
                 title: "Invoices",
                 systemImage: "doc.text.fill",
                 keyword: "Invoices",
-                destination: AnyView(InvoiceListView())
+                route: .invoices
             ),
             MoreItem(
                 title: "Jobs",
                 systemImage: "tray.full",
                 keyword: "Jobs",
-                destination: AnyView(JobsListView())
+                route: .jobs
             ),
             MoreItem(
                 title: "Portal Preview",
                 systemImage: "person.crop.rectangle",
                 keyword: "Client Portal",
-                destination: AnyView(PortalPreviewView())
+                route: .portalPreview
             )
         ]
     }
@@ -130,9 +148,7 @@ struct MoreView: View {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach(filtered) { item in
-                            NavigationLink {
-                                item.destination
-                            } label: {
+                            NavigationLink(value: item.route) {
                                 tile(item)
                             }
                             .buttonStyle(.plain)
@@ -149,6 +165,38 @@ struct MoreView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search"
         )
+        .navigationDestination(for: MoreRoute.self) { route in
+            switch route {
+            case .notifications:
+                NotificationsView()
+            case .bookingPortal:
+                BookingPortalView()
+            case .businessProfile:
+                BusinessProfileView()
+            case .setupPayments:
+                SetupPaymentsView()
+            case .website:
+                WebsiteCustomizationView()
+            case .clientPortal:
+                PortalDirectoryLauncherView()
+            case .clients:
+                ClientListView()
+            case .contracts:
+                ContractsHomeView()
+            case .estimates:
+                EstimateListView()
+            case .files:
+                FilesHomeView()
+            case .inventory:
+                SavedItemsView()
+            case .invoices:
+                InvoiceListView()
+            case .jobs:
+                JobsListView()
+            case .portalPreview:
+                PortalPreviewView()
+            }
+        }
     }
 
     private func tile(_ item: MoreItem) -> some View {
