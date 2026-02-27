@@ -11,6 +11,7 @@ import SwiftData
 struct ClientListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
 
     @Query private var allClients: [Client]
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
@@ -26,6 +27,7 @@ struct ClientListView: View {
     @State private var selectedClient: Client? = nil
 
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         if let businessID {
             _allClients = Query(
                 filter: #Predicate<Client> { client in
@@ -33,9 +35,27 @@ struct ClientListView: View {
                 },
                 sort: [SortDescriptor(\Client.name, order: .forward)]
             )
+            _jobs = Query(
+                filter: #Predicate<Job> { job in
+                    job.businessID == businessID
+                },
+                sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+            )
+            _invoices = Query(
+                filter: #Predicate<Invoice> { invoice in
+                    invoice.businessID == businessID
+                },
+                sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+            )
         } else {
             _allClients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
+            _jobs = Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
+            _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
         }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
     }
 
     private enum Filter: String, CaseIterable, Identifiable {
@@ -46,11 +66,41 @@ struct ClientListView: View {
         var id: String { rawValue }
     }
 
+    private struct ClientStats {
+        var jobsCount: Int = 0
+        var outstandingBalance: Double = 0
+        var lastActivity: Date = .distantPast
+    }
+
     // MARK: - Scoping
 
     private var scopedClients: [Client] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = effectiveBusinessID else { return [] }
         return allClients.filter { $0.businessID == bizID }
+    }
+
+    private var clientStatsByID: [UUID: ClientStats] {
+        var stats: [UUID: ClientStats] = [:]
+
+        for job in jobs {
+            guard let clientID = job.clientID else { continue }
+            var current = stats[clientID] ?? ClientStats()
+            current.jobsCount += 1
+            current.lastActivity = max(current.lastActivity, job.startDate)
+            stats[clientID] = current
+        }
+
+        for invoice in invoices {
+            guard let clientID = invoice.client?.id else { continue }
+            var current = stats[clientID] ?? ClientStats()
+            if !invoice.isPaid && invoice.documentType != "estimate" {
+                current.outstandingBalance += invoice.total
+            }
+            current.lastActivity = max(current.lastActivity, invoice.issueDate)
+            stats[clientID] = current
+        }
+
+        return stats
     }
 
     private var filtered: [Client] {
@@ -59,7 +109,7 @@ struct ClientListView: View {
         case .all:
             base = scopedClients
         case .recent:
-            base = scopedClients.filter { lastActivity(for: $0) > Calendar.current.date(byAdding: .day, value: -45, to: .now)! }
+            base = scopedClients.filter { (clientStatsByID[$0.id]?.lastActivity ?? .distantPast) > Calendar.current.date(byAdding: .day, value: -45, to: .now)! }
         case .favorites:
             base = scopedClients.filter { $0.portalEnabled }
         }
@@ -91,7 +141,7 @@ struct ClientListView: View {
                     .pickerStyle(.segmented)
                 }
 
-                if activeBiz.activeBusinessID == nil {
+                if effectiveBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
@@ -146,9 +196,6 @@ struct ClientListView: View {
                 }
             }
         }
-        .onAppear {
-            try? activeBiz.loadOrCreateDefaultBusiness(modelContext: modelContext)
-        }
         .sheet(item: $newClientDraft) { draft in
             NavigationStack {
                 ClientEditView(
@@ -182,7 +229,7 @@ struct ClientListView: View {
 
                                 do {
                                     try modelContext.save()
-                                    if jobsCount(for: draft) == 0 {
+                                    if (clientStatsByID[draft.id]?.jobsCount ?? 0) == 0 {
                                         _ = try JobWorkspaceFactory.createInitialJobAndWorkspace(
                                             context: modelContext,
                                             businessID: draft.businessID,
@@ -218,10 +265,11 @@ struct ClientListView: View {
     // MARK: - Row UI (Option A parity)
 
     private func row(_ client: Client) -> some View {
-        let count = jobsCount(for: client)
+        let stats = clientStatsByID[client.id] ?? ClientStats()
+        let count = stats.jobsCount
         let name = client.name.isEmpty ? "Client" : client.name
         let contact = client.email.isEmpty ? client.phone : client.email
-        let outstanding = outstandingBalance(for: client)
+        let outstanding = stats.outstandingBalance
         let subtitle = [count > 0 ? "\(count) job\(count == 1 ? "" : "s")" : nil,
                         contact.isEmpty ? nil : contact,
                         outstanding > 0 ? "Outstanding \(outstanding.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))" : nil]
@@ -237,7 +285,7 @@ struct ClientListView: View {
     // MARK: - Add / Delete
 
     private func addClientAndOpenSheet() {
-        guard let bizID = activeBiz.activeBusinessID else {
+        guard let bizID = effectiveBusinessID else {
             print("❌ No active business selected")
             return
         }
@@ -279,30 +327,6 @@ struct ClientListView: View {
         }
     }
 
-    private func jobsCount(for client: Client) -> Int {
-        let id = client.id
-        return jobs.reduce(0) { partial, job in
-            partial + ((job.clientID == id) ? 1 : 0)
-        }
-    }
-
-    private func outstandingBalance(for client: Client) -> Double {
-        invoices
-            .filter { $0.client?.id == client.id && !$0.isPaid && $0.documentType != "estimate" }
-            .reduce(0) { $0 + $1.total }
-    }
-
-    private func lastActivity(for client: Client) -> Date {
-        let jobDate = jobs
-            .filter { $0.clientID == client.id }
-            .map(\.startDate)
-            .max() ?? .distantPast
-        let invoiceDate = invoices
-            .filter { $0.client?.id == client.id }
-            .map(\.issueDate)
-            .max() ?? .distantPast
-        return max(jobDate, invoiceDate)
-    }
 }
 
 private struct ClientRowView: View {

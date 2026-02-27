@@ -9,6 +9,7 @@ import SwiftData
 struct JobsListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
 
     @Query private var jobs: [Job]
     @Query private var clients: [Client]
@@ -22,6 +23,7 @@ struct JobsListView: View {
     @State private var newJobDraft: Job? = nil
 
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         if let businessID {
             _jobs = Query(
                 filter: #Predicate<Job> { job in
@@ -29,9 +31,24 @@ struct JobsListView: View {
                 },
                 sort: [SortDescriptor(\Job.startDate, order: .reverse)]
             )
+            _clients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == businessID
+                },
+                sort: [SortDescriptor(\Client.name, order: .forward)]
+            )
         } else {
             _jobs = Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
+            _clients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
         }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
+    }
+
+    private var clientNameByID: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.name.trimmingCharacters(in: .whitespacesAndNewlines)) })
     }
 
     private enum Filter: String, CaseIterable, Identifiable {
@@ -47,10 +64,10 @@ struct JobsListView: View {
     // MARK: - Scoped jobs (active business)
 
     private var scopedJobs: [Job] {
-        if let bizID = activeBiz.activeBusinessID {
+        if let bizID = effectiveBusinessID {
             return jobs.filter { $0.businessID == bizID }
         }
-        return jobs
+        return []
     }
 
     private var filteredJobs: [Job] {
@@ -129,7 +146,7 @@ struct JobsListView: View {
                     }
                 }
 
-                if activeBiz.activeBusinessID == nil {
+                if effectiveBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
@@ -256,7 +273,7 @@ struct JobsListView: View {
     // MARK: - Add / Delete
 
     private func addJobAndOpenSheet() {
-        guard let bizID = activeBiz.activeBusinessID else {
+        guard let bizID = effectiveBusinessID else {
             print("❌ No active business selected")
             return
         }
@@ -328,7 +345,7 @@ struct JobsListView: View {
 
     private func clientName(for job: Job) -> String? {
         guard let clientID = job.clientID else { return nil }
-        let name = clients.first(where: { $0.id == clientID })?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = clientNameByID[clientID]
         if let name, !name.isEmpty {
             return name
         }
