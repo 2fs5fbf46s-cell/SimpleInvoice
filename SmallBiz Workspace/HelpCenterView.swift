@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct HelpCenterView: View {
     @Environment(\.openURL) private var openURL
     @State private var showSupportSheet = false
+    @State private var showSupportFallbackAlert = false
 
     var body: some View {
         ZStack {
@@ -42,11 +44,7 @@ struct HelpCenterView: View {
                                 .font(.headline)
 
                             supportRow(title: "Contact Support", systemImage: "envelope") {
-                                if let url = URL(string: "mailto:support@smallbizworkspace.com") {
-                                    openURL(url)
-                                } else {
-                                    showSupportSheet = true
-                                }
+                                contactSupportTapped()
                             }
 
                             supportRow(title: "Privacy Policy", systemImage: "hand.raised") {
@@ -105,6 +103,14 @@ struct HelpCenterView: View {
                 }
             }
         }
+        .alert("Contact Support", isPresented: $showSupportFallbackAlert) {
+            Button("Copy Email") {
+                UIPasteboard.general.string = "support@smallbizworkspace.com"
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("support@smallbizworkspace.com")
+        }
     }
 
     private var versionLabel: String {
@@ -128,4 +134,30 @@ struct HelpCenterView: View {
         }
         .buttonStyle(.plain)
     }
+
+    private func contactSupportTapped() {
+        let subject = "SmallBiz Workspace Support"
+        let body = "App Version: \(versionLabel)"
+        let mailto = "mailto:support@smallbizworkspace.com?subject=\(urlEncode(subject))&body=\(urlEncode(body))"
+
+        guard let url = URL(string: mailto) else {
+            showSupportSheet = true
+            return
+        }
+
+        openURL(url) { accepted in
+            if accepted == false {
+                showSupportFallbackAlert = true
+            }
+        }
+    }
+
+    private func urlEncode(_ text: String) -> String {
+        text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
+    }
 }
+
+// How to test:
+// 1) Open Help Center and tap Contact Support.
+// 2) Verify mail compose opens with prefilled subject/body; if unavailable, alert appears with Copy Email.
+// 3) Verify Privacy Policy and User Agreement open correctly.

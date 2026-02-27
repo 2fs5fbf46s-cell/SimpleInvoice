@@ -8,9 +8,15 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import Combine
+import UIKit
 
 enum AppTab: Hashable {
     case dashboard, invoices, create, clients, more
+}
+
+private enum AppTabRouteDestination: Hashable {
+    case setupPayments
 }
 
 struct AppTabView: View {
@@ -28,6 +34,10 @@ struct AppTabView: View {
     @State private var deepLinkedBookingRequest: BookingRequestItem? = nil
     @State private var showBookingAdminSheet = false
     @State private var toastDismissTask: Task<Void, Never>? = nil
+    @State private var coachMarkFrames: [String: CGRect] = [:]
+    @State private var isWalkthroughPresented = false
+    @State private var walkthroughStepIndex = 0
+    @State private var walkthroughValidationTask: Task<Void, Never>? = nil
 
     // MUST be @State so NavigationStack(path:) can push.
     @State private var dashboardPath = NavigationPath()
@@ -72,11 +82,18 @@ struct AppTabView: View {
 
             NavigationStack(path: $morePath) {
                 MoreView()
+                    .navigationDestination(for: AppTabRouteDestination.self) { destination in
+                        switch destination {
+                        case .setupPayments:
+                            SetupPaymentsView()
+                        }
+                    }
             }
             .id(moreResetID)
             .tag(AppTab.more)
             .tabItem { Label("More", systemImage: "ellipsis") }
         }
+        .coordinateSpace(name: CoachMarksOverlay.coordinateSpaceName)
         .overlay(alignment: .bottom) {
             if let message = notificationRouter.toastMessage {
                 Text(message)
@@ -87,6 +104,25 @@ struct AppTabView: View {
                     .clipShape(Capsule())
                     .padding(.bottom, 24)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .overlay(alignment: .bottom) {
+            walkthroughTabTargetMarkers
+                .padding(.bottom, 2)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            if isWalkthroughPresented {
+                CoachMarksOverlay(
+                    steps: WalkthroughSteps.core,
+                    currentIndex: walkthroughStepIndex,
+                    frames: coachMarkFrames,
+                    onBack: { walkthroughBackTapped() },
+                    onNext: { walkthroughNextTapped() },
+                    onSkip: { walkthroughSkipTapped() },
+                    onDone: { walkthroughDoneTapped() }
+                )
+                .zIndex(20)
             }
         }
         .background(
@@ -165,10 +201,33 @@ struct AppTabView: View {
                 routeToEstimate(id: requested)
             }
         }
+        .onPreferenceChange(CoachMarkFramePreferenceKey.self) { newValue in
+            coachMarkFrames = newValue
+        }
+        .onChange(of: walkthroughStepIndex) { _, _ in
+            scheduleWalkthroughValidation()
+        }
+        .onChange(of: isWalkthroughPresented) { _, isPresented in
+            if isPresented {
+                scheduleWalkthroughValidation()
+            } else {
+                walkthroughValidationTask?.cancel()
+                walkthroughValidationTask = nil
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: WalkthroughState.runRequestNotification)) { _ in
+            startWalkthrough(force: true)
+        }
+        .onReceive(AppRouteCenter.shared.publisher) { route in
+            handleAppRoute(route)
+        }
         .task {
             EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             if let requested = portalReturn.requestedEstimateID {
                 routeToEstimate(id: requested)
+            }
+            if OnboardingState.isComplete && !WalkthroughState.isComplete {
+                startWalkthrough(force: false)
             }
         }
     }
@@ -201,6 +260,151 @@ struct AppTabView: View {
         case .create:
             break
         }
+    }
+
+    private var walkthroughTabTargetMarkers: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width / 5
+            HStack(spacing: 0) {
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.dashboard")
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.invoices")
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.create")
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.clients")
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.more")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+        .frame(height: 62)
+    }
+
+    @MainActor
+    private func startWalkthrough(force: Bool) {
+        guard !isWalkthroughPresented else { return }
+        guard force || !WalkthroughState.isComplete else { return }
+        isWalkthroughPresented = true
+        walkthroughStepIndex = 0
+        showCreateSheet = false
+        selectTabForWalkthrough(.dashboard)
+    }
+
+    @MainActor
+    private func walkthroughBackTapped() {
+        guard walkthroughStepIndex > 0 else { return }
+        walkthroughStepIndex -= 1
+    }
+
+    @MainActor
+    private func walkthroughNextTapped() {
+        guard walkthroughStepIndex < WalkthroughSteps.core.count - 1 else {
+            walkthroughDoneTapped()
+            return
+        }
+        walkthroughStepIndex += 1
+    }
+
+    @MainActor
+    private func walkthroughSkipTapped() {
+        WalkthroughState.markComplete()
+        isWalkthroughPresented = false
+    }
+
+    @MainActor
+    private func walkthroughDoneTapped() {
+        WalkthroughState.markComplete()
+        isWalkthroughPresented = false
+        Haptics.success()
+    }
+
+    @MainActor
+    private func scheduleWalkthroughValidation() {
+        walkthroughValidationTask?.cancel()
+        guard isWalkthroughPresented else { return }
+        guard WalkthroughSteps.core.indices.contains(walkthroughStepIndex) else {
+            walkthroughDoneTapped()
+            return
+        }
+
+        let index = walkthroughStepIndex
+        let step = WalkthroughSteps.core[index]
+        if let routeTab = step.routeTab {
+            selectTabForWalkthrough(routeTab)
+        }
+
+        walkthroughValidationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 260_000_000)
+            guard !Task.isCancelled else { return }
+            guard isWalkthroughPresented else { return }
+            guard walkthroughStepIndex == index else { return }
+
+            if coachMarkFrames[step.targetCoachMarkId] == nil {
+                if walkthroughStepIndex < WalkthroughSteps.core.count - 1 {
+                    walkthroughStepIndex += 1
+                } else {
+                    walkthroughDoneTapped()
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func selectTabForWalkthrough(_ destination: AppTab) {
+        guard destination != .create else {
+            return
+        }
+
+        if tab == destination {
+            resetPath(for: destination)
+            lastSelectedTab = destination
+            return
+        }
+
+        tab = destination
+    }
+
+    @MainActor
+    private func handleAppRoute(_ route: AppRoute) {
+        switch route {
+        case .clientsRoot:
+            routeToTabRoot(.clients)
+        case .invoicesRoot:
+            routeToTabRoot(.invoices)
+        case .moreRoot:
+            routeToTabRoot(.more)
+        case .paymentsSetup:
+            routeToTabRoot(.more)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                guard tab == .more else { return }
+                if !morePath.isEmpty {
+                    morePath = NavigationPath()
+                }
+                morePath.append(AppTabRouteDestination.setupPayments)
+            }
+        case .openAppSettings:
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    @MainActor
+    private func routeToTabRoot(_ destination: AppTab) {
+        if tab == destination {
+            resetPath(for: destination)
+            lastSelectedTab = destination
+            return
+        }
+        tab = destination
     }
 
     private func routeToEstimate(id: UUID?) {
