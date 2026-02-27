@@ -18,7 +18,6 @@ private struct ClientSharePayload: Identifiable {
 }
 
 private struct DraftInvoiceInput {
-    var invoiceNumber: String
     var issueDate: Date
     var dueDate: Date
     var notes: String
@@ -43,7 +42,7 @@ struct ClientSummaryView: View {
     @State private var showAllContracts = false
     @State private var showAllJobs = false
     @State private var showCreateInvoiceDraft = false
-    @State private var draftInvoice = DraftInvoiceInput(invoiceNumber: "", issueDate: .now, dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now, notes: "")
+    @State private var draftInvoice = DraftInvoiceInput(issueDate: .now, dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now, notes: "")
     @State private var sharePayload: ClientSharePayload? = nil
     @State private var notice: String? = nil
     @State private var errorMessage: String? = nil
@@ -362,8 +361,10 @@ struct ClientSummaryView: View {
             NavigationStack {
                 Form {
                     Section("Invoice") {
-                        TextField("Invoice Number", text: $draftInvoice.invoiceNumber)
-                            .textInputAutocapitalization(.characters)
+                        LabeledContent("Invoice Number") {
+                            Text("Assigned on Save")
+                                .foregroundStyle(.secondary)
+                        }
                         DatePicker("Issue Date", selection: $draftInvoice.issueDate, displayedComponents: .date)
                         DatePicker("Due Date", selection: $draftInvoice.dueDate, displayedComponents: .date)
                     }
@@ -465,7 +466,6 @@ struct ClientSummaryView: View {
     }
 
     private func startCreateInvoiceDraft() {
-        draftInvoice.invoiceNumber = nextInvoiceNumber()
         draftInvoice.issueDate = .now
         draftInvoice.dueDate = Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now
         draftInvoice.notes = ""
@@ -473,9 +473,8 @@ struct ClientSummaryView: View {
     }
 
     private func finalizeCreateInvoiceDraft() {
-        let number = draftInvoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nextInvoiceNumber()
-            : draftInvoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profile = profileEnsured(for: client.businessID)
+        let number = InvoiceNumberGenerator.generateNextNumber(profile: profile)
         let invoice = Invoice(
             businessID: client.businessID,
             invoiceNumber: number,
@@ -500,11 +499,13 @@ struct ClientSummaryView: View {
         }
     }
 
-    private func nextInvoiceNumber() -> String {
-        if let profile = profiles.first(where: { $0.businessID == client.businessID }) {
-            return InvoiceNumberGenerator.generateNextNumber(profile: profile)
+    private func profileEnsured(for businessID: UUID) -> BusinessProfile {
+        if let profile = profiles.first(where: { $0.businessID == businessID }) {
+            return profile
         }
-        return "INV-\(Int(Date().timeIntervalSince1970))"
+        let created = BusinessProfile(businessID: businessID)
+        modelContext.insert(created)
+        return created
     }
 
     private func clearNoticeSoon() {
