@@ -174,7 +174,7 @@ struct ContractsHomeView: View {
                     if scopedContracts.count > 20 {
                         Section {
                             NavigationLink {
-                                ContractsListView()
+                                ContractsListView(businessID: effectiveBusinessID)
                             } label: {
                                 Label("View All Contracts", systemImage: "doc.text.magnifyingglass")
                             }
@@ -196,6 +196,11 @@ struct ContractsHomeView: View {
             // ✅ Repair older contracts that were created with a random businessID
             repairOrphansIfNeeded()
         }
+
+        // Manual Test Steps:
+        // 1) Switch business and verify drafts/active sections update without cross-business bleed.
+        // 2) Open "View All Contracts" and confirm scoped list matches current business.
+        // 3) Scroll contracts and open/close summaries repeatedly for navigation stability.
     }
 
     // MARK: - Row UI

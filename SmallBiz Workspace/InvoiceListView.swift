@@ -184,7 +184,7 @@ struct InvoiceListView: View {
 
         // MARK: - Sheets
         .sheet(isPresented: $showingNewInvoice) {
-            NewInvoiceView()
+            NewInvoiceView(businessID: effectiveBusinessID)
         }
         .sheet(isPresented: $showingTemplates) {
             NavigationStack {
@@ -221,6 +221,11 @@ struct InvoiceListView: View {
         .navigationDestination(item: $selectedInvoice) { invoice in
             InvoiceOverviewView(invoice: invoice)
         }
+
+        // Manual Test Steps:
+        // 1) Switch business and verify only scoped invoices render with no mixed data flash.
+        // 2) Create, cancel, create, save from list entry points and confirm numbering/order remain correct.
+        // 3) Scroll large invoice list and confirm smooth row rendering/performance.
     }
 
 

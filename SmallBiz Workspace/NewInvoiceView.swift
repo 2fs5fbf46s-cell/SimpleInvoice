@@ -6,9 +6,10 @@ struct NewInvoiceView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
     
     private var scopedClients: [Client] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = effectiveBusinessID else { return [] }
         return clients.filter { $0.businessID == bizID }
     }
 
@@ -18,6 +19,31 @@ struct NewInvoiceView: View {
 
     @State private var invoiceNumber: String = ""
     @State private var selectedClient: Client? = nil
+    @State private var suggestedNumber: String = ""
+
+    init(businessID: UUID? = nil) {
+        self.businessID = businessID
+        if let businessID {
+            _clients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == businessID
+                },
+                sort: [SortDescriptor(\Client.name)]
+            )
+            _profiles = Query(
+                filter: #Predicate<BusinessProfile> { profile in
+                    profile.businessID == businessID
+                }
+            )
+        } else {
+            _clients = Query(sort: \Client.name)
+            _profiles = Query()
+        }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
+    }
 
     var body: some View {
         NavigationStack {
@@ -83,9 +109,16 @@ struct NewInvoiceView: View {
             }
             .onAppear {
                 if invoiceNumber.isEmpty {
-                    invoiceNumber = generateInvoiceNumber()
+                    let preview = previewInvoiceNumber()
+                    suggestedNumber = preview
+                    invoiceNumber = preview
                 }
             }
+
+            // Manual Test Steps:
+            // 1) Open New Invoice, cancel, reopen, then save; next number should not skip from canceled opens.
+            // 2) Enter custom invoice number and save; verify manual value persists without forced renumbering.
+            // 3) Switch business and verify client picker remains scoped.
         }
     }
 
@@ -117,7 +150,7 @@ struct NewInvoiceView: View {
     }
 
     private func profileEnsured() -> BusinessProfile {
-        guard let bizID = activeBiz.activeBusinessID else {
+        guard let bizID = effectiveBusinessID else {
             fatalError("No active business selected")
         }
 
@@ -133,15 +166,23 @@ struct NewInvoiceView: View {
 
     private func createInvoice() {
         let profile = profileEnsured()
-                if let client = selectedClient, client.businessID != profile.businessID {
+        if let client = selectedClient, client.businessID != profile.businessID {
             print("❌ Client belongs to a different business")
             return
+        }
+
+        let trimmedNumber = invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalNumber: String
+        if trimmedNumber.isEmpty || trimmedNumber == suggestedNumber {
+            finalNumber = InvoiceNumberGenerator.consumeNextNumber(profile: profile)
+        } else {
+            finalNumber = trimmedNumber
         }
 
         // ✅ Apply defaults to the invoice (user can override later)
         let invoice = Invoice(
             businessID: profile.businessID,
-            invoiceNumber: invoiceNumber,
+            invoiceNumber: finalNumber,
             thankYou: profile.defaultThankYou,
             termsAndConditions: profile.defaultTerms,
             client: selectedClient
@@ -182,16 +223,8 @@ struct NewInvoiceView: View {
         }
     }
 
-    private func generateInvoiceNumber() -> String {
+    private func previewInvoiceNumber() -> String {
         let profile = profileEnsured()
-        let number = InvoiceNumberGenerator.generateNextNumber(profile: profile)
-
-        do {
-            try modelContext.save()
-        } catch {
-            print("Failed to save invoice numbering state: \(error)")
-        }
-
-        return number
+        return InvoiceNumberGenerator.peekNextNumber(profile: profile)
     }
 }

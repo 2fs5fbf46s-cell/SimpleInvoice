@@ -35,6 +35,38 @@ struct JobSummaryView: View {
 
     init(job: Job) {
         self.job = job
+        let businessID = job.businessID
+        let jobID = job.id
+        _invoices = Query(
+            filter: #Predicate<Invoice> { invoice in
+                invoice.businessID == businessID
+            },
+            sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+        )
+        _contracts = Query(
+            filter: #Predicate<Contract> { contract in
+                contract.businessID == businessID
+            },
+            sort: [SortDescriptor(\Contract.createdAt, order: .reverse)]
+        )
+        _clients = Query(
+            filter: #Predicate<Client> { client in
+                client.businessID == businessID
+            },
+            sort: [SortDescriptor(\Client.name, order: .forward)]
+        )
+        _profiles = Query(
+            filter: #Predicate<BusinessProfile> { profile in
+                profile.businessID == businessID
+            },
+            sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]
+        )
+        _attachments = Query(
+            filter: #Predicate<JobAttachment> { attachment in
+                attachment.jobKey == jobID.uuidString
+            },
+            sort: [SortDescriptor(\JobAttachment.createdAt, order: .reverse)]
+        )
     }
 
     private var client: Client? {
@@ -313,6 +345,11 @@ struct JobSummaryView: View {
         .onAppear {
             notesDraft = job.notes
         }
+
+        // Manual Test Steps:
+        // 1) Open job summary from list, open invoice/editor sheets, close, and reopen quickly.
+        // 2) Switch business and open a job from the new business; linked data should remain scoped.
+        // 3) Scroll linked sections with larger data and verify smooth interaction.
     }
 
     private var bookingLinkSummary: String {

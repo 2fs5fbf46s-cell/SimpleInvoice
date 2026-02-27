@@ -16,6 +16,7 @@ struct BookingsListView: View {
     @State private var selectedRequest: BookingRequestItem? = nil
     @State private var showAnalytics = false
     @State private var ensuredFinalInvoiceForBookingIds: Set<String> = []
+    @State private var loadGeneration = UUID()
 
     private var taskKey: String {
         "\(activeBiz.activeBusinessID?.uuidString ?? "none")-\(selectedStatus.rawValue)"
@@ -142,9 +143,13 @@ struct BookingsListView: View {
             }
         }
         .task(id: taskKey) {
+            loadGeneration = UUID()
+            refreshTask?.cancel()
             await loadRequests()
         }
         .refreshable {
+            loadGeneration = UUID()
+            refreshTask?.cancel()
             await loadRequests()
         }
         .alert("Booking Error", isPresented: Binding(
@@ -155,6 +160,11 @@ struct BookingsListView: View {
         } message: {
             Text(errorMessage ?? "Something went wrong.")
         }
+
+        // Manual Test Steps:
+        // 1) Switch active business while loading; verify stale booking results do not overwrite current state.
+        // 2) Pull-to-refresh repeatedly; list should not duplicate or flicker with mixed data.
+        // 3) Open booking detail, close, reopen quickly and verify correct request data each time.
     }
 
     // MARK: - Row UI (Option A polish)
@@ -267,12 +277,6 @@ struct BookingsListView: View {
     @MainActor
     private func loadRequests() async {
         guard !isLoading else { return }
-        do {
-            try activeBiz.loadOrCreateDefaultBusiness(modelContext: modelContext)
-        } catch {
-            // ignore: we'll show empty state below
-        }
-
         guard let bizId = activeBiz.activeBusinessID else {
             requests = []
             isLoading = false
@@ -281,10 +285,12 @@ struct BookingsListView: View {
 
         isLoading = true
         errorMessage = nil
+        let generation = loadGeneration
         defer { isLoading = false }
 
         do {
             let response = try await PortalBackend.shared.fetchBookingRequests(businessId: bizId)
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             let mapped = response.map { dto in
                 BookingRequestItem(
                     requestId: dto.requestId,
@@ -319,6 +325,7 @@ struct BookingsListView: View {
             ensuredFinalInvoiceForBookingIds.removeAll()
             if !eligible.isEmpty {
                 for request in eligible {
+                    guard generation == loadGeneration, !Task.isCancelled else { return }
                     if ensuredFinalInvoiceForBookingIds.contains(request.requestId) { continue }
                     do {
                         try ensureApprovedBookingArtifacts(request: request, businessID: bizId)
@@ -329,6 +336,7 @@ struct BookingsListView: View {
                 }
             }
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
     }

@@ -4,12 +4,13 @@ import SwiftData
 struct WorkspaceTabView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     var body: some View {
         TabView {
 
             NavigationStack {
-                ClientListView()
+                ClientListView(businessID: activeBiz.activeBusinessID)
                     .toolbar { homeToolbar }
             }
             .tabItem {
@@ -17,7 +18,7 @@ struct WorkspaceTabView: View {
             }
 
             NavigationStack {
-                JobsListView()
+                JobsListView(businessID: activeBiz.activeBusinessID)
                     .toolbar { homeToolbar }
             }
             .tabItem {
@@ -25,7 +26,7 @@ struct WorkspaceTabView: View {
             }
 
             NavigationStack {
-                ContractsHomeView()
+                ContractsHomeView(businessID: activeBiz.activeBusinessID)
                     .toolbar { homeToolbar }
             }
             .tabItem {
@@ -33,7 +34,7 @@ struct WorkspaceTabView: View {
             }
 
             NavigationStack {
-                InvoiceListView()
+                InvoiceListView(businessID: activeBiz.activeBusinessID)
                     .toolbar { homeToolbar }
             }
             .tabItem {
@@ -61,6 +62,10 @@ struct WorkspaceTabView: View {
         .task {
             ContractTemplateSeeder.seedIfNeeded(context: modelContext)
         }
+
+        // Manual Test Steps:
+        // 1) Switch active business and verify each tab opens scoped records only.
+        // 2) Re-tap tabs to return root and confirm navigation still dismisses correctly.
     }
 
     // MARK: - Home toolbar (top-left)
