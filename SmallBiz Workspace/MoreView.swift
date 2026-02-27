@@ -93,6 +93,12 @@ struct MoreView: View {
                 destination: AnyView(InvoiceListView(businessID: activeBiz.activeBusinessID))
             ),
             MoreItem(
+                title: "Business Insights",
+                systemImage: "chart.line.uptrend.xyaxis",
+                keyword: "Revenue",
+                destination: AnyView(BusinessInsightsView(businessID: activeBiz.activeBusinessID))
+            ),
+            MoreItem(
                 title: "Jobs",
                 systemImage: "tray.full",
                 keyword: "Jobs",
