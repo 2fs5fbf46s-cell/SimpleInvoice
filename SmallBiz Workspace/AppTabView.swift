@@ -13,10 +13,30 @@ enum AppTab: Hashable {
     case dashboard, invoices, create, clients, more
 }
 
+enum DashboardRoute: Hashable {
+    case invoices
+    case bookings
+    case estimates
+    case clients
+    case clientPortal
+    case jobs
+    case contracts
+    case inventory
+}
+
+enum InvoicesRoute: Hashable {
+    case overview(invoiceId: UUID)
+}
+
+enum ClientsRoute: Hashable {
+    case summary(clientId: UUID)
+}
+
 struct AppTabView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Query private var invoices: [Invoice]
+    @Query private var clients: [Client]
     @Query private var contracts: [Contract]
 
     @State private var tab: AppTab = .dashboard
@@ -30,9 +50,9 @@ struct AppTabView: View {
     @State private var toastDismissTask: Task<Void, Never>? = nil
 
     // MUST be @State so NavigationStack(path:) can push.
-    @State private var dashboardPath = NavigationPath()
-    @State private var invoicesPath = NavigationPath()
-    @State private var clientsPath = NavigationPath()
+    @State private var dashboardPath: [DashboardRoute] = []
+    @State private var invoicesPath: [InvoicesRoute] = []
+    @State private var clientsPath: [ClientsRoute] = []
     @State private var morePath = NavigationPath()
     @ObservedObject private var portalReturn = PortalReturnRouter.shared
     @ObservedObject private var notificationRouter = NotificationRouter.shared
@@ -41,13 +61,43 @@ struct AppTabView: View {
         TabView(selection: $tab) {
 
             NavigationStack(path: $dashboardPath) {
-                DashboardView()
+                DashboardView(path: $dashboardPath)
+            }
+            .navigationDestination(for: DashboardRoute.self) { route in
+                switch route {
+                case .invoices:
+                    InvoiceListView()
+                case .bookings:
+                    BookingsListView()
+                case .estimates:
+                    EstimateListView()
+                case .clients:
+                    ClientListView()
+                case .clientPortal:
+                    PortalDirectoryLauncherView()
+                case .jobs:
+                    JobsListView()
+                case .contracts:
+                    ContractsHomeView()
+                case .inventory:
+                    SavedItemsView()
+                }
             }
             .tag(AppTab.dashboard)
             .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
 
             NavigationStack(path: $invoicesPath) {
-                InvoiceListView()
+                InvoiceListView(path: $invoicesPath)
+            }
+            .navigationDestination(for: InvoicesRoute.self) { route in
+                switch route {
+                case .overview(let id):
+                    if let invoice = invoices.first(where: { $0.id == id }) {
+                        InvoiceOverviewView(invoice: invoice)
+                    } else {
+                        ContentUnavailableView("Invoice not found", systemImage: "doc.text")
+                    }
+                }
             }
             .tag(AppTab.invoices)
             .tabItem { Label("Invoices", systemImage: "doc.plaintext") }
@@ -58,7 +108,17 @@ struct AppTabView: View {
                 .tabItem { Label("Create", systemImage: "plus.circle.fill") }
 
             NavigationStack(path: $clientsPath) {
-                ClientListView()
+                ClientListView(path: $clientsPath)
+            }
+            .navigationDestination(for: ClientsRoute.self) { route in
+                switch route {
+                case .summary(let id):
+                    if let client = clients.first(where: { $0.id == id }) {
+                        ClientSummaryView(client: client)
+                    } else {
+                        ContentUnavailableView("Client not found", systemImage: "person.crop.circle.badge.xmark")
+                    }
+                }
             }
             .tag(AppTab.clients)
             .tabItem { Label("Clients", systemImage: "person.2") }
@@ -179,11 +239,11 @@ struct AppTabView: View {
     private func resetPath(for tab: AppTab) {
         switch tab {
         case .dashboard:
-            dashboardPath = NavigationPath()
+            dashboardPath.removeAll()
         case .invoices:
-            invoicesPath = NavigationPath()
+            invoicesPath.removeAll()
         case .clients:
-            clientsPath = NavigationPath()
+            clientsPath.removeAll()
         case .more:
             morePath = NavigationPath()
         case .create:
