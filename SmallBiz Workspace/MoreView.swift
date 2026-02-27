@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct MoreView: View {
-    @Binding var path: NavigationPath
     @State private var searchText = ""
 
     private struct MoreItem: Identifiable {
@@ -111,63 +110,67 @@ struct MoreView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                SBWTheme.brandGradient
-                    .opacity(SBWTheme.headerWashOpacity)
-                    .blur(radius: SBWTheme.headerWashBlur)
-                    .frame(height: SBWTheme.headerWashHeight)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .ignoresSafeArea()
+            SBWTheme.brandGradient
+                .opacity(SBWTheme.headerWashOpacity)
+                .blur(radius: SBWTheme.headerWashBlur)
+                .frame(height: SBWTheme.headerWashHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea()
 
-                List {
-                    if filtered.isEmpty {
-                        ContentUnavailableView(
-                            "No Results",
-                            systemImage: "magnifyingglass",
-                            description: Text("Try a different search.")
-                        )
-                    } else {
+            if filtered.isEmpty {
+                ContentUnavailableView(
+                    "No Results",
+                    systemImage: "magnifyingglass",
+                    description: Text("Try a different search.")
+                )
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach(filtered) { item in
                             NavigationLink {
                                 item.destination
                             } label: {
-                                row(item)
+                                tile(item)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .padding(16)
                 }
-                .scrollContentBackground(.hidden)
             }
-            .navigationTitle("More")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search"
-            )
         }
+        .navigationTitle("More")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search"
+        )
     }
 
-    private func row(_ item: MoreItem) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: item.keyword))
-                Image(systemName: item.systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+    private func tile(_ item: MoreItem) -> some View {
+        SBWCardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(SBWTheme.chipFill(for: item.keyword))
+                    Image(systemName: item.systemImage)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+                .frame(width: 38, height: 38)
+
+                Text(item.title)
+                    .font(.headline)
                     .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
             }
-            .frame(width: 36, height: 36)
-
-            Text(item.title)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.primary)
-
-            Spacer()
+            .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
         }
-        .padding(.vertical, 6)
     }
 }
