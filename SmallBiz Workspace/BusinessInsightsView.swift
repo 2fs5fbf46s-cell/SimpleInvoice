@@ -1,42 +1,45 @@
 import SwiftUI
 import SwiftData
 
+enum BusinessInsightsRoute: Hashable {
+    case outstandingAll(UUID)
+    case overdueOnly(UUID)
+}
+
 struct BusinessInsightsView: View {
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     private let businessID: UUID?
 
-    @Query private var invoices: [Invoice]
     @Query private var businesses: [Business]
+
+    @State private var cashInWeekCents: Int = 0
+    @State private var cashInMonthCents: Int = 0
+    @State private var outstandingTotalCents: Int = 0
+    @State private var overdueTotalCents: Int = 0
+    @State private var draftCount: Int = 0
+    @State private var sentUnpaidCount: Int = 0
+    @State private var estimateCount: Int = 0
+    @State private var isLoadingInsights = false
+    @State private var loadGeneration = UUID()
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
 
         if let businessID {
-            _invoices = Query(
-                filter: #Predicate<Invoice> { invoice in
-                    invoice.businessID == businessID
-                },
-                sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
-            )
             _businesses = Query(
                 filter: #Predicate<Business> { business in
                     business.id == businessID
                 }
             )
         } else {
-            _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
             _businesses = Query()
         }
     }
 
     private var effectiveBusinessID: UUID? {
         businessID ?? activeBiz.activeBusinessID
-    }
-
-    private var scopedInvoices: [Invoice] {
-        guard let bizID = effectiveBusinessID else { return [] }
-        return invoices.filter { $0.businessID == bizID }
     }
 
     private var currentBusiness: Business? {
@@ -49,10 +52,6 @@ struct BusinessInsightsView: View {
             return businessCode
         }
         return "USD"
-    }
-
-    private var snapshot: BusinessInsightsSnapshot {
-        BusinessInsightsSnapshot.make(from: scopedInvoices, now: Date())
     }
 
     var body: some View {
@@ -81,80 +80,101 @@ struct BusinessInsightsView: View {
         }
         .navigationTitle("Business Insights")
         .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(for: BusinessInsightsRoute.self) { route in
+            switch route {
+            case .outstandingAll(let bizID):
+                OutstandingBalancesView(
+                    businessID: bizID,
+                    currencyCode: displayCurrencyCode,
+                    mode: .outstandingAll
+                )
+            case .overdueOnly(let bizID):
+                OutstandingBalancesView(
+                    businessID: bizID,
+                    currencyCode: displayCurrencyCode,
+                    mode: .overdueOnly
+                )
+            }
+        }
+        .task(id: effectiveBusinessID?.uuidString ?? "none") {
+            guard let bizID = effectiveBusinessID else {
+                resetInsightsState()
+                return
+            }
+            await loadInsights(businessID: bizID)
+        }
     }
 
     private var cashInCard: some View {
-        let stats = snapshot
-        return SBWCardContainer {
+        SBWCardContainer {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Cash In")
-                    .font(.headline)
+                HStack {
+                    Text("Cash In")
+                        .font(.headline)
+                    Spacer()
+                    if isLoadingInsights {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
 
                 valueRow(
                     label: "Paid this week",
-                    value: InsightsCurrency.string(cents: stats.paidWeekCents, code: displayCurrencyCode)
+                    value: currencyOrPlaceholder(cashInWeekCents)
                 )
 
                 Divider().opacity(0.35)
 
                 valueRow(
                     label: "Paid this month",
-                    value: InsightsCurrency.string(cents: stats.paidMonthCents, code: displayCurrencyCode)
+                    value: currencyOrPlaceholder(cashInMonthCents)
                 )
             }
         }
     }
 
     private func outstandingCard(businessID: UUID) -> some View {
-        let stats = snapshot
-        return SBWCardContainer {
+        SBWCardContainer {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Outstanding")
                     .font(.headline)
 
-                navigationValueRow(
-                    label: "Outstanding total",
-                    value: InsightsCurrency.string(cents: stats.outstandingCents, code: displayCurrencyCode)
-                ) {
-                    OutstandingBalancesView(
-                        businessID: businessID,
-                        currencyCode: displayCurrencyCode,
-                        mode: .outstandingAll
+                NavigationLink(value: BusinessInsightsRoute.outstandingAll(businessID)) {
+                    navigationValueRow(
+                        label: "Outstanding total",
+                        value: currencyOrPlaceholder(outstandingTotalCents)
                     )
                 }
+                .buttonStyle(.plain)
 
                 Divider().opacity(0.35)
 
-                navigationValueRow(
-                    label: "Overdue total",
-                    value: InsightsCurrency.string(cents: stats.overdueCents, code: displayCurrencyCode)
-                ) {
-                    OutstandingBalancesView(
-                        businessID: businessID,
-                        currencyCode: displayCurrencyCode,
-                        mode: .overdueOnly
+                NavigationLink(value: BusinessInsightsRoute.overdueOnly(businessID)) {
+                    navigationValueRow(
+                        label: "Overdue total",
+                        value: currencyOrPlaceholder(overdueTotalCents)
                     )
                 }
+                .buttonStyle(.plain)
             }
         }
     }
 
     private var pipelineCard: some View {
-        let stats = snapshot
-        return SBWCardContainer {
+        SBWCardContainer {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Pipeline")
                     .font(.headline)
 
-                valueRow(label: "Draft invoices", value: "\(stats.draftCount)")
+                valueRow(label: "Draft invoices", value: countOrPlaceholder(draftCount))
 
                 Divider().opacity(0.35)
 
-                valueRow(label: "Sent/unpaid invoices", value: "\(stats.sentUnpaidCount)")
+                valueRow(label: "Sent/unpaid invoices", value: countOrPlaceholder(sentUnpaidCount))
 
                 Divider().opacity(0.35)
 
-                valueRow(label: "Estimates", value: "\(stats.estimateCount)")
+                valueRow(label: "Estimates", value: countOrPlaceholder(estimateCount))
             }
         }
     }
@@ -174,36 +194,97 @@ struct BusinessInsightsView: View {
         }
     }
 
-    private func navigationValueRow<Destination: View>(
-        label: String,
-        value: String,
-        @ViewBuilder destination: @escaping () -> Destination
-    ) -> some View {
-        NavigationLink(destination: destination) {
-            HStack(spacing: 10) {
-                Text(label)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+    private func navigationValueRow(label: String, value: String) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
-                Spacer(minLength: 8)
+            Spacer(minLength: 8)
 
-                HStack(spacing: 6) {
-                    Text(value)
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
+            HStack(spacing: 6) {
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+    }
+
+    private func currencyOrPlaceholder(_ cents: Int) -> String {
+        if isLoadingInsights { return "—" }
+        return InsightsCurrency.string(cents: cents, code: displayCurrencyCode)
+    }
+
+    private func countOrPlaceholder(_ count: Int) -> String {
+        isLoadingInsights ? "—" : "\(count)"
+    }
+
+    @MainActor
+    private func loadInsights(businessID: UUID) async {
+        let generation = UUID()
+        loadGeneration = generation
+        isLoadingInsights = true
+
+        let startedAt = Date()
+        #if DEBUG
+        print("[BusinessInsights] load start business=\(businessID.uuidString)")
+        #endif
+
+        do {
+            let descriptor = FetchDescriptor<Invoice>(
+                predicate: #Predicate<Invoice> { invoice in
+                    invoice.businessID == businessID
+                },
+                sortBy: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+            )
+            let fetchedInvoices = try modelContext.fetch(descriptor)
+            let summary = BusinessInsightsSummary.compute(from: fetchedInvoices, now: Date())
+
+            guard loadGeneration == generation else { return }
+
+            cashInWeekCents = summary.paidWeekCents
+            cashInMonthCents = summary.paidMonthCents
+            outstandingTotalCents = summary.outstandingCents
+            overdueTotalCents = summary.overdueCents
+            draftCount = summary.draftCount
+            sentUnpaidCount = summary.sentUnpaidCount
+            estimateCount = summary.estimateCount
+            isLoadingInsights = false
+
+            #if DEBUG
+            let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            print("[BusinessInsights] load done invoices=\(fetchedInvoices.count) loadMs=\(loadMs)")
+            #endif
+        } catch {
+            guard loadGeneration == generation else { return }
+            resetInsightsState()
+            isLoadingInsights = false
+
+            #if DEBUG
+            let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            print("[BusinessInsights] load failed loadMs=\(loadMs) error=\(error)")
+            #endif
+        }
+    }
+
+    private func resetInsightsState() {
+        cashInWeekCents = 0
+        cashInMonthCents = 0
+        outstandingTotalCents = 0
+        overdueTotalCents = 0
+        draftCount = 0
+        sentUnpaidCount = 0
+        estimateCount = 0
+        isLoadingInsights = false
     }
 }
 
-private struct BusinessInsightsSnapshot {
+private struct BusinessInsightsSummary {
     let paidWeekCents: Int
     let paidMonthCents: Int
     let outstandingCents: Int
@@ -212,7 +293,7 @@ private struct BusinessInsightsSnapshot {
     let sentUnpaidCount: Int
     let estimateCount: Int
 
-    static func make(from invoices: [Invoice], now: Date) -> BusinessInsightsSnapshot {
+    static func compute(from invoices: [Invoice], now: Date) -> BusinessInsightsSummary {
         let nonEstimates = invoices.filter {
             $0.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "estimate"
         }
@@ -246,7 +327,7 @@ private struct BusinessInsightsSnapshot {
             }
         }
 
-        return BusinessInsightsSnapshot(
+        return BusinessInsightsSummary(
             paidWeekCents: paidWeekCents,
             paidMonthCents: paidMonthCents,
             outstandingCents: sentUnpaid.reduce(0) { $0 + max(0, $1.remainingDueCents) },
