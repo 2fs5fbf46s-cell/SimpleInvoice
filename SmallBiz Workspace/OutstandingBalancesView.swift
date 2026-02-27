@@ -48,14 +48,11 @@ struct OutstandingBalancesView: View {
                                 .padding(.bottom, 8)
 
                             ForEach(Array(balanceRows.enumerated()), id: \.element.id) { index, row in
-                                NavigationLink {
-                                    ClientOutstandingDetailView(
-                                        businessID: businessID,
-                                        clientID: row.clientID,
-                                        mode: mode,
-                                        currencyCode: currencyCode
-                                    )
-                                } label: {
+                                NavigationLink(value: OutstandingClientRoute(
+                                    businessID: businessID,
+                                    clientID: row.clientID,
+                                    mode: mode
+                                )) {
                                     balanceRow(
                                         name: displayName(for: row),
                                         amount: InsightsCurrency.string(cents: row.totalCents, code: currencyCode),
@@ -78,6 +75,14 @@ struct OutstandingBalancesView: View {
         }
         .navigationTitle(mode.isOverdueOnly ? "Overdue Balances" : "Outstanding Balances")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: OutstandingClientRoute.self) { route in
+            ClientOutstandingDetailView(
+                businessID: route.businessID,
+                clientID: route.clientID,
+                mode: route.mode,
+                currencyCode: currencyCode
+            )
+        }
     }
 
     private func displayName(for row: ClientBalanceRowModel) -> String {
