@@ -1,13 +1,6 @@
 import SwiftUI
 import SwiftData
 
-private enum BusinessInsightsDestination: String, Identifiable {
-    case outstanding
-    case overdue
-
-    var id: String { rawValue }
-}
-
 struct BusinessInsightsView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
@@ -15,8 +8,6 @@ struct BusinessInsightsView: View {
 
     @Query private var invoices: [Invoice]
     @Query private var businesses: [Business]
-
-    @State private var destination: BusinessInsightsDestination? = nil
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
@@ -75,11 +66,11 @@ struct BusinessInsightsView: View {
                     systemImage: "building.2",
                     description: Text("Select a business to view insights.")
                 )
-            } else {
+            } else if let bizID = effectiveBusinessID {
                 ScrollView {
                     VStack(spacing: 12) {
                         cashInCard
-                        outstandingCard
+                        outstandingCard(businessID: bizID)
                         pipelineCard
                     }
                     .padding(.horizontal, 16)
@@ -90,22 +81,6 @@ struct BusinessInsightsView: View {
         }
         .navigationTitle("Business Insights")
         .navigationBarTitleDisplayMode(.large)
-        .navigationDestination(item: $destination) { route in
-            if let bizID = effectiveBusinessID {
-                switch route {
-                case .outstanding:
-                    OutstandingBalancesView(businessID: bizID, currencyCode: displayCurrencyCode)
-                case .overdue:
-                    OverdueBalancesView(businessID: bizID, currencyCode: displayCurrencyCode)
-                }
-            } else {
-                ContentUnavailableView(
-                    "No Business Selected",
-                    systemImage: "building.2",
-                    description: Text("Select a business to continue.")
-                )
-            }
-        }
     }
 
     private var cashInCard: some View {
@@ -130,27 +105,35 @@ struct BusinessInsightsView: View {
         }
     }
 
-    private var outstandingCard: some View {
+    private func outstandingCard(businessID: UUID) -> some View {
         let stats = snapshot
         return SBWCardContainer {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Outstanding")
                     .font(.headline)
 
-                tappableValueRow(
+                navigationValueRow(
                     label: "Outstanding total",
                     value: InsightsCurrency.string(cents: stats.outstandingCents, code: displayCurrencyCode)
                 ) {
-                    destination = .outstanding
+                    OutstandingBalancesView(
+                        businessID: businessID,
+                        currencyCode: displayCurrencyCode,
+                        mode: .outstandingAll
+                    )
                 }
 
                 Divider().opacity(0.35)
 
-                tappableValueRow(
+                navigationValueRow(
                     label: "Overdue total",
                     value: InsightsCurrency.string(cents: stats.overdueCents, code: displayCurrencyCode)
                 ) {
-                    destination = .overdue
+                    OutstandingBalancesView(
+                        businessID: businessID,
+                        currencyCode: displayCurrencyCode,
+                        mode: .overdueOnly
+                    )
                 }
             }
         }
@@ -191,8 +174,12 @@ struct BusinessInsightsView: View {
         }
     }
 
-    private func tappableValueRow(label: String, value: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func navigationValueRow<Destination: View>(
+        label: String,
+        value: String,
+        @ViewBuilder destination: @escaping () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination) {
             HStack(spacing: 10) {
                 Text(label)
                     .font(.subheadline)
