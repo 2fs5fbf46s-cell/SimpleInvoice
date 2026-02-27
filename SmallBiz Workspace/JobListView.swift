@@ -10,8 +10,7 @@ struct JobsListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
-    @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
-    private var jobs: [Job]
+    @Query private var jobs: [Job]
     @Query private var clients: [Client]
 
     @State private var searchText: String = ""
@@ -21,6 +20,19 @@ struct JobsListView: View {
     // ✅ New Job sheet (Clients-style)
     @State private var showingNewJob = false
     @State private var newJobDraft: Job? = nil
+
+    init(businessID: UUID? = nil) {
+        if let businessID {
+            _jobs = Query(
+                filter: #Predicate<Job> { job in
+                    job.businessID == businessID
+                },
+                sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+            )
+        } else {
+            _jobs = Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
+        }
+    }
 
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -35,8 +47,10 @@ struct JobsListView: View {
     // MARK: - Scoped jobs (active business)
 
     private var scopedJobs: [Job] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return jobs.filter { $0.businessID == bizID }
+        if let bizID = activeBiz.activeBusinessID {
+            return jobs.filter { $0.businessID == bizID }
+        }
+        return jobs
     }
 
     private var filteredJobs: [Job] {
@@ -82,6 +96,7 @@ struct JobsListView: View {
                             .textInputAutocapitalization(.never)
 
                         Button {
+                            Haptics.lightTap()
                             addJobAndOpenSheet()
                         } label: {
                             Image(systemName: "plus")
@@ -128,6 +143,17 @@ struct JobsListView: View {
                                           ? "Tap + to create your first job."
                                           : "Try a different filter or search term.")
                     )
+                    Button("Create Job") {
+                        addJobAndOpenSheet()
+                    }
+                    .buttonStyle(.plain)
+                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
+                        Button("Clear Filters") {
+                            searchText = ""
+                            filter = .all
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     ForEach(filteredJobs) { job in
                         Button {
@@ -174,8 +200,10 @@ struct JobsListView: View {
                                     do {
                                         try modelContext.save()
                                         searchText = ""
+                                        Haptics.success()
                                         showingNewJob = false
                                     } catch {
+                                        Haptics.error()
                                         print("Failed to save new job: \(error)")
                                     }
                                 }
@@ -204,25 +232,10 @@ struct JobsListView: View {
             .compactMap { $0 }
             .joined(separator: " • ")
 
-        return HStack(alignment: .top, spacing: 12) {
-
-            // Leading icon chip (matches Contracts/Invoices/Bookings)
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Jobs"))
-                Image(systemName: "tray.full")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-            .frame(width: 36, height: 36)
-
-            SBWNavigationRow(
-                title: job.title.isEmpty ? "Job" : job.title,
-                subtitle: subtitle.isEmpty ? " " : subtitle
-            )
-        }
-        .padding(.vertical, 4)
-        .frame(minHeight: 56, alignment: .topLeading)
+        return JobRowView(
+            title: job.title.isEmpty ? "Job" : job.title,
+            subtitle: subtitle.isEmpty ? " " : subtitle
+        )
     }
 
     private func normalizedJobStatusLabel(for filter: Filter) -> String {
@@ -264,6 +277,7 @@ struct JobsListView: View {
 
         do { try modelContext.save() }
         catch { print("Failed to save new job draft: \(error)") }
+        Haptics.lightTap()
     }
 
     private func deleteIfEmptyAndClose() {
@@ -294,6 +308,7 @@ struct JobsListView: View {
 
         do { try modelContext.save() }
         catch { print("Failed to save deletes: \(error)") }
+        Haptics.success()
     }
 
     private func resolvedFilter(for job: Job) -> Filter {
@@ -318,5 +333,27 @@ struct JobsListView: View {
             return name
         }
         return nil
+    }
+}
+
+private struct JobRowView: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Jobs"))
+                Image(systemName: "tray.full")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 36, height: 36)
+
+            SBWNavigationRow(title: title, subtitle: subtitle)
+        }
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 }

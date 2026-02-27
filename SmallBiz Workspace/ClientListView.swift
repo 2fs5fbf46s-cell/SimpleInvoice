@@ -12,7 +12,7 @@ struct ClientListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
-    @Query(sort: \Client.name, order: .forward) private var allClients: [Client]
+    @Query private var allClients: [Client]
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
     @Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]) private var invoices: [Invoice]
 
@@ -24,6 +24,19 @@ struct ClientListView: View {
     @State private var openExistingClient: Client? = nil
     @State private var showOpenExistingBanner = false
     @State private var selectedClient: Client? = nil
+
+    init(businessID: UUID? = nil) {
+        if let businessID {
+            _allClients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == businessID
+                },
+                sort: [SortDescriptor(\Client.name, order: .forward)]
+            )
+        } else {
+            _allClients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
+        }
+    }
 
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -92,9 +105,21 @@ struct ClientListView: View {
                                           ? "Tap + to add your first client."
                                           : "Try a different search.")
                     )
+                    Button("Add Client") {
+                        addClientAndOpenSheet()
+                    }
+                    .buttonStyle(.plain)
+                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
+                        Button("Clear Filters") {
+                            searchText = ""
+                            filter = .all
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     ForEach(filtered) { client in
                         Button {
+                            Haptics.lightTap()
                             selectedClient = client
                         } label: {
                             row(client)
@@ -203,24 +228,10 @@ struct ClientListView: View {
             .compactMap { $0 }
             .joined(separator: " • ")
 
-        return HStack(alignment: .top, spacing: 12) {
-            // Leading icon chip
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Customers"))
-                Image(systemName: "person.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-            .frame(width: 36, height: 36)
-
-            SBWNavigationRow(
-                title: name,
-                subtitle: subtitle.isEmpty ? " " : subtitle
-            )
-        }
-        .padding(.vertical, 4)
-        .frame(minHeight: 56, alignment: .topLeading)
+        return ClientRowView(
+            name: name,
+            subtitle: subtitle.isEmpty ? " " : subtitle
+        )
     }
 
     // MARK: - Add / Delete
@@ -234,6 +245,7 @@ struct ClientListView: View {
         let c = Client(businessID: bizID)
         modelContext.insert(c)
         try? modelContext.save()
+        Haptics.lightTap()
         newClientDraft = c
     }
 
@@ -257,8 +269,14 @@ struct ClientListView: View {
         let toDelete = offsets.map { filtered[$0] }
         for c in toDelete { modelContext.delete(c) }
 
-        do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
+        do {
+            try modelContext.save()
+            Haptics.success()
+        }
+        catch {
+            Haptics.error()
+            print("Failed to save deletes: \(error)")
+        }
     }
 
     private func jobsCount(for client: Client) -> Int {
@@ -284,6 +302,28 @@ struct ClientListView: View {
             .map(\.issueDate)
             .max() ?? .distantPast
         return max(jobDate, invoiceDate)
+    }
+}
+
+private struct ClientRowView: View {
+    let name: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SBWTheme.chipFill(for: "Customers"))
+                Image(systemName: "person.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 36, height: 36)
+
+            SBWNavigationRow(title: name, subtitle: subtitle)
+        }
+        .padding(.vertical, 4)
+        .frame(minHeight: 56, alignment: .topLeading)
     }
 }
 

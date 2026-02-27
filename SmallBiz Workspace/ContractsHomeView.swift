@@ -11,14 +11,26 @@ struct ContractsHomeView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     // All contracts, newest first
-    @Query(sort: \Contract.updatedAt, order: .reverse)
-    private var contracts: [Contract]
+    @Query private var contracts: [Contract]
 
     // Used to detect valid businessIDs + migration safety
     @Query private var profiles: [BusinessProfile]
 
     @State private var filter: HomeFilter = .all
     @State private var selectedContract: Contract? = nil
+
+    init(businessID: UUID? = nil) {
+        if let businessID {
+            _contracts = Query(
+                filter: #Predicate<Contract> { contract in
+                    contract.businessID == businessID
+                },
+                sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)]
+            )
+        } else {
+            _contracts = Query(sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)])
+        }
+    }
 
     private enum HomeFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -96,6 +108,11 @@ struct ContractsHomeView: View {
                         systemImage: "doc.plaintext",
                         description: Text("Create a contract from a template, then export to PDF.")
                     )
+                    NavigationLink {
+                        ContractTemplatePickerView()
+                    } label: {
+                        Text("Create Contract")
+                    }
                 } else {
 
                     // MARK: - Drafts
@@ -211,8 +228,14 @@ struct ContractsHomeView: View {
     private func deleteIfDraft(_ contract: Contract) {
         guard contract.status == .draft else { return }
         modelContext.delete(contract)
-        do { try modelContext.save() }
-        catch { print("Failed to delete draft contract: \(error)") }
+        do {
+            try modelContext.save()
+            Haptics.success()
+        }
+        catch {
+            Haptics.error()
+            print("Failed to delete draft contract: \(error)")
+        }
     }
 
     // MARK: - Migration: Fix old random businessIDs
