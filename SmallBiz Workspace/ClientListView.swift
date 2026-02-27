@@ -15,8 +15,6 @@ struct ClientListView: View {
     @Query(sort: \Client.name, order: .forward) private var allClients: [Client]
     @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
     @Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]) private var invoices: [Invoice]
-    @Binding private var path: [ClientsRoute]
-    private let usesPathNavigation: Bool
 
     @State private var searchText: String = ""
     @State private var filter: Filter = .all
@@ -26,16 +24,6 @@ struct ClientListView: View {
     @State private var openExistingClient: Client? = nil
     @State private var showOpenExistingBanner = false
     @State private var selectedClient: Client? = nil
-
-    init(path: Binding<[ClientsRoute]>) {
-        self._path = path
-        self.usesPathNavigation = true
-    }
-
-    init() {
-        self._path = .constant([])
-        self.usesPathNavigation = false
-    }
 
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -106,21 +94,13 @@ struct ClientListView: View {
                     )
                 } else {
                     ForEach(filtered) { client in
-                        if usesPathNavigation {
-                            NavigationLink(value: ClientsRoute.summary(clientId: client.id)) {
-                                row(client)
-                            }
-                            .buttonStyle(.plain)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                        } else {
-                            Button {
-                                selectedClient = client
-                            } label: {
-                                row(client)
-                            }
-                            .buttonStyle(.plain)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        Button {
+                            selectedClient = client
+                        } label: {
+                            row(client)
                         }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                     .onDelete(perform: deleteFiltered)
                 }
@@ -152,11 +132,7 @@ struct ClientListView: View {
                     onOpenExisting: { existing in
                         deleteIfEmptyAndClose()
                         DispatchQueue.main.async {
-                            if usesPathNavigation {
-                                path.append(.summary(clientId: existing.id))
-                            } else {
-                                openExistingClient = existing
-                            }
+                            openExistingClient = existing
                             showOpenExistingBanner = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                                 showOpenExistingBanner = false
@@ -200,18 +176,10 @@ struct ClientListView: View {
             .presentationDetents([.medium, .large])
         }
         .navigationDestination(item: $openExistingClient) { client in
-            if usesPathNavigation {
-                EmptyView()
-            } else {
-                ClientSummaryView(client: client)
-            }
+            ClientSummaryView(client: client)
         }
         .navigationDestination(item: $selectedClient) { client in
-            if usesPathNavigation {
-                EmptyView()
-            } else {
-                ClientSummaryView(client: client)
-            }
+            ClientSummaryView(client: client)
         }
         .overlay(alignment: .top) {
             if showOpenExistingBanner {

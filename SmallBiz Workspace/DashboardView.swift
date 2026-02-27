@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct DashboardView: View {
-    @Binding var path: [DashboardRoute]
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var metricsVM = DashboardMetricsVM()
@@ -154,7 +153,7 @@ struct DashboardView: View {
                     // Main tiles grid
                     LazyVGrid(columns: columns, spacing: 12) {
 
-                        NavigationLink(value: DashboardRoute.invoices) {
+                        NavigationLink { InvoiceListView() } label: {
                             TileCard(
                                 title: "Invoices",
                                 subtitle: "View & send",
@@ -163,7 +162,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.bookings) {
+                        NavigationLink { BookingsListView() } label: {
                             TileCard(
                                 title: "Bookings",
                                 subtitle: "Schedule",
@@ -172,7 +171,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.estimates) {
+                        NavigationLink { EstimateListView() } label: {
                             TileCard(
                                 title: "Estimates",
                                 subtitle: "Quotes",
@@ -181,7 +180,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.clients) {
+                        NavigationLink { ClientListView() } label: {
                             TileCard(
                                 title: "Customers",
                                 subtitle: "Clients",
@@ -190,7 +189,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.clientPortal) {
+                        NavigationLink { PortalDirectoryLauncherView() } label: {
                             TileCard(
                                 title: "Client Portal",
                                 subtitle: "Directory",
@@ -199,7 +198,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.jobs) {
+                        NavigationLink { JobsListView() } label: {
                             TileCard(
                                 title: "Jobs",
                                 subtitle: "Projects",
@@ -208,7 +207,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.contracts) {
+                        NavigationLink { ContractsHomeView() } label: {
                             TileCard(
                                 title: "Contracts",
                                 subtitle: "View & send",
@@ -217,7 +216,7 @@ struct DashboardView: View {
                             )
                         }
 
-                        NavigationLink(value: DashboardRoute.inventory) {
+                        NavigationLink { SavedItemsView() } label: {
                             TileCard(
                                 title: "Inventory",
                                 subtitle: "Services & materials",
