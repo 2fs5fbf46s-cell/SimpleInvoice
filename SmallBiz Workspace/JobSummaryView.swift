@@ -28,7 +28,6 @@ struct JobSummaryView: View {
 
     @State private var expandedSection: JobSummarySection? = nil
     @State private var showEditor = false
-    @State private var showAttachmentsManager = false
     @State private var selectedInvoice: Invoice? = nil
     @State private var sharePayload: JobSharePayload? = nil
     @State private var errorMessage: String? = nil
@@ -193,8 +192,15 @@ struct JobSummaryView: View {
                             }
                         }
                     }
-                    Button("Manage Attachments") { showAttachmentsManager = true }
-                        .buttonStyle(.bordered)
+                    NavigationLink {
+                        AttachmentsManagerView(job: job)
+                    } label: {
+                        Label("Manage Attachments", systemImage: "paperclip")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
             }
             .listRowBackground(Color.clear)
@@ -289,14 +295,9 @@ struct JobSummaryView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { selectedInvoice = nil }
-                }
+                        }
+                    }
             }
-        }
-        .sheet(isPresented: $showAttachmentsManager) {
-            NavigationStack {
-                AttachmentsManagerView(job: job)
-            }
-        }
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
