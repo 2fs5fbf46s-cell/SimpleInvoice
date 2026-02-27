@@ -226,7 +226,7 @@ struct InvoiceOverviewView: View {
 
             SummaryKit.CollapsibleSectionCard(
                 title: "Attachments",
-                subtitle: "Recent files",
+                subtitle: "\(invoiceAttachments.count) files",
                 icon: "paperclip",
                 isExpanded: expandedSection == .attachments,
                 onToggle: { toggleSection(.attachments) }
@@ -281,7 +281,7 @@ struct InvoiceOverviewView: View {
                     case .payments:
                         InvoicePaymentsView(invoice: invoice, showsDoneButton: true)
                     case .attachments:
-                        InvoiceAttachmentsView(invoice: invoice, showsDoneButton: true)
+                        AttachmentsManagerView(invoice: invoice)
                     case .activity:
                         InvoiceActivityView(invoice: invoice, showsDoneButton: true)
                     case .advanced:
@@ -407,9 +407,13 @@ struct InvoiceOverviewView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(Array(invoiceAttachments.prefix(3))) { attachment in
-                    Text(attachment.file?.displayName ?? "File")
-                        .font(.subheadline)
-                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        Image(systemName: attachmentIconName(for: attachment.file))
+                            .foregroundStyle(.secondary)
+                        Text(attachment.file?.displayName ?? "File")
+                            .font(.subheadline)
+                            .lineLimit(1)
+                    }
                 }
             }
             Button("Manage Attachments") { activeSheet = .attachments }
@@ -467,6 +471,14 @@ struct InvoiceOverviewView: View {
             entries.append(("Estimate Status", invoice.estimateStatus.capitalized))
         }
         return entries
+    }
+
+    private func attachmentIconName(for file: FileItem?) -> String {
+        guard let ext = file?.fileExtension.lowercased() else { return "paperclip" }
+        if ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext) { return "photo" }
+        if ext == "pdf" { return "doc.richtext" }
+        if ["doc", "docx", "rtf", "txt", "pages"].contains(ext) { return "doc.text" }
+        return "paperclip"
     }
 
     private func currency(fromCents cents: Int) -> String {
@@ -1226,6 +1238,7 @@ struct JobOverviewView: View {
 
 struct BookingOverviewView: View {
     @Query private var profiles: [BusinessProfile]
+    @Query private var bookingAttachments: [BookingAttachment]
     let request: BookingRequestItem
     var onStatusChange: (String) -> Void = { _ in }
     @State private var expandedSection: BookingSummarySection? = nil
@@ -1235,6 +1248,7 @@ struct BookingOverviewView: View {
     @State private var shareItems: [Any]? = nil
     @State private var showMessageOptions = false
     @State private var messageNotice: String? = nil
+    @State private var showAttachmentsManager = false
 
     private enum BookingSummarySection: Hashable {
         case attachments
@@ -1262,6 +1276,10 @@ struct BookingOverviewView: View {
             return name
         }
         return "Customer"
+    }
+
+    private var linkedAttachments: [BookingAttachment] {
+        bookingAttachments.filter { $0.bookingKey == request.requestId }
     }
 
     var body: some View {
@@ -1303,16 +1321,28 @@ struct BookingOverviewView: View {
 
             SummaryKit.CollapsibleSectionCard(
                 title: "Attachments",
-                subtitle: "Files and media",
+                subtitle: "\(linkedAttachments.count) files",
                 icon: "paperclip",
                 isExpanded: expandedSection == .attachments,
                 onToggle: { toggleSection(.attachments) }
             ) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Open full attachment management.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button("View All") { activeDetailSheet = .attachments }
+                    if linkedAttachments.isEmpty {
+                        Text("No attachments")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(linkedAttachments.prefix(3)) { attachment in
+                            HStack(spacing: 8) {
+                                Image(systemName: attachmentIconName(for: attachment.file))
+                                    .foregroundStyle(.secondary)
+                                Text(attachment.file?.displayName ?? "File")
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    Button("Manage Attachments") { showAttachmentsManager = true }
                         .buttonStyle(.bordered)
                 }
             }
@@ -1385,7 +1415,15 @@ struct BookingOverviewView: View {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { activeDetailSheet = nil }
                         }
-                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showAttachmentsManager) {
+            NavigationStack {
+                AttachmentsManagerView(
+                    bookingRequestID: request.requestId,
+                    businessID: UUID(uuidString: request.businessId) ?? UUID()
+                )
             }
         }
         .sheet(isPresented: $showStatusSheet) {
@@ -1521,5 +1559,13 @@ struct BookingOverviewView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             if messageNotice == text { messageNotice = nil }
         }
+    }
+
+    private func attachmentIconName(for file: FileItem?) -> String {
+        guard let ext = file?.fileExtension.lowercased() else { return "paperclip" }
+        if ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext) { return "photo" }
+        if ext == "pdf" { return "doc.richtext" }
+        if ["doc", "docx", "rtf", "txt", "pages"].contains(ext) { return "doc.text" }
+        return "paperclip"
     }
 }

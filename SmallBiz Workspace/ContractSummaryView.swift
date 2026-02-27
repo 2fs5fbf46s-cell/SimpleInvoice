@@ -12,6 +12,7 @@ private enum ContractSummarySection: Hashable {
 private enum ContractSummarySheet: String, Identifiable {
     case editor
     case body
+    case attachments
     case activity
     case previewPDF
 
@@ -188,7 +189,7 @@ struct ContractSummaryView: View {
 
             SummaryKit.CollapsibleSectionCard(
                 title: "Attachments",
-                subtitle: "Linked files",
+                subtitle: "\(attachments.count) files",
                 icon: "paperclip",
                 isExpanded: expandedSection == .attachments,
                 onToggle: { toggle(.attachments) }
@@ -199,14 +200,18 @@ struct ContractSummaryView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(attachments.prefix(5)) { attachment in
-                            Text(attachment.file?.displayName ?? "File")
-                                .font(.subheadline)
-                                .lineLimit(1)
+                        ForEach(attachments.prefix(3)) { attachment in
+                            HStack(spacing: 8) {
+                                Image(systemName: attachmentIconName(for: attachment.file))
+                                    .foregroundStyle(.secondary)
+                                Text(attachment.file?.displayName ?? "File")
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                            }
                         }
                     }
-                    Button("Manage in Editor") {
-                        activeSheet = .editor
+                    Button("Manage Attachments") {
+                        activeSheet = .attachments
                     }
                     .buttonStyle(.bordered)
                 }
@@ -282,6 +287,8 @@ struct ContractSummaryView: View {
                                 Button("Done") { activeSheet = nil }
                             }
                         }
+                case .attachments:
+                    AttachmentsManagerView(contract: contract)
                 case .previewPDF:
                     if let previewItem {
                         PDFPreviewView(url: previewItem.url)
@@ -318,6 +325,14 @@ struct ContractSummaryView: View {
         } message: {
             Text(portalError ?? "")
         }
+    }
+
+    private func attachmentIconName(for file: FileItem?) -> String {
+        guard let ext = file?.fileExtension.lowercased() else { return "paperclip" }
+        if ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext) { return "photo" }
+        if ext == "pdf" { return "doc.richtext" }
+        if ["doc", "docx", "rtf", "txt", "pages"].contains(ext) { return "doc.text" }
+        return "paperclip"
     }
 
     private func toggle(_ section: ContractSummarySection) {
