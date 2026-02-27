@@ -4,27 +4,21 @@ import SwiftData
 struct ClientOutstandingDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
-    private let businessID: UUID
-    private let clientID: UUID
-    private let mode: OutstandingMode
-    private let currencyCode: String
+    let businessID: UUID
+    let row: ClientBalanceRowModel
+    let mode: OutstandingMode
 
+    @State private var invoices: [Invoice] = []
     @State private var isLoading = true
-    @State private var clientName: String = "Client"
-    @State private var rows: [OutstandingInvoiceRowModel] = []
-    @State private var totalCents: Int = 0
-    @State private var invoiceCount: Int = 0
-    @State private var loadGeneration = UUID()
+    @State private var loadError: String? = nil
 
-    init(businessID: UUID, clientID: UUID, mode: OutstandingMode, currencyCode: String) {
-        self.businessID = businessID
-        self.clientID = clientID
-        self.mode = mode
-        self.currencyCode = InsightsCurrency.normalizedCode(currencyCode) ?? "USD"
+    private var currencyCode: String {
+        Locale.current.currency?.identifier ?? "USD"
     }
 
-    private var routeKey: String {
-        "\(businessID.uuidString)-\(clientID.uuidString)-\(mode.isOverdueOnly ? "overdue" : "outstanding")"
+    private var titleName: String {
+        let trimmed = row.clientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Unknown Client" : trimmed
     }
 
     var body: some View {
@@ -38,8 +32,10 @@ struct ClientOutstandingDetailView: View {
 
                     if isLoading {
                         loadingCard
-                    } else if rows.isEmpty {
-                        emptyState
+                    } else if let loadError {
+                        errorCard(loadError)
+                    } else if invoices.isEmpty {
+                        emptyCard
                     } else {
                         invoicesCard
                     }
@@ -51,15 +47,15 @@ struct ClientOutstandingDetailView: View {
         }
         .navigationTitle("Client Outstanding")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: routeKey) {
-            await loadData()
+        .task(id: row.invoiceIDs) {
+            await loadInvoices()
         }
     }
 
     private var summaryCard: some View {
         SBWCardContainer {
             VStack(alignment: .leading, spacing: 8) {
-                Text(clientName)
+                Text(titleName)
                     .font(.headline)
 
                 HStack {
@@ -67,7 +63,7 @@ struct ClientOutstandingDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(InsightsCurrency.string(cents: totalCents, code: currencyCode))
+                    Text(InsightsCurrency.string(cents: row.totalCents, code: currencyCode))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
                 }
@@ -77,12 +73,12 @@ struct ClientOutstandingDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(invoiceCount)")
+                    Text("\(row.invoiceCount)")
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
                 }
 
-                if mode.isOverdueOnly {
+                if mode == .overdueOnly {
                     Divider().opacity(0.35)
                     Text("Overdue only")
                         .font(.caption.weight(.semibold))
@@ -97,20 +93,30 @@ struct ClientOutstandingDetailView: View {
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Loading…")
+                Text("Loading invoices...")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var emptyState: some View {
+    private func errorCard(_ message: String) -> some View {
+        SBWCardContainer {
+            ContentUnavailableView(
+                "Couldn’t Load Invoices",
+                systemImage: "exclamationmark.triangle",
+                description: Text(message)
+            )
+        }
+    }
+
+    private var emptyCard: some View {
         SBWCardContainer {
             VStack(alignment: .leading, spacing: 10) {
                 ContentUnavailableView(
                     "No outstanding invoices",
                     systemImage: "doc.text.magnifyingglass",
-                    description: Text(mode.isOverdueOnly
+                    description: Text(mode == .overdueOnly
                         ? "This client has no overdue invoices."
                         : "This client has no outstanding invoices.")
                 )
@@ -134,15 +140,15 @@ struct ClientOutstandingDetailView: View {
                     .font(.headline)
                     .padding(.bottom, 8)
 
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                ForEach(Array(invoices.enumerated()), id: \.element.id) { index, invoice in
                     NavigationLink {
-                        InvoiceOverviewView(invoice: row.invoice)
+                        InvoiceOverviewView(invoice: invoice)
                     } label: {
-                        invoiceRow(row)
+                        invoiceRow(invoice)
                     }
                     .buttonStyle(.plain)
 
-                    if index < rows.count - 1 {
+                    if index < invoices.count - 1 {
                         Divider().opacity(0.35)
                     }
                 }
@@ -150,16 +156,19 @@ struct ClientOutstandingDetailView: View {
         }
     }
 
-    private func invoiceRow(_ row: OutstandingInvoiceRowModel) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+    private func invoiceRow(_ invoice: Invoice) -> some View {
+        let isOverdue = !invoice.isPaid && invoice.dueDate < Date()
+        let status = isOverdue ? "OVERDUE" : "UNPAID"
+
+        return HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(invoiceTitle(for: row.invoice))
+                Text(invoiceTitle(invoice))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
                 HStack(spacing: 8) {
-                    SBWStatusPill(text: row.isOverdue ? "OVERDUE" : "UNPAID")
-                    Text(dueText(for: row))
+                    SBWStatusPill(text: status)
+                    Text(dueText(invoice: invoice, isOverdue: isOverdue))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -168,7 +177,7 @@ struct ClientOutstandingDetailView: View {
             Spacer(minLength: 8)
 
             HStack(spacing: 6) {
-                Text(InsightsCurrency.string(cents: row.amountCents, code: currencyCode))
+                Text(InsightsCurrency.string(cents: max(0, invoice.remainingDueCents), code: currencyCode))
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
@@ -180,98 +189,47 @@ struct ClientOutstandingDetailView: View {
         .padding(.vertical, 10)
     }
 
-    private func invoiceTitle(for invoice: Invoice) -> String {
+    private func invoiceTitle(_ invoice: Invoice) -> String {
         let number = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         return number.isEmpty ? "Invoice" : "Invoice \(number)"
     }
 
-    private func dueText(for row: OutstandingInvoiceRowModel) -> String {
-        let due = row.invoice.dueDate.formatted(date: .abbreviated, time: .omitted)
-        if row.isOverdue {
-            return "Due \(due) • Overdue \(row.overdueDays) day\(row.overdueDays == 1 ? "" : "s")"
+    private func dueText(invoice: Invoice, isOverdue: Bool) -> String {
+        let due = invoice.dueDate.formatted(date: .abbreviated, time: .omitted)
+        if isOverdue {
+            let overdueDays = max(1, Calendar.autoupdatingCurrent.dateComponents([.day], from: invoice.dueDate, to: Date()).day ?? 1)
+            return "Due \(due) • Overdue \(overdueDays) day\(overdueDays == 1 ? "" : "s")"
         }
         return "Due \(due)"
     }
 
     @MainActor
-    private func loadData() async {
-        let generation = UUID()
-        loadGeneration = generation
+    private func loadInvoices() async {
         isLoading = true
+        loadError = nil
 
-        let startedAt = Date()
-
-        #if DEBUG
-        print("[ClientOutstandingDetail] route business=\(businessID.uuidString) client=\(clientID.uuidString) mode=\(mode.isOverdueOnly ? "overdueOnly" : "outstandingAll")")
-        #endif
+        let wantedIDs = Set(row.invoiceIDs)
+        guard !wantedIDs.isEmpty else {
+            invoices = []
+            isLoading = false
+            return
+        }
 
         do {
-            let invoiceDescriptor: FetchDescriptor<Invoice>
-            let now = Date()
-            if mode.isOverdueOnly {
-                invoiceDescriptor = FetchDescriptor<Invoice>(
-                    predicate: #Predicate<Invoice> { invoice in
-                        invoice.businessID == businessID &&
-                        invoice.client?.id == clientID &&
-                        invoice.isPaid == false &&
-                        invoice.dueDate < now
-                    },
-                    sortBy: [SortDescriptor(\Invoice.dueDate, order: .forward)]
-                )
-            } else {
-                invoiceDescriptor = FetchDescriptor<Invoice>(
-                    predicate: #Predicate<Invoice> { invoice in
-                        invoice.businessID == businessID &&
-                        invoice.client?.id == clientID &&
-                        invoice.isPaid == false
-                    },
-                    sortBy: [SortDescriptor(\Invoice.dueDate, order: .forward)]
-                )
-            }
-
-            let clientDescriptor = FetchDescriptor<Client>(
-                predicate: #Predicate<Client> { client in
-                    client.businessID == businessID && client.id == clientID
+            var descriptor = FetchDescriptor<Invoice>(
+                predicate: #Predicate<Invoice> { inv in
+                    inv.businessID == businessID && inv.isPaid == false
                 },
-                sortBy: [SortDescriptor(\Client.name, order: .forward)]
+                sortBy: [SortDescriptor(\Invoice.dueDate, order: .forward)]
             )
-
-            let fetchedInvoices = try modelContext.fetch(invoiceDescriptor)
-            let fetchedClients = try modelContext.fetch(clientDescriptor)
-
-            let matchingRows = OutstandingAggregation.invoiceRows(
-                invoices: fetchedInvoices,
-                businessID: businessID,
-                clientID: clientID,
-                mode: mode
-            )
-            let summary = OutstandingAggregation.summary(for: matchingRows)
-
-            guard loadGeneration == generation else { return }
-
-            let trimmedName = fetchedClients.first?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            clientName = trimmedName.isEmpty ? "Client" : trimmedName
-            rows = matchingRows
-            totalCents = summary.totalCents
-            invoiceCount = summary.count
+            descriptor.fetchLimit = 5000
+            let candidates = try modelContext.fetch(descriptor)
+            invoices = candidates.filter { wantedIDs.contains($0.id) }
             isLoading = false
-
-            #if DEBUG
-            let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[ClientOutstandingDetail] fetchedInvoices=\(fetchedInvoices.count) matchedRows=\(matchingRows.count) loadMs=\(ms)")
-            #endif
         } catch {
-            guard loadGeneration == generation else { return }
-            clientName = "Client"
-            rows = []
-            totalCents = 0
-            invoiceCount = 0
+            invoices = []
             isLoading = false
-
-            #if DEBUG
-            let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[ClientOutstandingDetail] load failed after \(ms)ms: \(error)")
-            #endif
+            loadError = error.localizedDescription
         }
     }
 }

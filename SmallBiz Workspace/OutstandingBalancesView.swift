@@ -2,40 +2,60 @@ import SwiftUI
 import SwiftData
 
 struct OutstandingBalancesView: View {
-    private let businessID: UUID
-    private let currencyCode: String
-    private let mode: OutstandingMode
+    @Environment(\.modelContext) private var modelContext
 
-    @Query private var invoices: [Invoice]
+    let businessID: UUID
+    let mode: OutstandingMode
 
-    init(businessID: UUID, currencyCode: String, mode: OutstandingMode) {
+    @StateObject private var vm = OutstandingBalancesViewModel()
+
+    @Query private var businesses: [Business]
+
+    init(businessID: UUID, mode: OutstandingMode) {
         self.businessID = businessID
-        self.currencyCode = InsightsCurrency.normalizedCode(currencyCode) ?? "USD"
         self.mode = mode
-        _invoices = Query(
-            filter: #Predicate<Invoice> { invoice in
-                invoice.businessID == businessID
-            },
-            sort: [SortDescriptor(\Invoice.dueDate, order: .forward)]
+        _businesses = Query(
+            filter: #Predicate<Business> { business in
+                business.id == businessID
+            }
         )
     }
 
-    private var rows: [ClientBalanceRowModel] {
-        OutstandingAggregation.clientRows(invoices: invoices, mode: mode)
+    private var currencyCode: String {
+        InsightsCurrency.normalizedCode(businesses.first?.currencyCode) ?? "USD"
     }
 
     var body: some View {
-        let balanceRows = rows
-
-        return ZStack {
+        ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
             SBWTheme.headerWash()
 
-            if balanceRows.isEmpty {
+            if vm.isLoading {
+                ScrollView {
+                    SBWCardContainer {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading balances...")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
+                }
+            } else if let error = vm.errorMessage {
                 ContentUnavailableView(
-                    mode.isOverdueOnly ? "No Overdue Balances" : "No Outstanding Balances",
-                    systemImage: mode.isOverdueOnly ? "calendar.badge.checkmark" : "checkmark.circle",
-                    description: Text(mode.isOverdueOnly
+                    "Couldn’t Load Balances",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error)
+                )
+            } else if vm.rows.isEmpty {
+                ContentUnavailableView(
+                    mode == .overdueOnly ? "No Overdue Balances" : "No Outstanding Balances",
+                    systemImage: mode == .overdueOnly ? "calendar.badge.checkmark" : "checkmark.circle",
+                    description: Text(mode == .overdueOnly
                         ? "No overdue invoices for this business right now."
                         : "All sent invoices are paid for this business.")
                 )
@@ -43,25 +63,27 @@ struct OutstandingBalancesView: View {
                 ScrollView {
                     SBWCardContainer {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(mode.isOverdueOnly ? "Overdue by Client" : "Outstanding by Client")
+                            Text(mode == .overdueOnly ? "Overdue by Client" : "Outstanding by Client")
                                 .font(.headline)
                                 .padding(.bottom, 8)
 
-                            ForEach(Array(balanceRows.enumerated()), id: \.element.id) { index, row in
-                                NavigationLink(value: OutstandingClientRoute(
-                                    businessID: businessID,
-                                    clientID: row.clientID,
-                                    mode: mode
-                                )) {
+                            ForEach(Array(vm.rows.enumerated()), id: \.element) { index, row in
+                                NavigationLink {
+                                    ClientOutstandingDetailView(
+                                        businessID: businessID,
+                                        row: row,
+                                        mode: mode
+                                    )
+                                } label: {
                                     balanceRow(
-                                        name: displayName(for: row),
+                                        name: row.clientName,
                                         amount: InsightsCurrency.string(cents: row.totalCents, code: currencyCode),
-                                        countText: "\(row.invoiceCount) \(mode.isOverdueOnly ? "overdue" : "unpaid") invoice\(row.invoiceCount == 1 ? "" : "s")"
+                                        countText: "\(row.invoiceCount) \(mode == .overdueOnly ? "overdue" : "unpaid") invoice\(row.invoiceCount == 1 ? "" : "s")"
                                     )
                                 }
                                 .buttonStyle(.plain)
 
-                                if index < balanceRows.count - 1 {
+                                if index < vm.rows.count - 1 {
                                     Divider().opacity(0.35)
                                 }
                             }
@@ -73,27 +95,17 @@ struct OutstandingBalancesView: View {
                 }
             }
         }
-        .navigationTitle(mode.isOverdueOnly ? "Overdue Balances" : "Outstanding Balances")
+        .navigationTitle(mode == .overdueOnly ? "Overdue Balances" : "Outstanding Balances")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: OutstandingClientRoute.self) { route in
-            ClientOutstandingDetailView(
-                businessID: route.businessID,
-                clientID: route.clientID,
-                mode: route.mode,
-                currencyCode: currencyCode
-            )
+        .task(id: businessID) {
+            await vm.load(modelContext: modelContext, businessID: businessID, mode: mode)
         }
-    }
-
-    private func displayName(for row: ClientBalanceRowModel) -> String {
-        let trimmed = row.client?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? "Unnamed Client" : trimmed
     }
 
     private func balanceRow(name: String, amount: String, countText: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(name)
+                Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown Client" : name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(countText)

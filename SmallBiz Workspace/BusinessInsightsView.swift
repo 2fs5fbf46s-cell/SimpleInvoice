@@ -121,7 +121,6 @@ struct BusinessInsightsView: View {
                 NavigationLink {
                     OutstandingBalancesView(
                         businessID: businessID,
-                        currencyCode: displayCurrencyCode,
                         mode: .outstandingAll
                     )
                 } label: {
@@ -137,7 +136,6 @@ struct BusinessInsightsView: View {
                 NavigationLink {
                     OutstandingBalancesView(
                         businessID: businessID,
-                        currencyCode: displayCurrencyCode,
                         mode: .overdueOnly
                     )
                 } label: {
