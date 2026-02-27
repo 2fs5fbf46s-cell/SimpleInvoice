@@ -9,9 +9,11 @@ import SwiftData
 struct ContractsHomeView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
 
     // All contracts, newest first
     @Query private var contracts: [Contract]
+    @Query private var clients: [Client]
 
     // Used to detect valid businessIDs + migration safety
     @Query private var profiles: [BusinessProfile]
@@ -20,6 +22,7 @@ struct ContractsHomeView: View {
     @State private var selectedContract: Contract? = nil
 
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         if let businessID {
             _contracts = Query(
                 filter: #Predicate<Contract> { contract in
@@ -27,9 +30,24 @@ struct ContractsHomeView: View {
                 },
                 sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)]
             )
+            _clients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == businessID
+                },
+                sort: [SortDescriptor(\Client.name, order: .forward)]
+            )
         } else {
             _contracts = Query(sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)])
+            _clients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
         }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
+    }
+
+    private var clientNameByID: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.name) })
     }
 
     private enum HomeFilter: String, CaseIterable, Identifiable {
@@ -42,7 +60,7 @@ struct ContractsHomeView: View {
     // MARK: - Scoping
 
     private var scopedContracts: [Contract] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = effectiveBusinessID else { return [] }
         return contracts.filter { $0.businessID == bizID }
     }
 
@@ -96,7 +114,7 @@ struct ContractsHomeView: View {
                 }
 
                 // MARK: - Empty state (scoped)
-                if activeBiz.activeBusinessID == nil {
+                if effectiveBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
@@ -216,8 +234,10 @@ struct ContractsHomeView: View {
         if let name = contract.estimate?.client?.name, !name.isEmpty { return name }
 
         if let job = contract.job {
-            let allClients = (try? modelContext.fetch(FetchDescriptor<Client>())) ?? []
-            return allClients.first(where: { $0.id == job.clientID })?.name ?? "No Client"
+            if let id = job.clientID, let name = clientNameByID[id], !name.isEmpty {
+                return name
+            }
+            return "No Client"
         }
 
         return "No Client"
@@ -241,7 +261,7 @@ struct ContractsHomeView: View {
     // MARK: - Migration: Fix old random businessIDs
 
     private func repairOrphansIfNeeded() {
-        guard let bizID = activeBiz.activeBusinessID else { return }
+        guard let bizID = effectiveBusinessID else { return }
 
         // Known business IDs = anything you have a BusinessProfile for
         let knownBizIDs = Set(profiles.map { $0.businessID })

@@ -9,6 +9,7 @@ import SwiftData
 struct InvoiceListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
 
     @Query private var invoices: [Invoice]
 
@@ -37,6 +38,7 @@ struct InvoiceListView: View {
     @State private var searchText: String = ""
 
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         if let businessID {
             _invoices = Query(
                 filter: #Predicate<Invoice> { invoice in
@@ -47,6 +49,10 @@ struct InvoiceListView: View {
         } else {
             _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
         }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
     }
 
     var body: some View {
@@ -80,7 +86,7 @@ struct InvoiceListView: View {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                        ForEach(Filter.allCases) { f in
+                            ForEach(Filter.allCases) { f in
                                 Button {
                                     filter = f
                                 } label: {
@@ -100,7 +106,7 @@ struct InvoiceListView: View {
                 }
 
                 // MARK: - Content
-                if activeBiz.activeBusinessID == nil {
+                if effectiveBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
@@ -254,10 +260,10 @@ struct InvoiceListView: View {
     }
 
     private var scopedInvoices: [Invoice] {
-        if let bizID = activeBiz.activeBusinessID {
+        if let bizID = effectiveBusinessID {
             return invoices.filter { $0.businessID == bizID }
         }
-        return invoices
+        return []
     }
 
     private func isFinalDraft(_ invoice: Invoice) -> Bool {
@@ -373,7 +379,7 @@ private extension InvoiceListView {
 
     func createInvoiceFromTemplate(_ template: InvoiceTemplate) {
         do {
-            guard let bizID = activeBiz.activeBusinessID else {
+            guard let bizID = effectiveBusinessID else {
                 print("❌ No active business selected")
                 return
             }

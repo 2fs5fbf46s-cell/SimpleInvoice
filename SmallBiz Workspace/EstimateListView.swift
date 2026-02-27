@@ -9,6 +9,7 @@ import SwiftData
 struct EstimateListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
 
     @Query private var invoices: [Invoice]
 
@@ -47,8 +48,11 @@ struct EstimateListView: View {
     @State private var filter: Filter = .all
     @State private var searchText: String = ""
     @State private var isRefreshingFromPortal = false
+    @State private var loadGeneration = UUID()
+    @State private var refreshTask: Task<Void, Never>? = nil
 
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         if let businessID {
             _invoices = Query(
                 filter: #Predicate<Invoice> { invoice in
@@ -59,6 +63,10 @@ struct EstimateListView: View {
         } else {
             _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
         }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
     }
 
     var body: some View {
@@ -114,7 +122,7 @@ struct EstimateListView: View {
                 }
 
                 // MARK: - Content
-                if activeBiz.activeBusinessID == nil {
+                if effectiveBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
@@ -171,7 +179,7 @@ struct EstimateListView: View {
             }
             .scrollContentBackground(.hidden)
             .refreshable {
-                await guardedRefreshFilteredEstimatesFromPortal()
+                await guardedRefreshFilteredEstimatesFromPortal(generation: loadGeneration)
                 EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             }
         }
@@ -306,27 +314,37 @@ struct EstimateListView: View {
                 }
             }
         }
-        .task {
+        .task(id: effectiveBusinessID) {
+            loadGeneration = UUID()
+            refreshTask?.cancel()
             EstimateDecisionSync.applyPendingDecisions(in: modelContext)
-            await guardedRefreshFilteredEstimatesFromPortal()
+            let generation = loadGeneration
+            refreshTask = Task {
+                await guardedRefreshFilteredEstimatesFromPortal(generation: generation)
+            }
+            await refreshTask?.value
+        }
+        .onDisappear {
+            refreshTask?.cancel()
+            refreshTask = nil
         }
     }
 
     // MARK: - Data (scoped + filtered)
 
     private var scopedInvoices: [Invoice] {
-        if let bizID = activeBiz.activeBusinessID {
+        if let bizID = effectiveBusinessID {
             return invoices.filter { $0.businessID == bizID }
         }
-        return invoices
+        return []
     }
 
     @MainActor
-    private func guardedRefreshFilteredEstimatesFromPortal() async {
+    private func guardedRefreshFilteredEstimatesFromPortal(generation: UUID) async {
         guard isRefreshingFromPortal == false else { return }
         isRefreshingFromPortal = true
         defer { isRefreshingFromPortal = false }
-        await refreshFilteredEstimatesFromPortal()
+        await refreshFilteredEstimatesFromPortal(generation: generation)
     }
 
     private var filteredEstimates: [Invoice] {
@@ -406,13 +424,15 @@ struct EstimateListView: View {
     }
 
     @MainActor
-    private func refreshFilteredEstimatesFromPortal() async {
+    private func refreshFilteredEstimatesFromPortal(generation: UUID) async {
         for estimate in filteredEstimates {
+            if generation != loadGeneration || Task.isCancelled { return }
             do {
                 let remote = try await PortalBackend.shared.fetchEstimateStatus(
                     businessId: estimate.businessID.uuidString,
                     estimateId: estimate.id.uuidString
                 )
+                if generation != loadGeneration || Task.isCancelled { return }
                 let local = normalizedStatus(estimate.estimateStatus)
                 if local != remote.status {
                     EstimateDecisionSync.setEstimateDecision(
@@ -425,6 +445,7 @@ struct EstimateListView: View {
                 continue
             }
         }
+        guard generation == loadGeneration, !Task.isCancelled else { return }
         try? modelContext.save()
     }
 
@@ -438,7 +459,7 @@ struct EstimateListView: View {
 
     private func createEstimateFromDraft() {
         do {
-            guard let bizID = activeBiz.activeBusinessID else {
+            guard let bizID = effectiveBusinessID else {
                 print("❌ No active business selected")
                 return
             }

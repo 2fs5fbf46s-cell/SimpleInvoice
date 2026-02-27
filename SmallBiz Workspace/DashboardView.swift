@@ -132,6 +132,7 @@ struct DashboardView: View {
                             updateKey: metricsVM.scheduleCount
                         )
                     }
+                    .coachMark(id: "walkthrough.dashboard.metrics")
 
                     // Date row (live)
                     TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -272,16 +273,24 @@ struct DashboardView: View {
     }
 
     private func formattedDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "EEE, MMM d yyyy"
-        return f.string(from: date)
+        Self.dateFormatter.string(from: date)
     }
 
     private func formattedTime(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        return f.string(from: date)
+        Self.timeFormatter.string(from: date)
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d yyyy"
+        return formatter
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
 }
 
 // MARK: - Tile Card

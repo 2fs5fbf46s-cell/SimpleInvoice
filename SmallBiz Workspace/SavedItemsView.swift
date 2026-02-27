@@ -8,18 +8,18 @@ import SwiftData
 
 struct SavedItemsView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
-
+    private let businessID: UUID?
     @Query private var items: [CatalogItem]
     @Query private var profiles: [BusinessProfile]
 
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
 
-    @State private var editorItem: CatalogItem? = nil
+    @State private var selectedItem: CatalogItem? = nil
     @State private var draftItemID: UUID? = nil
 
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         if let businessID {
             _items = Query(
                 filter: #Predicate<CatalogItem> { item in
@@ -35,8 +35,8 @@ struct SavedItemsView: View {
     // MARK: - Scoping
 
     private var scopedItems: [CatalogItem] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return items.filter { $0.businessID == bizID }
+        guard businessID != nil else { return [] }
+        return items
     }
 
     private var filteredItems: [CatalogItem] {
@@ -56,7 +56,7 @@ struct SavedItemsView: View {
     }
 
     private var activeProfile: BusinessProfile? {
-        guard let bizID = activeBiz.activeBusinessID else { return nil }
+        guard let bizID = businessID else { return nil }
         return profiles.first(where: { $0.businessID == bizID })
     }
 
@@ -113,7 +113,8 @@ struct SavedItemsView: View {
                 } else {
                     ForEach(filteredItems) { item in
                         Button {
-                            editorItem = item
+                            selectedItem = item
+                            debugLogSelectedCatalogItem(item, source: "SavedItemsView.rowTap")
                         } label: {
                             row(item)
                         }
@@ -156,7 +157,7 @@ struct SavedItemsView: View {
                 .accessibilityLabel("Add Saved Item")
             }
         }
-        .sheet(item: $editorItem, onDismiss: {
+        .sheet(item: $selectedItem, onDismiss: {
             deleteIfEmptyDraft()
         }) { item in
             NavigationStack {
@@ -165,21 +166,25 @@ struct SavedItemsView: View {
                     categories: categories,
                     onCancel: {
                         deleteIfEmptyDraft(forceDelete: true)
-                        editorItem = nil
+                        selectedItem = nil
                     },
                     onDone: { draft in
                         applyDraft(draft, to: item)
 
                         if item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             deleteIfEmptyDraft(forceDelete: true)
-                            editorItem = nil
+                            selectedItem = nil
                             return
                         }
 
                         do {
                             try modelContext.save()
+                            draftItemID = nil
+#if DEBUG
+                            debugLogScopedCount(source: "SavedItemsView.onDone")
+#endif
                             Haptics.success()
-                            editorItem = nil
+                            selectedItem = nil
                         } catch {
                             Haptics.error()
                             print("Failed to save item edits: \(error)")
@@ -310,7 +315,7 @@ struct SavedItemsView: View {
     // MARK: - Add / Delete
 
     private func addDraftAndOpenEditor() {
-        guard let bizID = activeBiz.activeBusinessID else {
+        guard let bizID = businessID else {
             print("❌ No active business selected")
             return
         }
@@ -325,12 +330,18 @@ struct SavedItemsView: View {
         draft.businessID = bizID
 
         modelContext.insert(draft)
-        draftItemID = draft.id
-        debugLogInsertedCatalogItem(draft, activeBusinessID: bizID, source: "SavedItemsView.addDraftAndOpenEditor")
-        editorItem = draft
-
-        do { try modelContext.save() }
-        catch { print("Failed to save draft item: \(error)") }
+        do {
+            try modelContext.save()
+            draftItemID = draft.id
+#if DEBUG
+            debugLogInsertedCatalogItem(draft, scopedBusinessID: bizID, source: "SavedItemsView.addDraftAndOpenEditor")
+            debugLogScopedCount(source: "SavedItemsView.addDraftAndOpenEditor")
+#endif
+            selectedItem = draft
+        } catch {
+            modelContext.delete(draft)
+            print("Failed to save draft item: \(error)")
+        }
     }
 
     private func deleteIfEmptyDraft(forceDelete: Bool = false) {
@@ -373,10 +384,22 @@ struct SavedItemsView: View {
         item.category = normalizedCategory.isEmpty ? "General" : normalizedCategory
     }
 
-    private func debugLogInsertedCatalogItem(_ item: CatalogItem, activeBusinessID: UUID, source: String) {
+    private func debugLogInsertedCatalogItem(_ item: CatalogItem, scopedBusinessID: UUID, source: String) {
 #if DEBUG
         let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "General" : item.category
-        print("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) activeBusinessID=\(activeBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
+        print("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) scopedBusinessID=\(scopedBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
+#endif
+    }
+
+    private func debugLogSelectedCatalogItem(_ item: CatalogItem, source: String) {
+#if DEBUG
+        print("[CatalogItemSelect][\(source)] selectedID=\(item.id.uuidString) businessID=\(item.businessID.uuidString)")
+#endif
+    }
+
+    private func debugLogScopedCount(source: String) {
+#if DEBUG
+        print("[CatalogItemCount][\(source)] scopedCount=\(scopedItems.count)")
 #endif
     }
 }
