@@ -14,12 +14,14 @@ struct InvoiceListView: View {
     private var invoices: [Invoice]
 
     @Query private var profiles: [BusinessProfile]
+    @Binding private var path: [InvoicesRoute]
+    private let usesPathNavigation: Bool
 
     @State private var showingNewInvoice = false
     @State private var showingTemplates = false
     @State private var showingInvoiceSettings = false
 
-    // Navigate to the invoice created from a template
+    // Fallback navigation for non-tab contexts
     @State private var navigateToInvoice: Invoice? = nil
     @State private var selectedInvoice: Invoice? = nil
 
@@ -36,6 +38,16 @@ struct InvoiceListView: View {
 
     @State private var filter: Filter = .all
     @State private var searchText: String = ""
+
+    init(path: Binding<[InvoicesRoute]>) {
+        self._path = path
+        self.usesPathNavigation = true
+    }
+
+    init() {
+        self._path = .constant([])
+        self.usesPathNavigation = false
+    }
 
     var body: some View {
         ZStack {
@@ -101,13 +113,21 @@ struct InvoiceListView: View {
                     )
                 } else {
                     ForEach(filteredInvoices) { invoice in
-                        Button {
-                            selectedInvoice = invoice
-                        } label: {
-                            row(invoice)
+                        if usesPathNavigation {
+                            NavigationLink(value: InvoicesRoute.overview(invoiceId: invoice.id)) {
+                                row(invoice)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        } else {
+                            Button {
+                                selectedInvoice = invoice
+                            } label: {
+                                row(invoice)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                         }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                     .onDelete(perform: deleteInvoices)
                 }
@@ -183,12 +203,20 @@ struct InvoiceListView: View {
             }
         }
 
-        // Navigate to created invoice after template selection
+        // Fallback destinations for non-tab contexts.
         .navigationDestination(item: $navigateToInvoice) { invoice in
-            InvoiceOverviewView(invoice: invoice)
+            if usesPathNavigation {
+                EmptyView()
+            } else {
+                InvoiceOverviewView(invoice: invoice)
+            }
         }
         .navigationDestination(item: $selectedInvoice) { invoice in
-            InvoiceOverviewView(invoice: invoice)
+            if usesPathNavigation {
+                EmptyView()
+            } else {
+                InvoiceOverviewView(invoice: invoice)
+            }
         }
     }
 
@@ -374,7 +402,9 @@ private extension InvoiceListView {
             try modelContext.save()
 
             showingTemplates = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            if usesPathNavigation {
+                path.append(.overview(invoiceId: invoice.id))
+            } else {
                 navigateToInvoice = invoice
             }
         } catch {
