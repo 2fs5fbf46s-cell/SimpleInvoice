@@ -64,7 +64,7 @@ struct AppTabView: View {
             .tabItem { Label("Clients", systemImage: "person.2") }
 
             NavigationStack(path: $morePath) {
-                MoreView()
+                MoreView(path: $morePath)
             }
                 .tag(AppTab.more)
                 .tabItem { Label("More", systemImage: "ellipsis") }
