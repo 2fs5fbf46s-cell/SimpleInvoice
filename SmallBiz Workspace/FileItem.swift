@@ -31,6 +31,7 @@ final class FileItem {
     @Relationship(inverse: \ContractAttachment.file) var contractAttachments: [ContractAttachment]? = nil
     @Relationship(inverse: \ClientAttachment.file) var clientAttachments: [ClientAttachment]? = nil
     @Relationship(inverse: \JobAttachment.file) var jobAttachments: [JobAttachment]? = nil
+    @Relationship var bookingAttachments: [BookingAttachment]? = nil
     
 
 

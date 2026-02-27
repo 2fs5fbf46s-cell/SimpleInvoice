@@ -28,6 +28,7 @@ struct JobSummaryView: View {
 
     @State private var expandedSection: JobSummarySection? = nil
     @State private var showEditor = false
+    @State private var showAttachmentsManager = false
     @State private var selectedInvoice: Invoice? = nil
     @State private var sharePayload: JobSharePayload? = nil
     @State private var errorMessage: String? = nil
@@ -171,7 +172,7 @@ struct JobSummaryView: View {
 
             SummaryKit.CollapsibleSectionCard(
                 title: "Attachments",
-                subtitle: "Files and media",
+                subtitle: "\(jobAttachments.count) files",
                 icon: "paperclip",
                 isExpanded: expandedSection == .attachments,
                 onToggle: { toggle(.attachments) }
@@ -182,13 +183,17 @@ struct JobSummaryView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(jobAttachments.prefix(5)) { attachment in
-                            Text(attachment.file?.displayName ?? "File")
-                                .font(.subheadline)
-                                .lineLimit(1)
+                        ForEach(jobAttachments.prefix(3)) { attachment in
+                            HStack(spacing: 8) {
+                                Image(systemName: attachmentIconName(for: attachment.file))
+                                    .foregroundStyle(.secondary)
+                                Text(attachment.file?.displayName ?? "File")
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                            }
                         }
                     }
-                    Button("Manage in Editor") { showEditor = true }
+                    Button("Manage Attachments") { showAttachmentsManager = true }
                         .buttonStyle(.bordered)
                 }
             }
@@ -284,9 +289,14 @@ struct JobSummaryView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { selectedInvoice = nil }
-                        }
-                    }
+                }
             }
+        }
+        .sheet(isPresented: $showAttachmentsManager) {
+            NavigationStack {
+                AttachmentsManagerView(job: job)
+            }
+        }
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
@@ -315,6 +325,14 @@ struct JobSummaryView: View {
         } else {
             expandedSection = section
         }
+    }
+
+    private func attachmentIconName(for file: FileItem?) -> String {
+        guard let ext = file?.fileExtension.lowercased() else { return "paperclip" }
+        if ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext) { return "photo" }
+        if ext == "pdf" { return "doc.richtext" }
+        if ["doc", "docx", "rtf", "txt", "pages"].contains(ext) { return "doc.text" }
+        return "paperclip"
     }
 
     private func openOrCreateInvoice() {

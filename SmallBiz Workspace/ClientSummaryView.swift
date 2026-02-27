@@ -41,6 +41,7 @@ struct ClientSummaryView: View {
     @State private var showAllInvoices = false
     @State private var showAllContracts = false
     @State private var showAllJobs = false
+    @State private var showAttachmentsManager = false
     @State private var showCreateInvoiceDraft = false
     @State private var draftInvoice = DraftInvoiceInput(issueDate: .now, dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now, notes: "")
     @State private var sharePayload: ClientSharePayload? = nil
@@ -240,7 +241,7 @@ struct ClientSummaryView: View {
 
             SummaryKit.CollapsibleSectionCard(
                 title: "Attachments",
-                subtitle: "Client files",
+                subtitle: "\(attachments.count) files",
                 icon: "paperclip",
                 isExpanded: expandedSection == .attachments,
                 onToggle: { toggle(.attachments) }
@@ -251,13 +252,17 @@ struct ClientSummaryView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(attachments.prefix(5)) { attachment in
-                            Text(attachment.file?.displayName ?? "File")
-                                .font(.subheadline)
-                                .lineLimit(1)
+                        ForEach(attachments.prefix(3)) { attachment in
+                            HStack(spacing: 8) {
+                                Image(systemName: attachmentIconName(for: attachment.file))
+                                    .foregroundStyle(.secondary)
+                                Text(attachment.file?.displayName ?? "File")
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                            }
                         }
                     }
-                    Button("Manage in Editor") { showEditSheet = true }
+                    Button("Manage Attachments") { showAttachmentsManager = true }
                         .buttonStyle(.bordered)
                 }
             }
@@ -356,6 +361,11 @@ struct ClientSummaryView: View {
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
+        }
+        .sheet(isPresented: $showAttachmentsManager) {
+            NavigationStack {
+                AttachmentsManagerView(client: client)
+            }
         }
         .sheet(isPresented: $showCreateInvoiceDraft) {
             NavigationStack {
@@ -517,6 +527,14 @@ struct ClientSummaryView: View {
     private func displayOrDash(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "—" : trimmed
+    }
+
+    private func attachmentIconName(for file: FileItem?) -> String {
+        guard let ext = file?.fileExtension.lowercased() else { return "paperclip" }
+        if ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext) { return "photo" }
+        if ext == "pdf" { return "doc.richtext" }
+        if ["doc", "docx", "rtf", "txt", "pages"].contains(ext) { return "doc.text" }
+        return "paperclip"
     }
 }
 
