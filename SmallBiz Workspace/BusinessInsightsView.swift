@@ -1,11 +1,6 @@
 import SwiftUI
 import SwiftData
 
-enum BusinessInsightsRoute: Hashable {
-    case outstandingAll(UUID)
-    case overdueOnly(UUID)
-}
-
 struct BusinessInsightsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
@@ -80,22 +75,6 @@ struct BusinessInsightsView: View {
         }
         .navigationTitle("Business Insights")
         .navigationBarTitleDisplayMode(.large)
-        .navigationDestination(for: BusinessInsightsRoute.self) { route in
-            switch route {
-            case .outstandingAll(let bizID):
-                OutstandingBalancesView(
-                    businessID: bizID,
-                    currencyCode: displayCurrencyCode,
-                    mode: .outstandingAll
-                )
-            case .overdueOnly(let bizID):
-                OutstandingBalancesView(
-                    businessID: bizID,
-                    currencyCode: displayCurrencyCode,
-                    mode: .overdueOnly
-                )
-            }
-        }
         .task(id: effectiveBusinessID?.uuidString ?? "none") {
             guard let bizID = effectiveBusinessID else {
                 resetInsightsState()
@@ -139,7 +118,13 @@ struct BusinessInsightsView: View {
                 Text("Outstanding")
                     .font(.headline)
 
-                NavigationLink(value: BusinessInsightsRoute.outstandingAll(businessID)) {
+                NavigationLink {
+                    OutstandingBalancesView(
+                        businessID: businessID,
+                        currencyCode: displayCurrencyCode,
+                        mode: .outstandingAll
+                    )
+                } label: {
                     navigationValueRow(
                         label: "Outstanding total",
                         value: currencyOrPlaceholder(outstandingTotalCents)
@@ -149,7 +134,13 @@ struct BusinessInsightsView: View {
 
                 Divider().opacity(0.35)
 
-                NavigationLink(value: BusinessInsightsRoute.overdueOnly(businessID)) {
+                NavigationLink {
+                    OutstandingBalancesView(
+                        businessID: businessID,
+                        currencyCode: displayCurrencyCode,
+                        mode: .overdueOnly
+                    )
+                } label: {
                     navigationValueRow(
                         label: "Overdue total",
                         value: currencyOrPlaceholder(overdueTotalCents)
