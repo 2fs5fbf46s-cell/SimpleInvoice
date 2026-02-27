@@ -13,12 +13,18 @@ struct MoreView: View {
     }
 
     private var items: [MoreItem] {
-        [
+        var base: [MoreItem] = [
             MoreItem(
                 title: "Notifications",
                 systemImage: "bell.badge",
                 keyword: "Notifications",
                 destination: AnyView(NotificationsView())
+            ),
+            MoreItem(
+                title: "Help Center",
+                systemImage: "questionmark.circle",
+                keyword: "Help",
+                destination: AnyView(HelpCenterView())
             ),
             MoreItem(
                 title: "Booking Portal",
@@ -99,6 +105,19 @@ struct MoreView: View {
                 destination: AnyView(PortalPreviewView())
             )
         ]
+
+        #if DEBUG
+        base.append(
+            MoreItem(
+                title: "Developer Tools",
+                systemImage: "wrench.and.screwdriver",
+                keyword: "Settings",
+                destination: AnyView(OnboardingDebugToolsView())
+            )
+        )
+        #endif
+
+        return base
     }
 
     private var filtered: [MoreItem] {
@@ -121,26 +140,33 @@ struct MoreView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .ignoresSafeArea()
 
-            if filtered.isEmpty {
-                ContentUnavailableView(
-                    "No Results",
-                    systemImage: "magnifyingglass",
-                    description: Text("Try a different search.")
-                )
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ForEach(filtered) { item in
-                            NavigationLink {
-                                item.destination
-                            } label: {
-                                tile(item)
-                            }
-                            .buttonStyle(.plain)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(filtered) { item in
+                        NavigationLink {
+                            item.destination
+                        } label: {
+                            tile(item)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(16)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+
+                if filtered.isEmpty {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different search.")
+                    )
+                    .padding(.top, 12)
+                }
+
+                helpCard
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
             }
         }
         .navigationTitle("More")
@@ -150,6 +176,36 @@ struct MoreView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search"
         )
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    HelpCenterView()
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .accessibilityLabel("Help Center")
+            }
+        }
+    }
+
+    private var helpCard: some View {
+        SBWCardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Help")
+                    .font(.headline)
+                Text("Need a refresher? Open Help Center for tutorial and support.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                NavigationLink {
+                    HelpCenterView()
+                } label: {
+                    Label("Open Help Center", systemImage: "questionmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+            }
+        }
     }
 
     private func tile(_ item: MoreItem) -> some View {
@@ -173,5 +229,64 @@ struct MoreView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
         }
+        .modifier(SetupPaymentsCoachMarkModifier(shouldMark: item.title == "Setup Payments"))
     }
 }
+
+private struct SetupPaymentsCoachMarkModifier: ViewModifier {
+    let shouldMark: Bool
+
+    func body(content: Content) -> some View {
+        if shouldMark {
+            content.coachMark(id: "walkthrough.more.setup-payments")
+        } else {
+            content
+        }
+    }
+}
+
+#if DEBUG
+private struct OnboardingDebugToolsView: View {
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
+
+    var body: some View {
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
+            ScrollView {
+                VStack(spacing: 12) {
+                    SBWCardContainer {
+                        Text("Developer")
+                            .font(.headline)
+                        Text("Reset onboarding and walkthrough state for local testing.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Button {
+                            WalkthroughState.requestRun()
+                        } label: {
+                            Label("Run Walkthrough", systemImage: "sparkles")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(role: .destructive) {
+                            OnboardingState.reset()
+                            WalkthroughState.reset()
+                            activeBiz.clearActiveBusiness()
+                        } label: {
+                            Label("Reset Onboarding + Walkthrough", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+        }
+        .navigationTitle("Developer Tools")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+#endif

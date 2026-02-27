@@ -236,6 +236,16 @@ struct DashboardView: View {
         }
         .navigationTitle("") // Keep header custom
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    HelpCenterView()
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .accessibilityLabel("Help Center")
+            }
+        }
         .task(id: activeBiz.activeBusinessID?.uuidString ?? "none") {
             await refreshDashboardMetrics(forceRemote: false)
         }
