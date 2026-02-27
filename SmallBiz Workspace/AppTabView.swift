@@ -20,6 +20,7 @@ struct AppTabView: View {
     @Query private var contracts: [Contract]
 
     @State private var tab: AppTab = .dashboard
+    @State private var lastSelectedTab: AppTab = .dashboard
     @State private var showCreateSheet = false
     @State private var deepLinkedEstimate: Invoice? = nil
     @State private var deepLinkedInvoice: Invoice? = nil
@@ -29,22 +30,23 @@ struct AppTabView: View {
     @State private var toastDismissTask: Task<Void, Never>? = nil
 
     // MUST be @State so NavigationStack(path:) can push.
+    @State private var dashboardPath = NavigationPath()
+    @State private var invoicesPath = NavigationPath()
+    @State private var clientsPath = NavigationPath()
     @State private var morePath = NavigationPath()
-    @State private var dashboardResetToken = UUID()
     @ObservedObject private var portalReturn = PortalReturnRouter.shared
     @ObservedObject private var notificationRouter = NotificationRouter.shared
 
     var body: some View {
         TabView(selection: $tab) {
 
-            NavigationStack {
+            NavigationStack(path: $dashboardPath) {
                 DashboardView()
             }
-            .id(dashboardResetToken)
             .tag(AppTab.dashboard)
             .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
 
-            NavigationStack {
+            NavigationStack(path: $invoicesPath) {
                 InvoiceListView()
             }
             .tag(AppTab.invoices)
@@ -55,14 +57,15 @@ struct AppTabView: View {
                 .tag(AppTab.create)
                 .tabItem { Label("Create", systemImage: "plus.circle.fill") }
 
-            NavigationStack {
+            NavigationStack(path: $clientsPath) {
                 ClientListView()
             }
             .tag(AppTab.clients)
             .tabItem { Label("Clients", systemImage: "person.2") }
 
-            // MoreView already contains NavigationStack(path:)
-            MoreView(path: $morePath)
+            NavigationStack(path: $morePath) {
+                MoreView()
+            }
                 .tag(AppTab.more)
                 .tabItem { Label("More", systemImage: "ellipsis") }
         }
@@ -80,14 +83,8 @@ struct AppTabView: View {
         }
         .background(
             TabBarReselectObserver { reselectedIndex in
-                // Tab order: dashboard(0), invoices(1), create(2), clients(3), more(4)
-                if reselectedIndex == 0 {
-                    // Re-tapping the already-selected Dashboard tab pops to root.
-                    dashboardResetToken = UUID()
-                }
-                if reselectedIndex == 4 {
-                    // Re-tapping the already-selected More tab pops to root.
-                    morePath = NavigationPath()
+                if let reselectedTab = tabForIndex(reselectedIndex) {
+                    resetPath(for: reselectedTab)
                 }
             }
             .frame(width: 0, height: 0)
@@ -95,19 +92,14 @@ struct AppTabView: View {
         .tint(SBWTheme.brandBlue)
 
         .onChange(of: tab) { _, newValue in
-            if newValue == .dashboard {
-                // Switch to Dashboard = start at root
-                dashboardResetToken = UUID()
-            }
-            if newValue == .more {
-                // Switch to More = start at root
-                morePath = NavigationPath()
+            if newValue == .create {
+                tab = lastSelectedTab
+                showCreateSheet = true
+                return
             }
 
-            if newValue == .create {
-                tab = .dashboard
-                showCreateSheet = true
-            }
+            resetPath(for: newValue)
+            lastSelectedTab = newValue
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateMenuSheet()
@@ -170,6 +162,32 @@ struct AppTabView: View {
             if let requested = portalReturn.requestedEstimateID {
                 routeToEstimate(id: requested)
             }
+        }
+    }
+
+    private func tabForIndex(_ index: Int) -> AppTab? {
+        switch index {
+        case 0: return .dashboard
+        case 1: return .invoices
+        case 2: return .create
+        case 3: return .clients
+        case 4: return .more
+        default: return nil
+        }
+    }
+
+    private func resetPath(for tab: AppTab) {
+        switch tab {
+        case .dashboard:
+            dashboardPath = NavigationPath()
+        case .invoices:
+            invoicesPath = NavigationPath()
+        case .clients:
+            clientsPath = NavigationPath()
+        case .more:
+            morePath = NavigationPath()
+        case .create:
+            break
         }
     }
 
