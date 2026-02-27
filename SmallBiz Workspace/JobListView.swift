@@ -233,6 +233,11 @@ struct JobsListView: View {
             }
             .presentationDetents([.large])
         }
+
+        // Manual Test Steps:
+        // 1) Switch business and verify jobs + client names stay scoped with no stale rows.
+        // 2) Open/edit/close/reopen a job sheet rapidly and confirm correct selection.
+        // 3) Scroll long jobs list and verify smooth row rendering.
     }
 
     // MARK: - Row UI (Option A polish parity)

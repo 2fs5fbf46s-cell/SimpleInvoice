@@ -194,6 +194,11 @@ struct SavedItemsView: View {
             }
             .presentationDetents([.medium, .large])
         }
+
+        // Manual Test Steps:
+        // 1) Add item, cancel, add again, save, and verify no disappearing rows or duplicate saves.
+        // 2) Tap item to edit; sheet should open immediately with data on first open.
+        // 3) Switch business and verify inventory stays correctly scoped.
     }
 
     private var categoriesRow: some View {

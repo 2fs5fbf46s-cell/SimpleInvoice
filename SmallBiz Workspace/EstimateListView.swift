@@ -328,6 +328,11 @@ struct EstimateListView: View {
             refreshTask?.cancel()
             refreshTask = nil
         }
+
+        // Manual Test Steps:
+        // 1) Switch business during refresh and verify stale status responses do not overwrite current list.
+        // 2) Open estimate, close, reopen, and ensure sheet/navigation selection remains stable.
+        // 3) Scroll long estimate list and confirm smooth interactions.
     }
 
     // MARK: - Data (scoped + filtered)

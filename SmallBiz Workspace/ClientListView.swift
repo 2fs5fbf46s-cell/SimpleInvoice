@@ -260,6 +260,11 @@ struct ClientListView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+
+        // Manual Test Steps:
+        // 1) Switch business and confirm list + client stats remain correctly scoped.
+        // 2) Create, cancel, create, save and verify editor opens with populated data immediately.
+        // 3) Scroll large client list to validate lightweight row rendering.
     }
 
     // MARK: - Row UI (Option A parity)

@@ -48,6 +48,42 @@ struct ClientSummaryView: View {
     @State private var notice: String? = nil
     @State private var errorMessage: String? = nil
 
+    init(client: Client) {
+        self.client = client
+        let businessID = client.businessID
+        let clientID = client.id
+        _invoices = Query(
+            filter: #Predicate<Invoice> { invoice in
+                invoice.businessID == businessID
+            },
+            sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+        )
+        _contracts = Query(
+            filter: #Predicate<Contract> { contract in
+                contract.businessID == businessID
+            },
+            sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)]
+        )
+        _jobs = Query(
+            filter: #Predicate<Job> { job in
+                job.businessID == businessID
+            },
+            sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+        )
+        _allAttachments = Query(
+            filter: #Predicate<ClientAttachment> { attachment in
+                attachment.clientKey == clientID.uuidString
+            },
+            sort: [SortDescriptor(\ClientAttachment.createdAt, order: .reverse)]
+        )
+        _profiles = Query(
+            filter: #Predicate<BusinessProfile> { profile in
+                profile.businessID == businessID
+            },
+            sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]
+        )
+    }
+
     private var linkedInvoices: [Invoice] {
         invoices.filter { $0.client?.id == client.id }
     }
@@ -421,6 +457,11 @@ struct ClientSummaryView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+
+        // Manual Test Steps:
+        // 1) Tap Create Invoice, cancel, create again, then save and verify numbering has no cancel gaps.
+        // 2) Open invoice/contract/job sheets, close, and reopen rapidly; selection should stay correct.
+        // 3) Switch business, open another client summary, and verify only that business data appears.
     }
 
     private var activityRows: [(title: String, detail: String)] {

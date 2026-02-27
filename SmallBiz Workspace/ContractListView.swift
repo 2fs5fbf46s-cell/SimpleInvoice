@@ -9,15 +9,42 @@ import SwiftData
 struct ContractsListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
 
     @Query(sort: \Contract.createdAt, order: .reverse)
     private var contracts: [Contract]
+    @Query private var clients: [Client]
 
     @State private var searchText: String = ""
     @State private var filter: ContractFilter = .all
     @State private var blockedDeleteMessage: String? = nil
     @State private var selectedContract: Contract? = nil
     @State private var showCreateContract = false
+
+    init(businessID: UUID? = nil) {
+        self.businessID = businessID
+        if let businessID {
+            _contracts = Query(
+                filter: #Predicate<Contract> { contract in
+                    contract.businessID == businessID
+                },
+                sort: [SortDescriptor(\Contract.createdAt, order: .reverse)]
+            )
+            _clients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == businessID
+                },
+                sort: [SortDescriptor(\Client.name, order: .forward)]
+            )
+        } else {
+            _contracts = Query(sort: [SortDescriptor(\Contract.createdAt, order: .reverse)])
+            _clients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
+        }
+    }
+
+    private var effectiveBusinessID: UUID? {
+        businessID ?? activeBiz.activeBusinessID
+    }
 
     private enum ContractFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -32,8 +59,12 @@ struct ContractsListView: View {
     // MARK: - Scoping
 
     private var scopedContracts: [Contract] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = effectiveBusinessID else { return [] }
         return contracts.filter { $0.businessID == bizID }
+    }
+
+    private var clientNameByID: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.name) })
     }
 
     // MARK: - Client resolution (Job uses clientID, not relationship)
@@ -44,8 +75,10 @@ struct ContractsListView: View {
         if let name = contract.estimate?.client?.name, !name.isEmpty { return name }
 
         if let job = contract.job {
-            let allClients = (try? modelContext.fetch(FetchDescriptor<Client>())) ?? []
-            return allClients.first(where: { $0.id == job.clientID })?.name ?? "No Client"
+            if let id = job.clientID, let name = clientNameByID[id], !name.isEmpty {
+                return name
+            }
+            return "No Client"
         }
 
         return "No Client"
@@ -133,7 +166,7 @@ struct ContractsListView: View {
                     }
                 }
 
-                if activeBiz.activeBusinessID == nil {
+                if effectiveBusinessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
@@ -192,6 +225,11 @@ struct ContractsListView: View {
         } message: {
             Text(blockedDeleteMessage ?? "")
         }
+
+        // Manual Test Steps:
+        // 1) Switch business and confirm contracts list shows only scoped data.
+        // 2) Open contract summary, close, reopen quickly; selection should remain correct.
+        // 3) Scroll long list and verify row interactions stay smooth.
     }
 
     // MARK: - Row UI (Option A parity)
