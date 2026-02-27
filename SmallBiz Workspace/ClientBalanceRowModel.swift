@@ -1,6 +1,6 @@
 import Foundation
 
-enum OutstandingMode {
+enum OutstandingMode: Hashable {
     case outstandingAll
     case overdueOnly
 
@@ -16,6 +16,12 @@ struct ClientBalanceRowModel: Identifiable {
     let invoiceCount: Int
 
     var id: UUID { clientID }
+}
+
+struct OutstandingClientRoute: Hashable {
+    let businessID: UUID
+    let clientID: UUID
+    let mode: OutstandingMode
 }
 
 struct OutstandingInvoiceRowModel: Identifiable {
