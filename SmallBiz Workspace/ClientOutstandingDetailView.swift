@@ -9,14 +9,6 @@ private struct ClientOutstandingInvoiceRow: Identifiable {
     let amountCents: Int
 }
 
-private struct ClientOutstandingInvoiceSnapshot: Sendable {
-    let id: UUID
-    let invoiceNumber: String
-    let dueDate: Date
-    let remainingDueCents: Int
-    let clientName: String
-}
-
 struct ClientOutstandingDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -27,7 +19,11 @@ struct ClientOutstandingDetailView: View {
     @Query private var businesses: [Business]
 
     @State private var invoiceRows: [ClientOutstandingInvoiceRow] = []
-    @State private var invoicesByID: [UUID: Invoice] = [:]
+    private struct SelectedInvoiceRoute: Identifiable, Hashable {
+        let id: UUID
+    }
+    @State private var selectedInvoice: SelectedInvoiceRoute? = nil
+    @State private var invoiceDestinationCache: [UUID: Invoice] = [:]
     @State private var isLoading = true
     @State private var loadError: String? = nil
     @State private var loadGeneration = UUID()
@@ -57,11 +53,6 @@ struct ClientOutstandingDetailView: View {
 
     private var totalCents: Int {
         invoiceRows.reduce(0) { $0 + $1.amountCents }
-    }
-
-    private struct ClientOutstandingLoadResult: Sendable {
-        let snapshots: [ClientOutstandingInvoiceSnapshot]
-        let fetchCount: Int
     }
 
     var body: some View {
@@ -97,6 +88,17 @@ struct ClientOutstandingDetailView: View {
         }
         .task(id: loadKey) {
             await loadInvoices()
+        }
+        .navigationDestination(item: $selectedInvoice) { selected in
+            if let invoice = invoiceDestinationCache[selected.id] {
+                InvoiceOverviewView(invoice: invoice)
+            } else {
+                ContentUnavailableView(
+                    "Invoice Unavailable",
+                    systemImage: "doc",
+                    description: Text("Couldn’t load this invoice.")
+                )
+            }
         }
     }
 
@@ -189,16 +191,12 @@ struct ClientOutstandingDetailView: View {
                     .padding(.bottom, 8)
 
                 ForEach(Array(invoiceRows.enumerated()), id: \.element.id) { index, entry in
-                    if let invoice = invoicesByID[entry.id] {
-                        NavigationLink {
-                            InvoiceOverviewView(invoice: invoice)
-                        } label: {
-                            invoiceRow(entry)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
+                    Button {
+                        Task { await openInvoice(entry.id) }
+                    } label: {
                         invoiceRow(entry)
                     }
+                    .buttonStyle(.plain)
 
                     if index < invoiceRows.count - 1 {
                         Divider().opacity(0.35)
@@ -244,7 +242,8 @@ struct ClientOutstandingDetailView: View {
         loadGeneration = generation
         isLoading = true
         loadError = nil
-        invoicesByID = [:]
+        selectedInvoice = nil
+        invoiceDestinationCache = [:]
 
         let startedAt = Date()
         #if DEBUG
@@ -254,69 +253,45 @@ struct ClientOutstandingDetailView: View {
         do {
             let now = Date()
             let calendar = Calendar.autoupdatingCurrent
-            let overdueOnly = (mode == .overdueOnly)
             let fetchStart = Date()
-            var descriptor = FetchDescriptor<Invoice>(
-                predicate: #Predicate<Invoice> { inv in
-                    inv.businessID == businessID && inv.isPaid == false
-                },
-                sortBy: [SortDescriptor(\Invoice.dueDate, order: .forward)]
+            let dataActor = InsightsDataActor(modelContainer: modelContext.container)
+            let snapshots = try await dataActor.fetchClientUnpaidInvoices(
+                businessID: businessID,
+                clientID: clientID,
+                mode: mode
             )
-            descriptor.fetchLimit = 5000
-            let fetched = try modelContext.fetch(descriptor)
-
-            let clientIDs = Set([clientID])
-            let filtered = fetched.filter { invoice in
-                let rowClientID = invoice.clientID ?? invoice.client?.id
-                guard let rowClientID, clientIDs.contains(rowClientID) else { return false }
-                guard invoice.documentType != "estimate" else { return false }
-                return !overdueOnly || invoice.dueDate < now
-            }
-
-            let clientSnapshots = filtered.map { invoice in
-                ClientOutstandingInvoiceSnapshot(
-                    id: invoice.id,
-                    invoiceNumber: invoice.invoiceNumber,
-                    dueDate: invoice.dueDate,
-                    remainingDueCents: max(0, invoice.remainingDueCents),
-                    clientName: invoice.client?.name ?? "Unknown Client"
-                )
-            }
-            let result = ClientOutstandingLoadResult(snapshots: clientSnapshots, fetchCount: filtered.count)
             let fetchMs = Int(Date().timeIntervalSince(fetchStart) * 1000)
 
             guard loadGeneration == generation else { return }
 
-            let snapshots = result.snapshots
             let transformStart = Date()
             let rowModels: [ClientOutstandingInvoiceRow] = await Task.detached(priority: .userInitiated) {
                 snapshots.map { snap in
-                    let due = snap.dueDate.formatted(date: .abbreviated, time: .omitted)
-                    let isOverdue = snap.dueDate < now
-                    let overdueDays: Int? = isOverdue
-                        ? max(1, calendar.dateComponents([.day], from: snap.dueDate, to: now).day ?? 1)
-                        : nil
-                    let number = snap.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let isOverdue = snap.dueDate.map { $0 < now } ?? false
                     let dueText: String
-                    if let overdueDays {
-                        dueText = "Due \(due) • Overdue \(overdueDays) day\(overdueDays == 1 ? "" : "s")"
+                    if let dueDate = snap.dueDate {
+                        let due = dueDate.formatted(date: .abbreviated, time: .omitted)
+                        if isOverdue {
+                            let overdueDays = max(1, calendar.dateComponents([.day], from: dueDate, to: now).day ?? 1)
+                            dueText = "Due \(due) • Overdue \(overdueDays) day\(overdueDays == 1 ? "" : "s")"
+                        } else {
+                            dueText = "Due \(due)"
+                        }
                     } else {
-                        dueText = "Due \(due)"
+                        dueText = "No due date"
                     }
                     return ClientOutstandingInvoiceRow(
-                        id: snap.id,
-                        title: number.isEmpty ? "Invoice" : "Invoice \(number)",
+                        id: snap.invoiceID,
+                        title: "Invoice",
                         statusText: isOverdue ? "OVERDUE" : "UNPAID",
                         dueText: dueText,
-                        amountCents: snap.remainingDueCents
+                        amountCents: snap.amountCents
                     )
                 }
             }.value
             let transformMs = Int(Date().timeIntervalSince(transformStart) * 1000)
 
             guard loadGeneration == generation else { return }
-
-            invoicesByID = Dictionary(uniqueKeysWithValues: filtered.map { ($0.id, $0) })
 
             let nameCandidate = snapshots.first?.clientName ?? "Unknown Client"
             let trimmedName = nameCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -327,12 +302,11 @@ struct ClientOutstandingDetailView: View {
 
             #if DEBUG
             let totalMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[ClientOutstandingDetail] fetchMs=\(fetchMs) transformMs=\(transformMs) totalMs=\(totalMs) fetched=\(result.fetchCount) shown=\(rowModels.count)")
+            print("[ClientOutstandingDetail] fetchMs=\(fetchMs) transformMs=\(transformMs) totalMs=\(totalMs) fetched=\(snapshots.count) shown=\(rowModels.count)")
             #endif
         } catch {
             guard loadGeneration == generation else { return }
             invoiceRows = []
-            invoicesByID = [:]
             isLoading = false
             loadError = error.localizedDescription
 
@@ -341,5 +315,29 @@ struct ClientOutstandingDetailView: View {
             print("[ClientOutstandingDetail] load failed loadMs=\(ms) error=\(error)")
             #endif
         }
+    }
+
+    @MainActor
+    private func openInvoice(_ invoiceID: UUID) async {
+        do {
+            guard let invoice = try fetchInvoice(by: invoiceID) else { return }
+            invoiceDestinationCache[invoice.id] = invoice
+            selectedInvoice = SelectedInvoiceRoute(id: invoice.id)
+        } catch {
+            #if DEBUG
+            print("[ClientOutstandingDetail] invoice fetch failed id=\(invoiceID.uuidString) error=\(error)")
+            #endif
+        }
+    }
+
+    @MainActor
+    private func fetchInvoice(by invoiceID: UUID) throws -> Invoice? {
+        var descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate<Invoice> { inv in
+                inv.id == invoiceID
+            }
+        )
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
     }
 }
