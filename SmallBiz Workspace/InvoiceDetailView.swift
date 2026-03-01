@@ -216,6 +216,10 @@ struct InvoiceDetailView: View {
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
             Task { await indexInvoiceIfPossible() }
         }
+        .onChange(of: invoice.client?.id) { _, newClientID in
+            invoice.clientID = newClientID
+            try? modelContext.save()
+        }
         
 
         // ✅ Open Job Workspace Folder directly

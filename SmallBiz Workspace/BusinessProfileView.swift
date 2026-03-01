@@ -521,47 +521,16 @@ struct BusinessProfileView: View {
                         StatusPill(text: notificationStatusLabel, color: notificationStatusColor, systemImage: "bell.badge")
                     }
 
-                    Button("Enable Notifications") {
-                        Task { await enableNotificationsTapped() }
-                    }
-                    .buttonStyle(.borderedProminent)
+                    Text("Notification permission is handled during onboarding. Update access in Settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                    Button {
-                        Task { await enablePushNotificationsTapped() }
-                    } label: {
-                        Label("Register for Push", systemImage: "bolt.horizontal.circle")
-                    }
-                    .buttonStyle(.bordered)
-
-                    #if DEBUG
-                    DisclosureGroup("Debug tools", isExpanded: $showNotificationAdvanced) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Button {
-                                Task { await testLocalNotificationTapped() }
-                            } label: {
-                                Label("Test Local Notification", systemImage: "bell")
-                            }
-                            .buttonStyle(.bordered)
-
-                            Button {
-                                Task { await sendTestPushTapped() }
-                            } label: {
-                                if isSendingTestPush {
-                                    HStack {
-                                        ProgressView()
-                                        Text("Sending…")
-                                    }
-                                } else {
-                                    Label("Send Test Push", systemImage: "paperplane")
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(isSendingTestPush)
+                    if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                        Link(destination: settingsURL) {
+                            Label("Manage in Settings", systemImage: "gearshape")
                         }
-                        .padding(.top, 8)
+                        .buttonStyle(.bordered)
                     }
-                    .tint(.secondary)
-                    #endif
 
                     if let notificationMessage, !notificationMessage.isEmpty {
                         Text(notificationMessage)

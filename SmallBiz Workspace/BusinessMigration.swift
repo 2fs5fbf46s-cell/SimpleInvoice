@@ -11,7 +11,7 @@ import SwiftData
 enum BusinessMigration {
 
     /// Increment this if you ever add another migration
-    static let currentVersion = 13
+    static let currentVersion = 14
 
     static func runIfNeeded(
         modelContext: ModelContext,
@@ -83,6 +83,10 @@ enum BusinessMigration {
 
         let allInvoices = try modelContext.fetch(FetchDescriptor<Invoice>())
         for invoice in allInvoices {
+            if invoice.clientID == nil, let client = invoice.client {
+                invoice.clientID = client.id
+            }
+
             if let overrideRaw = invoice.invoiceTemplateKeyOverride?.trimmingCharacters(in: .whitespacesAndNewlines),
                !overrideRaw.isEmpty,
                InvoiceTemplateKey.from(overrideRaw) == nil {

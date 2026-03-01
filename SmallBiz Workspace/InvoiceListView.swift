@@ -6,6 +6,16 @@
 import SwiftUI
 import SwiftData
 
+enum InvoiceListFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case draft = "Draft"
+    case unpaid = "Unpaid"
+    case paid = "Paid"
+    case overdue = "Overdue"
+
+    var id: String { rawValue }
+}
+
 struct InvoiceListView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
@@ -24,21 +34,12 @@ struct InvoiceListView: View {
     @State private var selectedInvoice: Invoice? = nil
 
     // MARK: - Filters
-    private enum Filter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case draft = "Draft"
-        case sent = "Sent"
-        case paid = "Paid"
-        case overdue = "Overdue"
-
-        var id: String { rawValue }
-    }
-
-    @State private var filter: Filter = .all
+    @State private var filter: InvoiceListFilter
     @State private var searchText: String = ""
 
-    init(businessID: UUID? = nil) {
+    init(businessID: UUID? = nil, initialFilter: InvoiceListFilter? = nil) {
         self.businessID = businessID
+        _filter = State(initialValue: initialFilter ?? .all)
         if let businessID {
             _invoices = Query(
                 filter: #Predicate<Invoice> { invoice in
@@ -86,7 +87,7 @@ struct InvoiceListView: View {
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(Filter.allCases) { f in
+                            ForEach(InvoiceListFilter.allCases) { f in
                                 Button {
                                     filter = f
                                 } label: {
@@ -240,8 +241,8 @@ struct InvoiceListView: View {
             base = nonEstimates
         case .draft:
             base = nonEstimates.filter { !($0.isPaid) && ($0.items ?? []).isEmpty }
-        case .sent:
-            base = nonEstimates.filter { !($0.isPaid) && !($0.dueDate < Date()) && !($0.items ?? []).isEmpty }
+        case .unpaid:
+            base = nonEstimates.filter { !($0.isPaid) && !($0.items ?? []).isEmpty }
         case .paid:
             base = nonEstimates.filter { $0.isPaid }
         case .overdue:
