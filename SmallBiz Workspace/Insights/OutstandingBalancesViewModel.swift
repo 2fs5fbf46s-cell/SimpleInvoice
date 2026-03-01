@@ -2,11 +2,6 @@ import Foundation
 import SwiftData
 import Combine
 
-enum OutstandingMode {
-    case outstandingAll
-    case overdueOnly
-}
-
 struct InvoiceSnapshot: Sendable {
     let invoiceID: UUID
     let clientID: UUID?
@@ -17,9 +12,9 @@ struct InvoiceSnapshot: Sendable {
     let isOverdue: Bool
 }
 
-struct ClientBalanceRowModel: Identifiable, Hashable, Sendable {
-    var id: UUID { clientID ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")! }
-    let clientID: UUID?
+struct ClientBalanceRowModel: Identifiable, Sendable {
+    var id: UUID { clientID }
+    let clientID: UUID
     let clientName: String
     let invoiceCount: Int
     let totalCents: Int
@@ -40,23 +35,28 @@ final class OutstandingBalancesViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         rows = []
+        let startedAt = Date()
+
+        let modeKey = mode
+        let modeLabel = modeKey == .overdueOnly ? "overdue" : "outstanding"
+
+        #if DEBUG
+        print("[OutstandingBalances] load start business=\(businessID.uuidString) mode=\(modeLabel)")
+        #endif
 
         do {
             var fd = FetchDescriptor<Invoice>(
                 predicate: #Predicate<Invoice> { inv in
-                    inv.businessID == businessID && inv.isPaid == false
+                    inv.businessID == businessID &&
+                    inv.isPaid == false &&
+                    inv.documentType != "estimate"
                 },
                 sortBy: [SortDescriptor(\Invoice.dueDate, order: .forward)]
             )
             fd.fetchLimit = 5000
-
             let invoices = try modelContext.fetch(fd)
-
             let now = Date()
-            let snaps: [InvoiceSnapshot] = invoices.compactMap { inv in
-                let type = inv.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if type == "estimate" { return nil }
-
+            let snaps: [InvoiceSnapshot] = invoices.map { inv in
                 let due = inv.dueDate
                 let status: String = {
                     if inv.isPaid { return "PAID" }
@@ -64,10 +64,9 @@ final class OutstandingBalancesViewModel: ObservableObject {
                     return isDraft ? "DRAFT" : "UNPAID"
                 }()
                 let overdue = (due < now && (status == "UNPAID" || status == "SENT"))
-
                 return InvoiceSnapshot(
                     invoiceID: inv.id,
-                    clientID: inv.client?.id,
+                    clientID: inv.clientID,
                     clientName: (inv.client?.name ?? "Unknown Client"),
                     amountCents: max(0, inv.remainingDueCents),
                     dueDate: due,
@@ -77,12 +76,13 @@ final class OutstandingBalancesViewModel: ObservableObject {
             }
 
             let computed: [ClientBalanceRowModel] = await Task.detached(priority: .userInitiated) {
-                var dict: [UUID?: (name: String, count: Int, total: Int, ids: [UUID])] = [:]
+                let unknownClientID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+                var dict: [UUID: (name: String, count: Int, total: Int, ids: [UUID])] = [:]
 
                 for s in snaps {
-                    if mode == .overdueOnly && !s.isOverdue { continue }
+                    if modeKey == .overdueOnly, !s.isOverdue { continue }
 
-                    let key = s.clientID
+                    let key = s.clientID ?? unknownClientID
                     if dict[key] == nil {
                         dict[key] = (s.clientName, 0, 0, [])
                     }
@@ -91,7 +91,7 @@ final class OutstandingBalancesViewModel: ObservableObject {
                     dict[key]!.ids.append(s.invoiceID)
                 }
 
-                let rows = dict.map { (clientID, agg) in
+                return dict.map { (clientID, agg) in
                     ClientBalanceRowModel(
                         clientID: clientID,
                         clientName: agg.name,
@@ -100,18 +100,24 @@ final class OutstandingBalancesViewModel: ObservableObject {
                         invoiceIDs: agg.ids
                     )
                 }.sorted { $0.totalCents > $1.totalCents }
-
-                return rows
             }.value
 
             guard self.loadToken == token else { return }
 
             self.rows = computed
             self.isLoading = false
+            #if DEBUG
+            let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            print("[OutstandingBalances] load done rows=\(computed.count) loadMs=\(loadMs)")
+            #endif
         } catch {
             guard self.loadToken == token else { return }
             self.isLoading = false
             self.errorMessage = error.localizedDescription
+            #if DEBUG
+            let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            print("[OutstandingBalances] load failed loadMs=\(loadMs) error=\(error)")
+            #endif
         }
     }
 }

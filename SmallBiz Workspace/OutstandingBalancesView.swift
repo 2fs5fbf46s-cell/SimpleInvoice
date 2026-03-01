@@ -7,7 +7,12 @@ struct OutstandingBalancesView: View {
     let businessID: UUID
     let mode: OutstandingMode
 
+    private struct SelectedClient: Identifiable, Equatable, Hashable {
+        let id: UUID
+    }
+
     @StateObject private var vm = OutstandingBalancesViewModel()
+    @State private var selectedClient: SelectedClient? = nil
 
     @Query private var businesses: [Business]
 
@@ -67,13 +72,10 @@ struct OutstandingBalancesView: View {
                                 .font(.headline)
                                 .padding(.bottom, 8)
 
-                            ForEach(Array(vm.rows.enumerated()), id: \.element) { index, row in
-                                NavigationLink {
-                                    ClientOutstandingDetailView(
-                                        businessID: businessID,
-                                        row: row,
-                                        mode: mode
-                                    )
+                            ForEach(Array(vm.rows.enumerated()), id: \.element.clientID) { index, row in
+                                Button {
+                                    Haptics.lightTap()
+                                    selectedClient = SelectedClient(id: row.clientID)
                                 } label: {
                                     balanceRow(
                                         name: row.clientName,
@@ -97,7 +99,14 @@ struct OutstandingBalancesView: View {
         }
         .navigationTitle(mode == .overdueOnly ? "Overdue Balances" : "Outstanding Balances")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: businessID) {
+        .navigationDestination(item: $selectedClient) { sel in
+            ClientOutstandingDetailView(
+                businessID: businessID,
+                clientID: sel.id,
+                mode: mode
+            )
+        }
+        .task(id: "\(businessID.uuidString)-\(mode == .overdueOnly ? "overdue" : "outstanding")") {
             await vm.load(modelContext: modelContext, businessID: businessID, mode: mode)
         }
     }
