@@ -302,6 +302,7 @@ func createOrReuseFinalInvoiceForBooking(
         var updated = false
         if existing.client?.id != client.id {
             existing.client = client
+            existing.clientID = client.id
             updated = true
         }
         if existing.job?.id != job.id {

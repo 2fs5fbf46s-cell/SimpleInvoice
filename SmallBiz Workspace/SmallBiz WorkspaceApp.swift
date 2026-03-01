@@ -42,7 +42,7 @@ struct SmallBizWorkspaceApp: App {
                     return
                 }
 
-                if activeBiz.activeBusinessID == nil {
+                if activeBiz.activeBusinessID == nil, Self.hasBusinesses(context: context) {
                     do {
                         try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
                     } catch {
@@ -69,6 +69,13 @@ struct SmallBizWorkspaceApp: App {
             }
             .task {
                 let context = Self.container.mainContext
+                if activeBiz.activeBusinessID == nil, Self.hasBusinesses(context: context) {
+                    do {
+                        try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
+                    } catch {
+                        print("⚠️ Initial active business restore failed:", error)
+                    }
+                }
                 await EstimatePortalSyncService.sync(context: context)
                 BusinessSitePublishService.shared.startMonitoring(context: context)
                 await BusinessSitePublishService.shared.syncQueuedSites(context: context)
@@ -135,4 +142,11 @@ struct SmallBizWorkspaceApp: App {
             fatalError("❌ Failed to create ModelContainer: \(error)")
         }
     }()
+
+    @MainActor
+    private static func hasBusinesses(context: ModelContext) -> Bool {
+        var descriptor = FetchDescriptor<Business>()
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor).isEmpty) == false
+    }
 }

@@ -212,6 +212,7 @@ final class Client {
 final class Invoice {
     var id: UUID = Foundation.UUID()
     var businessID: UUID = UUID()
+    var clientID: UUID? = nil
 
     var businessSnapshotData: Data? = nil
 
@@ -325,10 +326,15 @@ final class Invoice {
         self.portalLastUploadedBlobUrl = portalLastUploadedBlobUrl
         self.portalLastUploadedHash = portalLastUploadedHash
         self.client = client
+        self.clientID = client?.id
         self.job = job
 
         self.items = items
         for item in items { item.invoice = self }
+    }
+
+    func syncClientIDFromRelationship() {
+        clientID = client?.id
     }
 
     @MainActor
