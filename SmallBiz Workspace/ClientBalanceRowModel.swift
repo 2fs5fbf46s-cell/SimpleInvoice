@@ -1,5 +1,14 @@
 import Foundation
 
+struct ClientBalanceRowModel: Identifiable, Sendable {
+    let clientID: UUID
+    let clientName: String
+    let invoiceCount: Int
+    let totalCents: Int
+
+    var id: UUID { clientID }
+}
+
 enum InsightsCurrency {
     static func normalizedCode(_ raw: String?) -> String? {
         guard let raw else { return nil }

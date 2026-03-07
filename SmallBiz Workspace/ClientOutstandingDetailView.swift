@@ -1,13 +1,21 @@
 import SwiftUI
 import SwiftData
 
-private struct ClientOutstandingInvoiceRow: Identifiable {
+private struct SelectedInvoice: Identifiable, Hashable {
     let id: UUID
-    let invoice: Invoice
+}
+
+private struct ClientOutstandingInvoiceRow: Identifiable, Sendable {
+    let id: UUID
     let title: String
     let statusText: String
     let dueText: String
     let amountCents: Int
+}
+
+private struct ClientOutstandingLoadResult: Sendable {
+    let rows: [ClientOutstandingInvoiceRow]
+    let totalCents: Int
 }
 
 struct ClientOutstandingDetailView: View {
@@ -17,13 +25,15 @@ struct ClientOutstandingDetailView: View {
     let clientID: UUID
     let mode: OutstandingMode
     let currencyCode: String
+    let clientName: String
 
     @State private var invoiceRows: [ClientOutstandingInvoiceRow] = []
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var loadGeneration = UUID()
-    @State private var clientName: String = "Unknown Client"
+    @State private var displayClientName: String = "Unknown Client"
     @State private var totalCents: Int = 0
+    @State private var selectedInvoice: SelectedInvoice?
 
     private var loadKey: String {
         "\(businessID.uuidString)-\(clientID.uuidString)-\(mode == .overdueOnly ? "overdue" : "outstanding")"
@@ -58,12 +68,15 @@ struct ClientOutstandingDetailView: View {
         .task(id: loadKey) {
             await loadInvoices()
         }
+        .navigationDestination(item: $selectedInvoice) { sel in
+            InvoiceOverviewRouteView(invoiceID: sel.id)
+        }
     }
 
     private var summaryCard: some View {
         SBWCardContainer {
             VStack(alignment: .leading, spacing: 8) {
-                Text(clientName)
+                Text(displayClientName)
                     .font(.headline)
 
                 HStack {
@@ -149,8 +162,8 @@ struct ClientOutstandingDetailView: View {
                     .padding(.bottom, 8)
 
                 ForEach(invoiceRows) { row in
-                    NavigationLink {
-                        InvoiceOverviewView(invoice: row.invoice)
+                    Button {
+                        selectedInvoice = SelectedInvoice(id: row.id)
                     } label: {
                         invoiceRow(row)
                     }
@@ -207,66 +220,91 @@ struct ClientOutstandingDetailView: View {
         #endif
 
         do {
-            let now = Date()
-            var fd: FetchDescriptor<Invoice>
-            if mode == .overdueOnly {
-                fd = FetchDescriptor<Invoice>(
-                    predicate: #Predicate<Invoice> { invoice in
-                        invoice.businessID == businessID &&
-                        invoice.clientID == clientID &&
-                        invoice.isPaid == false &&
-                        invoice.documentType != "estimate" &&
-                        invoice.dueDate < now
-                    }
-                )
-            } else {
-                fd = FetchDescriptor<Invoice>(
-                    predicate: #Predicate<Invoice> { invoice in
-                        invoice.businessID == businessID &&
-                        invoice.clientID == clientID &&
-                        invoice.isPaid == false &&
-                        invoice.documentType != "estimate"
-                    }
-                )
-            }
-            fd.fetchLimit = 500
+            let container = modelContext.container
+            let businessID = self.businessID
+            let clientID = self.clientID
+            let mode = self.mode
+            let resolvedName = clientName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let effectiveClientName = resolvedName.isEmpty ? "Unknown Client" : resolvedName
 
-            let invoices = try modelContext.fetch(fd)
+            let result: ClientOutstandingLoadResult = try await Task.detached(priority: .userInitiated) {
+                let bg = ModelContext(container)
+                let now = Date()
+                let calendar = Calendar(identifier: .gregorian)
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .none
 
-            guard loadGeneration == generation else { return }
-
-            let rows = invoices.map { invoice in
-                let isOverdue = invoice.dueDate < now
-                let dueText: String
-                let due = invoice.dueDate.formatted(date: .abbreviated, time: .omitted)
-                if isOverdue {
-                    let overdueDays = max(1, calendarDaysBetween(invoice.dueDate, and: now))
-                    dueText = "Due \(due) • Overdue \(overdueDays) day\(overdueDays == 1 ? "" : "s")"
+                var fd: FetchDescriptor<Invoice>
+                if mode == .overdueOnly {
+                    fd = FetchDescriptor<Invoice>(
+                        predicate: #Predicate<Invoice> { invoice in
+                            invoice.businessID == businessID &&
+                            invoice.clientID == clientID &&
+                            invoice.isPaid == false &&
+                            invoice.documentType != "estimate" &&
+                            invoice.dueDate < now
+                        }
+                    )
                 } else {
-                    dueText = "Due \(due)"
+                    fd = FetchDescriptor<Invoice>(
+                        predicate: #Predicate<Invoice> { invoice in
+                            invoice.businessID == businessID &&
+                            invoice.clientID == clientID &&
+                            invoice.isPaid == false &&
+                            invoice.documentType != "estimate"
+                        }
+                    )
+                }
+                fd.fetchLimit = 500
+
+                let invoices = try bg.fetch(fd)
+                var rows: [ClientOutstandingInvoiceRow] = []
+                rows.reserveCapacity(invoices.count)
+                var total = 0
+
+                for invoice in invoices {
+                    let amount = max(0, invoice.remainingDueCents)
+                    total += amount
+
+                    let isOverdue = invoice.dueDate < now
+                    let baseDueText = formatter.string(from: invoice.dueDate)
+                    let dueText: String
+                    if isOverdue {
+                        let overdueDays = max(
+                            1,
+                            calendar.dateComponents([.day], from: invoice.dueDate, to: now).day ?? 0
+                        )
+                        dueText = "Due \(baseDueText) • Overdue \(overdueDays) day\(overdueDays == 1 ? "" : "s")"
+                    } else {
+                        dueText = "Due \(baseDueText)"
+                    }
+
+                    let invoiceNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                    rows.append(
+                        ClientOutstandingInvoiceRow(
+                            id: invoice.id,
+                            title: invoiceNumber.isEmpty ? "Invoice" : invoiceNumber,
+                            statusText: isOverdue ? "OVERDUE" : "UNPAID",
+                            dueText: dueText,
+                            amountCents: amount
+                        )
+                    )
                 }
 
-                return ClientOutstandingInvoiceRow(
-                    id: invoice.id,
-                    invoice: invoice,
-                    title: invoice.invoiceNumber.isEmpty ? "Invoice" : invoice.invoiceNumber,
-                    statusText: isOverdue ? "OVERDUE" : "UNPAID",
-                    dueText: dueText,
-                    amountCents: max(0, invoice.remainingDueCents)
-                )
-            }
+                return ClientOutstandingLoadResult(rows: rows, totalCents: total)
+            }.value
 
             guard loadGeneration == generation else { return }
 
-            clientName = (invoices.first?.client?.name ?? "Unknown Client").trimmingCharacters(in: .whitespacesAndNewlines)
-            if clientName.isEmpty { clientName = "Unknown Client" }
-            totalCents = rows.reduce(0) { $0 + $1.amountCents }
-            invoiceRows = rows
+            displayClientName = effectiveClientName
+            invoiceRows = result.rows
+            totalCents = result.totalCents
             isLoading = false
 
             #if DEBUG
             let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[ClientOutstandingDetail] load done rows=\(rows.count) totalMs=\(ms)")
+            print("[ClientOutstandingDetail] load done rows=\(result.rows.count) totalMs=\(ms)")
             #endif
         } catch {
             guard loadGeneration == generation else { return }
@@ -281,9 +319,42 @@ struct ClientOutstandingDetailView: View {
             #endif
         }
     }
+}
 
-    private func calendarDaysBetween(_ from: Date, and to: Date) -> Int {
-        let calendar = Calendar.autoupdatingCurrent
-        return max(0, calendar.dateComponents([.day], from: from, to: to).day ?? 0)
+private struct InvoiceOverviewRouteView: View {
+    @Environment(\.modelContext) private var modelContext
+    let invoiceID: UUID
+
+    @State private var invoice: Invoice?
+    @State private var loadError: String?
+
+    var body: some View {
+        Group {
+            if let invoice {
+                InvoiceOverviewView(invoice: invoice)
+            } else if let loadError {
+                ContentUnavailableView(
+                    "Couldn’t Load Invoice",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(loadError)
+                )
+            } else {
+                ProgressView("Loading invoice...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+            }
+        }
+        .task(id: invoiceID) {
+            do {
+                let fd = FetchDescriptor<Invoice>(
+                    predicate: #Predicate<Invoice> { invoice in
+                        invoice.id == invoiceID
+                    }
+                )
+                invoice = try modelContext.fetch(fd).first
+            } catch {
+                loadError = error.localizedDescription
+            }
+        }
     }
 }

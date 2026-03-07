@@ -6,23 +6,13 @@ struct OutstandingBalancesView: View {
 
     let businessID: UUID
     let mode: OutstandingMode
-
-    @Query private var businesses: [Business]
+    let currencyCode: String
 
     @StateObject private var vm = OutstandingBalancesViewModel()
-
-    init(businessID: UUID, mode: OutstandingMode) {
+    init(businessID: UUID, mode: OutstandingMode, currencyCode: String) {
         self.businessID = businessID
         self.mode = mode
-        _businesses = Query(
-            filter: #Predicate<Business> { business in
-                business.id == businessID
-            }
-        )
-    }
-
-    private var currencyCode: String {
-        InsightsCurrency.normalizedCode(businesses.first?.currencyCode) ?? "USD"
+        self.currencyCode = currencyCode
     }
 
     var body: some View {
@@ -76,7 +66,8 @@ struct OutstandingBalancesView: View {
                                         businessID: businessID,
                                         clientID: row.clientID,
                                         mode: mode,
-                                        currencyCode: currencyCode
+                                        currencyCode: currencyCode,
+                                        clientName: row.clientName
                                     )
                                 } label: {
                                     balanceRow(

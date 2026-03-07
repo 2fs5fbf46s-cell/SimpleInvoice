@@ -1,6 +1,6 @@
 import Foundation
-import SwiftData
 import Combine
+import SwiftData
 
 @MainActor
 final class OutstandingBalancesViewModel: ObservableObject {
@@ -9,6 +9,7 @@ final class OutstandingBalancesViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
 
     private var loadToken = UUID()
+    private static let unknownClientID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
     func load(modelContext: ModelContext, businessID: UUID, mode: OutstandingMode) async {
         let token = UUID()
@@ -16,57 +17,68 @@ final class OutstandingBalancesViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         rows = []
+
         let startedAt = Date()
 
-        let modeKey = mode
-        let modeLabel = modeKey == .overdueOnly ? "overdue" : "outstanding"
-
         #if DEBUG
-        print("[OutstandingBalances] load start business=\(businessID.uuidString) mode=\(modeLabel)")
+        print("[OutstandingBalances] load start business=\(businessID.uuidString) mode=\(mode == .overdueOnly ? "overdue" : "outstanding")")
         #endif
 
         do {
-            let dataActor = InsightsDataActor(modelContainer: modelContext.container)
-            let snaps = try await dataActor.fetchUnpaidInvoiceSnapshots(businessID: businessID)
+            var fd = FetchDescriptor<Invoice>(
+                predicate: #Predicate<Invoice> { invoice in
+                    invoice.businessID == businessID &&
+                    invoice.isPaid == false &&
+                    invoice.documentType != "estimate"
+                }
+            )
+            fd.fetchLimit = 3000
+
+            let invoices = try modelContext.fetch(fd)
             let now = Date()
 
-            let computed: [ClientBalanceRowModel] = await Task.detached(priority: .userInitiated) {
-                var dict: [UUID: (name: String, count: Int, total: Int)] = [:]
-
-                for snap in snaps {
-                    if modeKey == .overdueOnly {
-                        guard let dueDate = snap.dueDate, dueDate < now else { continue }
-                    }
-
-                    if dict[snap.clientID] == nil {
-                        dict[snap.clientID] = (snap.clientName, 0, 0)
-                    }
-                    dict[snap.clientID]!.count += 1
-                    dict[snap.clientID]!.total += snap.amountCents
+            var grouped: [UUID: (name: String, count: Int, total: Int)] = [:]
+            for invoice in invoices {
+                if mode == .overdueOnly && !(invoice.dueDate < now) {
+                    continue
                 }
 
-                return dict.map { (clientID, agg) in
-                    ClientBalanceRowModel(
-                        clientID: clientID,
-                        clientName: agg.name,
-                        invoiceCount: agg.count,
-                        totalCents: agg.total
-                    )
-                }.sorted { $0.totalCents > $1.totalCents }
-            }.value
+                let clientID = invoice.clientID ?? Self.unknownClientID
+                let clientName = (invoice.client?.name ?? "Unknown Client")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let safeName = clientName.isEmpty ? "Unknown Client" : clientName
 
-            guard self.loadToken == token else { return }
+                if grouped[clientID] == nil {
+                    grouped[clientID] = (safeName, 0, 0)
+                }
 
-            self.rows = computed
-            self.isLoading = false
+                grouped[clientID]!.count += 1
+                grouped[clientID]!.total += max(0, invoice.remainingDueCents)
+            }
+
+            guard loadToken == token else { return }
+
+            let computed = grouped.map { (clientID, aggregate) in
+                ClientBalanceRowModel(
+                    clientID: clientID,
+                    clientName: aggregate.name,
+                    invoiceCount: aggregate.count,
+                    totalCents: aggregate.total
+                )
+            }.sorted { $0.totalCents > $1.totalCents }
+
+            rows = computed
+            isLoading = false
+
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             print("[OutstandingBalances] load done rows=\(computed.count) loadMs=\(loadMs)")
             #endif
         } catch {
-            guard self.loadToken == token else { return }
-            self.isLoading = false
-            self.errorMessage = error.localizedDescription
+            guard loadToken == token else { return }
+            isLoading = false
+            errorMessage = error.localizedDescription
+
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             print("[OutstandingBalances] load failed loadMs=\(loadMs) error=\(error)")
