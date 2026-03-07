@@ -7,14 +7,9 @@ struct OutstandingBalancesView: View {
     let businessID: UUID
     let mode: OutstandingMode
 
-    private struct SelectedClient: Identifiable, Equatable, Hashable {
-        let id: UUID
-    }
+    @Query private var businesses: [Business]
 
     @StateObject private var vm = OutstandingBalancesViewModel()
-    @State private var selectedClient: SelectedClient? = nil
-
-    @Query private var businesses: [Business]
 
     init(businessID: UUID, mode: OutstandingMode) {
         self.businessID = businessID
@@ -59,11 +54,14 @@ struct OutstandingBalancesView: View {
             } else if vm.rows.isEmpty {
                 ContentUnavailableView(
                     mode == .overdueOnly ? "No Overdue Balances" : "No Outstanding Balances",
-                    systemImage: mode == .overdueOnly ? "calendar.badge.checkmark" : "checkmark.circle",
+                    systemImage: mode == .overdueOnly ? "calendar.badge.clock" : "checkmark.circle",
                     description: Text(mode == .overdueOnly
                         ? "No overdue invoices for this business right now."
                         : "All sent invoices are paid for this business.")
                 )
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 24)
             } else {
                 ScrollView {
                     SBWCardContainer {
@@ -72,10 +70,14 @@ struct OutstandingBalancesView: View {
                                 .font(.headline)
                                 .padding(.bottom, 8)
 
-                            ForEach(Array(vm.rows.enumerated()), id: \.element.clientID) { index, row in
-                                Button {
-                                    Haptics.lightTap()
-                                    selectedClient = SelectedClient(id: row.clientID)
+                            ForEach(vm.rows) { row in
+                                NavigationLink {
+                                    ClientOutstandingDetailView(
+                                        businessID: businessID,
+                                        clientID: row.clientID,
+                                        mode: mode,
+                                        currencyCode: currencyCode
+                                    )
                                 } label: {
                                     balanceRow(
                                         name: row.clientName,
@@ -85,7 +87,7 @@ struct OutstandingBalancesView: View {
                                 }
                                 .buttonStyle(.plain)
 
-                                if index < vm.rows.count - 1 {
+                                if row.id != vm.rows.last?.id {
                                     Divider().opacity(0.35)
                                 }
                             }
@@ -99,13 +101,6 @@ struct OutstandingBalancesView: View {
         }
         .navigationTitle(mode == .overdueOnly ? "Overdue Balances" : "Outstanding Balances")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $selectedClient) { sel in
-            ClientOutstandingDetailView(
-                businessID: businessID,
-                clientID: sel.id,
-                mode: mode
-            )
-        }
         .task(id: "\(businessID.uuidString)-\(mode == .overdueOnly ? "overdue" : "outstanding")") {
             await vm.load(modelContext: modelContext, businessID: businessID, mode: mode)
         }
@@ -114,7 +109,7 @@ struct OutstandingBalancesView: View {
     private func balanceRow(name: String, amount: String, countText: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown Client" : name)
+                Text(name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(countText)
