@@ -177,11 +177,6 @@ struct MoreView: View {
         }
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search"
-        )
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {

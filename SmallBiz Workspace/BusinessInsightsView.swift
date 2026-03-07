@@ -6,7 +6,6 @@ struct BusinessInsightsView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     private let businessID: UUID?
-
     @Query private var businesses: [Business]
 
     @State private var cashInWeekCents: Int = 0
@@ -17,14 +16,11 @@ struct BusinessInsightsView: View {
     @State private var sentUnpaidCount: Int = 0
     @State private var estimateCount: Int = 0
     @State private var isLoadingInsights = false
-    @State private var hasAnyInvoices = false
-    @State private var showAboutInsights = false
-    @State private var showCreateInvoice = false
+    @State private var hasAnyRecords = false
     @State private var loadGeneration = UUID()
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
-
         if let businessID {
             _businesses = Query(
                 filter: #Predicate<Business> { business in
@@ -45,11 +41,8 @@ struct BusinessInsightsView: View {
         return businesses.first(where: { $0.id == bizID })
     }
 
-    private var displayCurrencyCode: String {
-        if let businessCode = InsightsCurrency.normalizedCode(currentBusiness?.currencyCode) {
-            return businessCode
-        }
-        return "USD"
+    private var currencyCode: String {
+        InsightsCurrency.normalizedCode(currentBusiness?.currencyCode) ?? "USD"
     }
 
     var body: some View {
@@ -66,8 +59,10 @@ struct BusinessInsightsView: View {
             } else if let bizID = effectiveBusinessID {
                 ScrollView {
                     VStack(spacing: 12) {
-                        if !isLoadingInsights && !hasAnyInvoices {
-                            emptyInsightsCard(businessID: bizID)
+                        if isLoadingInsights {
+                            loadingCard
+                        } else if !hasAnyRecords {
+                            emptyInsightsCard
                         } else {
                             cashInCard
                             outstandingCard(businessID: bizID)
@@ -82,80 +77,53 @@ struct BusinessInsightsView: View {
         }
         .navigationTitle("Business Insights")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showAboutInsights = true
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                }
-                .accessibilityLabel("About Insights")
-            }
-        }
-        .sheet(isPresented: $showAboutInsights) {
-            AboutInsightsSheet()
-                .presentationDetents([.medium])
-        }
-        .sheet(isPresented: $showCreateInvoice) {
-            NewInvoiceView(businessID: effectiveBusinessID)
-        }
         .task(id: effectiveBusinessID?.uuidString ?? "none") {
             guard let bizID = effectiveBusinessID else {
-                resetInsightsState()
+                resetState()
                 return
             }
-            await loadInsights(businessID: bizID)
+            await loadInsights(for: bizID)
         }
     }
 
-    private func emptyInsightsCard(businessID: UUID) -> some View {
+    private var loadingCard: some View {
         SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("No insights yet")
-                    .font(.headline)
-
-                Text("Create your first invoice to start tracking revenue and outstanding balances.")
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Loading insights...")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-
-                Button {
-                    Haptics.lightTap()
-                    showCreateInvoice = true
-                } label: {
-                    Label("Create Invoice", systemImage: "doc.badge.plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
             }
+        }
+    }
+
+    private var emptyInsightsCard: some View {
+        SBWCardContainer {
+            ContentUnavailableView(
+                "No insights yet",
+                systemImage: "chart.bar.xaxis",
+                description: Text("Create your first invoice to start tracking revenue and outstanding balances.")
+            )
         }
     }
 
     private var cashInCard: some View {
         SBWCardContainer {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Cash In")
-                        .font(.headline)
-                    Spacer()
-                    if isLoadingInsights {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
+                Text("Cash In")
+                    .font(.headline)
 
                 valueRow(
                     label: "Paid this week",
-                    value: currencyOrPlaceholder(cashInWeekCents),
-                    isLoading: isLoadingInsights
+                    value: currencyString(from: cashInWeekCents)
                 )
 
                 Divider().opacity(0.35)
 
                 valueRow(
                     label: "Paid this month",
-                    value: currencyOrPlaceholder(cashInMonthCents),
-                    isLoading: isLoadingInsights
+                    value: currencyString(from: cashInMonthCents)
                 )
             }
         }
@@ -170,13 +138,13 @@ struct BusinessInsightsView: View {
                 NavigationLink {
                     OutstandingBalancesView(
                         businessID: businessID,
-                        mode: .outstandingAll
+                        mode: .outstandingAll,
+                        currencyCode: currencyCode
                     )
                 } label: {
                     navigationValueRow(
                         label: "Outstanding total",
-                        value: currencyOrPlaceholder(outstandingTotalCents),
-                        isLoading: isLoadingInsights
+                        value: currencyString(from: outstandingTotalCents)
                     )
                 }
                 .buttonStyle(.plain)
@@ -186,13 +154,13 @@ struct BusinessInsightsView: View {
                 NavigationLink {
                     OutstandingBalancesView(
                         businessID: businessID,
-                        mode: .overdueOnly
+                        mode: .overdueOnly,
+                        currencyCode: currencyCode
                     )
                 } label: {
                     navigationValueRow(
                         label: "Overdue total",
-                        value: currencyOrPlaceholder(overdueTotalCents),
-                        isLoading: isLoadingInsights
+                        value: currencyString(from: overdueTotalCents)
                     )
                 }
                 .buttonStyle(.plain)
@@ -206,41 +174,31 @@ struct BusinessInsightsView: View {
                 Text("Pipeline")
                     .font(.headline)
 
-                valueRow(label: "Draft invoices", value: countOrPlaceholder(draftCount), isLoading: isLoadingInsights)
-
+                valueRow(label: "Draft count", value: "\(draftCount)")
                 Divider().opacity(0.35)
-
-                valueRow(label: "Sent/unpaid invoices", value: countOrPlaceholder(sentUnpaidCount), isLoading: isLoadingInsights)
-
+                valueRow(label: "Sent/unpaid count", value: "\(sentUnpaidCount)")
                 Divider().opacity(0.35)
-
-                valueRow(label: "Estimates", value: countOrPlaceholder(estimateCount), isLoading: isLoadingInsights)
+                valueRow(label: "Estimates", value: "\(estimateCount)")
             }
         }
     }
 
-    private func valueRow(label: String, value: String, isLoading: Bool) -> some View {
-        HStack(spacing: 10) {
+    private func valueRow(label: String, value: String) -> some View {
+        HStack {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-
             Spacer(minLength: 8)
-
-            if isLoading {
-                InsightsSkeletonBar(width: 84)
-            } else {
-                Text(value)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(.primary)
-            }
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
         }
         .frame(minHeight: 28)
     }
 
-    private func navigationValueRow(label: String, value: String, isLoading: Bool) -> some View {
-        HStack(spacing: 10) {
+    private func navigationValueRow(label: String, value: String) -> some View {
+        HStack {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -248,37 +206,41 @@ struct BusinessInsightsView: View {
             Spacer(minLength: 8)
 
             HStack(spacing: 6) {
-                if isLoading {
-                    InsightsSkeletonBar(width: 84)
-                } else {
-                    Text(value)
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                }
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
         }
-        .contentShape(Rectangle())
-        .padding(.vertical, 6)
+        .frame(minHeight: 28)
     }
 
-    private func currencyOrPlaceholder(_ cents: Int) -> String {
-        if isLoadingInsights { return "—" }
-        return InsightsCurrency.string(cents: cents, code: displayCurrencyCode)
+    private func currencyString(from cents: Int) -> String {
+        InsightsCurrency.string(cents: cents, code: currencyCode)
     }
 
-    private func countOrPlaceholder(_ count: Int) -> String {
-        isLoadingInsights ? "—" : "\(count)"
+    private func resetState() {
+        cashInWeekCents = 0
+        cashInMonthCents = 0
+        outstandingTotalCents = 0
+        overdueTotalCents = 0
+        draftCount = 0
+        sentUnpaidCount = 0
+        estimateCount = 0
+        hasAnyRecords = false
+        isLoadingInsights = false
+        loadGeneration = UUID()
     }
 
     @MainActor
-    private func loadInsights(businessID: UUID) async {
-        let generation = UUID()
-        loadGeneration = generation
+    private func loadInsights(for businessID: UUID) async {
+        let token = UUID()
+        loadGeneration = token
         isLoadingInsights = true
+        hasAnyRecords = false
 
         let startedAt = Date()
         #if DEBUG
@@ -286,52 +248,39 @@ struct BusinessInsightsView: View {
         #endif
 
         do {
-            let descriptor = FetchDescriptor<Invoice>(
+            let now = Date()
+            var fd = FetchDescriptor<Invoice>(
                 predicate: #Predicate<Invoice> { invoice in
                     invoice.businessID == businessID
                 },
                 sortBy: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
             )
-            let fetchedInvoices = try modelContext.fetch(descriptor)
+            fd.fetchLimit = 3000
 
-            let now = Date()
-            let snapshots: [BusinessInsightsInvoiceSnapshot] = fetchedInvoices.map { invoice in
-                let type = invoice.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                let hasItems = !((invoice.items ?? []).isEmpty)
-                let paidDate = BusinessInsightsDateSupport.resolvedPaidDate(for: invoice)
-                return BusinessInsightsInvoiceSnapshot(
-                    documentType: type,
-                    isPaid: invoice.isPaid,
-                    hasItems: hasItems,
-                    dueDate: invoice.dueDate,
-                    totalCents: max(0, invoice.totalCents),
-                    remainingDueCents: max(0, invoice.remainingDueCents),
-                    paidDate: paidDate
-                )
-            }
+            let invoices = try modelContext.fetch(fd)
+            guard loadGeneration == token else { return }
 
-            let summary = BusinessInsightsSummary.compute(from: snapshots, now: now)
+            let snapshot = computeSnapshot(from: invoices, now: now)
+            guard loadGeneration == token else { return }
 
-            guard loadGeneration == generation else { return }
-
-            hasAnyInvoices = !fetchedInvoices.isEmpty
-            cashInWeekCents = summary.paidWeekCents
-            cashInMonthCents = summary.paidMonthCents
-            outstandingTotalCents = summary.outstandingCents
-            overdueTotalCents = summary.overdueCents
-            draftCount = summary.draftCount
-            sentUnpaidCount = summary.sentUnpaidCount
-            estimateCount = summary.estimateCount
+            hasAnyRecords = !snapshot.records.isEmpty
+            cashInWeekCents = snapshot.paidWeekCents
+            cashInMonthCents = snapshot.paidMonthCents
+            outstandingTotalCents = snapshot.outstandingCents
+            overdueTotalCents = snapshot.overdueCents
+            draftCount = snapshot.draftCount
+            sentUnpaidCount = snapshot.sentUnpaidCount
+            estimateCount = snapshot.estimateCount
             isLoadingInsights = false
 
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[BusinessInsights] load done invoices=\(fetchedInvoices.count) loadMs=\(loadMs)")
+            print("[BusinessInsights] load done rows=\(snapshot.records.count) loadMs=\(loadMs)")
             #endif
         } catch {
-            guard loadGeneration == generation else { return }
-            resetInsightsState()
+            guard loadGeneration == token else { return }
             isLoadingInsights = false
+            hasAnyRecords = false
 
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
@@ -340,30 +289,58 @@ struct BusinessInsightsView: View {
         }
     }
 
-    private func resetInsightsState() {
-        cashInWeekCents = 0
-        cashInMonthCents = 0
-        outstandingTotalCents = 0
-        overdueTotalCents = 0
-        draftCount = 0
-        sentUnpaidCount = 0
-        estimateCount = 0
-        hasAnyInvoices = false
-        isLoadingInsights = false
+    private func computeSnapshot(from invoices: [Invoice], now: Date) -> InsightsSnapshot {
+        let nonEstimates = invoices.filter { inv in
+            inv.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "estimate"
+        }
+        let estimates = invoices.filter { inv in
+            inv.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "estimate"
+        }
+
+        let sentUnpaid = nonEstimates.filter { inv in
+            !inv.isPaid && !(inv.items ?? []).isEmpty
+        }
+        let draftUnpaid = nonEstimates.filter { inv in
+            !inv.isPaid && (inv.items ?? []).isEmpty
+        }
+        let overdue = sentUnpaid.filter { $0.dueDate < now }
+
+        let weekInterval = InsightsDateSupport.calendar.dateInterval(of: .weekOfYear, for: now)
+        let monthInterval = InsightsDateSupport.calendar.dateInterval(of: .month, for: now)
+
+        var paidWeekCents = 0
+        var paidMonthCents = 0
+
+        for invoice in nonEstimates where invoice.isPaid {
+            guard let paidDate = InsightsDateSupport.resolvedPaidDate(for: invoice) else {
+                continue
+            }
+            let amount = max(0, invoice.totalCents)
+            if let weekInterval, weekInterval.contains(paidDate) {
+                paidWeekCents += amount
+            }
+            if let monthInterval, monthInterval.contains(paidDate) {
+                paidMonthCents += amount
+            }
+        }
+
+        let outstandingCents = sentUnpaid.reduce(0) { $0 + max(0, $1.remainingDueCents) }
+        let overdueCents = overdue.reduce(0) { $0 + max(0, $1.remainingDueCents) }
+
+        return InsightsSnapshot(
+            paidWeekCents: paidWeekCents,
+            paidMonthCents: paidMonthCents,
+            outstandingCents: outstandingCents,
+            overdueCents: overdueCents,
+            draftCount: draftUnpaid.count,
+            sentUnpaidCount: sentUnpaid.count,
+            estimateCount: estimates.count,
+            records: invoices
+        )
     }
 }
 
-private struct BusinessInsightsInvoiceSnapshot: Sendable {
-    let documentType: String
-    let isPaid: Bool
-    let hasItems: Bool
-    let dueDate: Date
-    let totalCents: Int
-    let remainingDueCents: Int
-    let paidDate: Date?
-}
-
-private struct BusinessInsightsSummary {
+private struct InsightsSnapshot {
     let paidWeekCents: Int
     let paidMonthCents: Int
     let outstandingCents: Int
@@ -371,96 +348,51 @@ private struct BusinessInsightsSummary {
     let draftCount: Int
     let sentUnpaidCount: Int
     let estimateCount: Int
-
-    nonisolated static func compute(from invoices: [BusinessInsightsInvoiceSnapshot], now: Date) -> BusinessInsightsSummary {
-        let nonEstimates = invoices.filter { $0.documentType != "estimate" }
-        let estimates = invoices.filter { $0.documentType == "estimate" }
-
-        let sentUnpaid = nonEstimates.filter {
-            !$0.isPaid && $0.hasItems
-        }
-        let draftUnpaid = nonEstimates.filter {
-            !$0.isPaid && !$0.hasItems
-        }
-        let overdue = sentUnpaid.filter { $0.dueDate < now }
-
-        let cal = Calendar(identifier: .gregorian)
-        let weekStart = cal.dateInterval(of: .weekOfYear, for: now)?.start ?? now
-        let monthStart = cal.dateInterval(of: .month, for: now)?.start ?? now
-
-        var paidWeekCents = 0
-        var paidMonthCents = 0
-
-        for invoice in nonEstimates where invoice.isPaid {
-            guard let paidDate = invoice.paidDate else { continue }
-            let amountCents = invoice.totalCents
-
-            if paidDate >= weekStart && paidDate <= now {
-                paidWeekCents += amountCents
-            }
-            if paidDate >= monthStart && paidDate <= now {
-                paidMonthCents += amountCents
-            }
-        }
-
-        return BusinessInsightsSummary(
-            paidWeekCents: paidWeekCents,
-            paidMonthCents: paidMonthCents,
-            outstandingCents: sentUnpaid.reduce(0) { $0 + $1.remainingDueCents },
-            overdueCents: overdue.reduce(0) { $0 + $1.remainingDueCents },
-            draftCount: draftUnpaid.count,
-            sentUnpaidCount: sentUnpaid.count,
-            estimateCount: estimates.count
-        )
-    }
+    let records: [Invoice]
 }
 
-private enum BusinessInsightsDateSupport {
+private enum InsightsDateSupport {
+    static let calendar: Calendar = .autoupdatingCurrent
+
     static func resolvedPaidDate(for invoice: Invoice) -> Date? {
         guard invoice.isPaid else { return nil }
 
-        let mirror = Mirror(reflecting: invoice)
-        if let date = readDate(from: mirror, key: "paidAt") {
-            return date
+        if let paidAt = readDate(from: invoice, key: "paidAt") {
+            return paidAt
         }
-        if let date = readDate(from: mirror, key: "paidDate") {
-            return date
+        if let paidDate = readDate(from: invoice, key: "paidDate") {
+            return paidDate
         }
-        if let paidAtMs = readInt(from: mirror, key: "paidAtMs"), paidAtMs > 0 {
-            return Date(timeIntervalSince1970: TimeInterval(paidAtMs) / 1000.0)
+        if let paidAtMs = readInt(from: invoice, key: "paidAtMs"), paidAtMs > 0 {
+            return Date(timeIntervalSince1970: Double(paidAtMs) / 1000.0)
         }
-
         return invoice.issueDate
     }
 
-    private static func readValue(from mirror: Mirror, key: String) -> Any? {
-        mirror.children.first(where: { $0.label == key })?.value
-    }
-
-    private static func unwrap(_ value: Any) -> Any {
-        let mirror = Mirror(reflecting: value)
-        guard mirror.displayStyle == .optional else { return value }
-        return mirror.children.first?.value as Any
-    }
-
-    private static func readDate(from mirror: Mirror, key: String) -> Date? {
-        guard let value = readValue(from: mirror, key: key) else { return nil }
-        let unwrapped = unwrap(value)
+    private static func readDate(from invoice: Invoice, key: String) -> Date? {
+        let mirror = Mirror(reflecting: invoice)
+        guard let raw = mirror.children.first(where: { $0.label == key })?.value else {
+            return nil
+        }
+        let unwrapped = unwrap(raw)
         if let date = unwrapped as? Date {
             return date
         }
         if let string = unwrapped as? String {
             let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            return BusinessInsightsDateParsers.iso8601WithFractional.date(from: trimmed)
-                ?? BusinessInsightsDateParsers.iso8601Plain.date(from: trimmed)
+            return dateParsers.iso8601WithFractional.date(from: trimmed)
+                ?? dateParsers.iso8601Plain.date(from: trimmed)
         }
         return nil
     }
 
-    private static func readInt(from mirror: Mirror, key: String) -> Int? {
-        guard let value = readValue(from: mirror, key: key) else { return nil }
-        let unwrapped = unwrap(value)
+    private static func readInt(from invoice: Invoice, key: String) -> Int? {
+        let mirror = Mirror(reflecting: invoice)
+        guard let raw = mirror.children.first(where: { $0.label == key })?.value else {
+            return nil
+        }
+        let unwrapped = unwrap(raw)
         if let intValue = unwrapped as? Int {
             return intValue
         }
@@ -475,77 +407,24 @@ private enum BusinessInsightsDateSupport {
         }
         return nil
     }
-}
 
-private enum BusinessInsightsDateParsers {
-    static let iso8601WithFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    static let iso8601Plain: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-}
-
-private struct InsightsSkeletonBar: View {
-    let width: CGFloat
-    @State private var pulse = false
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(Color.primary.opacity(pulse ? 0.15 : 0.08))
-            .frame(width: width, height: 14)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulse.toggle()
-                }
-            }
-    }
-}
-
-private struct AboutInsightsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                SBWCardContainer {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("How Insights Works")
-                            .font(.headline)
-
-                        bullet("Cash In shows paid invoice totals for this week and this month.")
-                        bullet("Outstanding includes unpaid, sent invoices with remaining balances.")
-                        bullet("Overdue is the unpaid subset with due dates before today.")
-                        bullet("Pipeline tracks draft invoices, sent/unpaid invoices, and estimates.")
-                        bullet("Totals are calculated from invoice status, due dates, and business scope.")
-                    }
-                }
-                .listRowBackground(Color.clear)
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("About Insights")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
+    private static func unwrap(_ value: Any) -> Any {
+        let mirror = Mirror(reflecting: value)
+        guard mirror.displayStyle == .optional else { return value }
+        return mirror.children.first?.value as Any
     }
 
-    private func bullet(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("•")
-                .foregroundStyle(.secondary)
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
+    private enum dateParsers {
+        static let iso8601WithFractional: ISO8601DateFormatter = {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }()
+
+        static let iso8601Plain: ISO8601DateFormatter = {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter
+        }()
     }
 }
