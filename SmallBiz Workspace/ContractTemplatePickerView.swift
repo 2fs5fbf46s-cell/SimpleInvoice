@@ -8,11 +8,9 @@ import SwiftData
 
 struct ContractTemplatePickerView: View {
     @Environment(\.modelContext) private var modelContext
+    private let businessID: UUID?
 
     @Query(sort: \ContractTemplate.name) private var templates: [ContractTemplate]
-    @Query private var profiles: [BusinessProfile]
-    @Query(sort: \Client.name) private var clients: [Client]
-    @Query(sort: \Invoice.issueDate, order: .reverse) private var invoices: [Invoice]
 
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
@@ -24,9 +22,11 @@ struct ContractTemplatePickerView: View {
     @State private var showingSetup = false
     @State private var selectedTemplate: ContractTemplate? = nil
 
-    // Draft setup selections
-    @State private var selectedClient: Client? = nil
-    @State private var selectedInvoice: Invoice? = nil
+    @State private var createError: String? = nil
+
+    init(businessID: UUID? = nil) {
+        self.businessID = businessID
+    }
 
     private func normalizedCategory(_ raw: String) -> String {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,10 +49,6 @@ struct ContractTemplatePickerView: View {
             if q.isEmpty { return true }
             return t.name.lowercased().contains(q) || t.body.lowercased().contains(q)
         }
-    }
-
-    private var businessProfile: BusinessProfile? {
-        profiles.first
     }
 
     var body: some View {
@@ -97,10 +93,7 @@ struct ContractTemplatePickerView: View {
                                     .lineLimit(4)
 
                                 Button {
-                                    // Open setup (select client/invoice)
                                     selectedTemplate = template
-                                    selectedClient = nil
-                                    selectedInvoice = nil
                                     showingSetup = true
                                 } label: {
                                     Label("Use This Template", systemImage: "wand.and.stars")
@@ -139,14 +132,15 @@ struct ContractTemplatePickerView: View {
         }
         .sheet(isPresented: $showingSetup) {
             NavigationStack {
-                ContractDraftSetupView(
-                    templateName: selectedTemplate?.name ?? "Template",
-                    clients: clients,
-                    invoices: invoices,
-                    selectedClient: $selectedClient,
-                    selectedInvoice: $selectedInvoice
-                ) {
-                    createDraftFromSelectedTemplate()
+                ContractDraftSetupContainerView(
+                    businessID: businessID,
+                    templateName: selectedTemplate?.name ?? "Template"
+                ) { businessProfile, selectedClient, selectedInvoice in
+                    createDraftFromSelectedTemplate(
+                        businessProfile: businessProfile,
+                        selectedClient: selectedClient,
+                        selectedInvoice: selectedInvoice
+                    )
                 }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -156,37 +150,38 @@ struct ContractTemplatePickerView: View {
             }
             .presentationDetents([.large])
         }
+        .alert("Couldn’t Create Contract", isPresented: Binding(
+            get: { createError != nil },
+            set: { if !$0 { createError = nil } }
+        )) {
+            Button("OK", role: .cancel) { createError = nil }
+        } message: {
+            Text(createError ?? "")
+        }
     }
 
     // MARK: - Create draft + autofill + push
 
-    private func createDraftFromSelectedTemplate() {
+    private func createDraftFromSelectedTemplate(
+        businessProfile: BusinessProfile?,
+        selectedClient: Client?,
+        selectedInvoice: Invoice?
+    ) {
         guard let template = selectedTemplate else { return }
-
-        // Optional: if invoice chosen but different client, keep both (you can enforce later).
-        let rendered = ContractTokenRenderer.render(
-            templateBody: template.body,
-            business: businessProfile,
-            client: selectedClient,
-            invoice: selectedInvoice
-        )
-
-        let draft = Contract(
-            title: template.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Contract" : template.name,
-            createdAt: .now,
-            updatedAt: .now,
-            templateName: template.name,
-            templateCategory: template.category,
-            renderedBody: rendered,
-            statusRaw: ContractStatus.draft.rawValue,
-            client: selectedClient,
-            invoice: selectedInvoice
-        )
-
-        modelContext.insert(draft)
+        guard let businessID else {
+            createError = "No business selected."
+            return
+        }
 
         do {
-            try modelContext.save()
+            let draft = try ContractCreation.create(
+                context: modelContext,
+                template: template,
+                businessID: businessID,
+                business: businessProfile,
+                client: selectedClient,
+                invoice: selectedInvoice
+            )
             showingSetup = false
 
             // Push into detail view after the sheet dismisses
@@ -194,12 +189,78 @@ struct ContractTemplatePickerView: View {
                 navigateToContract = draft
             }
         } catch {
-            print("Failed to create draft contract: \(error)")
+            createError = error.localizedDescription
         }
     }
 }
 
 // MARK: - Setup screen (select Client + Invoice)
+
+private struct ContractDraftSetupContainerView: View {
+    private let businessID: UUID?
+    let templateName: String
+    let onCreate: (BusinessProfile?, Client?, Invoice?) -> Void
+
+    @Query private var profiles: [BusinessProfile]
+    @Query(sort: \Client.name) private var clients: [Client]
+    @Query(sort: \Invoice.issueDate, order: .reverse) private var invoices: [Invoice]
+
+    @State private var selectedClient: Client? = nil
+    @State private var selectedInvoice: Invoice? = nil
+
+    init(
+        businessID: UUID?,
+        templateName: String,
+        onCreate: @escaping (BusinessProfile?, Client?, Invoice?) -> Void
+    ) {
+        self.businessID = businessID
+        self.templateName = templateName
+        self.onCreate = onCreate
+
+        if let businessID {
+            _profiles = Query(
+                filter: #Predicate<BusinessProfile> { profile in
+                    profile.businessID == businessID
+                },
+                sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]
+            )
+
+            _clients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == businessID
+                },
+                sort: [SortDescriptor(\Client.name, order: .forward)]
+            )
+
+            _invoices = Query(
+                filter: #Predicate<Invoice> { invoice in
+                    invoice.businessID == businessID
+                },
+                sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+            )
+        } else {
+            _profiles = Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)])
+            _clients = Query(sort: \Client.name)
+            _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
+        }
+    }
+
+    private var businessProfile: BusinessProfile? {
+        profiles.first
+    }
+
+    var body: some View {
+        ContractDraftSetupView(
+            templateName: templateName,
+            clients: clients,
+            invoices: invoices,
+            selectedClient: $selectedClient,
+            selectedInvoice: $selectedInvoice
+        ) {
+            onCreate(businessProfile, selectedClient, selectedInvoice)
+        }
+    }
+}
 
 private struct ContractDraftSetupView: View {
     let templateName: String

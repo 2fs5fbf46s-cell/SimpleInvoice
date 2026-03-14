@@ -8,46 +8,24 @@ import SwiftData
 
 struct ContractsHomeView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     private let businessID: UUID?
-
-    // All contracts, newest first
-    @Query private var contracts: [Contract]
-    @Query private var clients: [Client]
-
-    // Used to detect valid businessIDs + migration safety
-    @Query private var profiles: [BusinessProfile]
 
     @State private var filter: HomeFilter = .all
     @State private var selectedContract: Contract? = nil
+    @State private var loadedContracts: [Contract] = []
+    @State private var loadedClients: [Client] = []
+    @State private var loadedProfiles: [BusinessProfile] = []
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
-        if let businessID {
-            _contracts = Query(
-                filter: #Predicate<Contract> { contract in
-                    contract.businessID == businessID
-                },
-                sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)]
-            )
-            _clients = Query(
-                filter: #Predicate<Client> { client in
-                    client.businessID == businessID
-                },
-                sort: [SortDescriptor(\Client.name, order: .forward)]
-            )
-        } else {
-            _contracts = Query(sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)])
-            _clients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
-        }
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     private var clientNameByID: [UUID: String] {
-        Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.name) })
+        Dictionary(uniqueKeysWithValues: loadedClients.map { ($0.id, $0.name) })
     }
 
     private enum HomeFilter: String, CaseIterable, Identifiable {
@@ -57,24 +35,11 @@ struct ContractsHomeView: View {
         var id: String { rawValue }
     }
 
-    // MARK: - Scoping
-
-    private var scopedContracts: [Contract] {
-        guard let bizID = effectiveBusinessID else { return [] }
-        return contracts.filter { $0.businessID == bizID }
-    }
-
-    // MARK: - Computed groups (scoped)
-
-    private var draftContracts: [Contract] {
-        scopedContracts.filter { $0.status == .draft }
-    }
-
-    private var activeContracts: [Contract] {
-        scopedContracts.filter { $0.status == .sent || $0.status == .signed }
-    }
-
     var body: some View {
+        let currentContracts = loadedContracts
+        let draftContracts = currentContracts.filter { $0.status == .draft }
+        let activeContracts = currentContracts.filter { $0.status == .sent || $0.status == .signed }
+
         ZStack {
             // Background
             Color(.systemGroupedBackground).ignoresSafeArea()
@@ -92,13 +57,13 @@ struct ContractsHomeView: View {
                 // MARK: - Create
                 Section("Create") {
                     NavigationLink {
-                        ContractTemplatePickerView()
+                        ContractTemplatePickerView(businessID: effectiveBusinessID)
                     } label: {
                         Label("Create From Template", systemImage: "wand.and.stars")
                     }
 
                     NavigationLink {
-                        ContractTemplatesView()
+                        ContractTemplatesView(businessID: effectiveBusinessID)
                     } label: {
                         Label("Manage Templates", systemImage: "doc.badge.gearshape")
                     }
@@ -120,14 +85,14 @@ struct ContractsHomeView: View {
                         systemImage: "building.2",
                         description: Text("Select a business to view contracts.")
                     )
-                } else if scopedContracts.isEmpty {
+                } else if currentContracts.isEmpty {
                     ContentUnavailableView(
                         "No Contracts Yet",
                         systemImage: "doc.plaintext",
                         description: Text("Create a contract from a template, then export to PDF.")
                     )
                     NavigationLink {
-                        ContractTemplatePickerView()
+                        ContractTemplatePickerView(businessID: effectiveBusinessID)
                     } label: {
                         Text("Create Contract")
                     }
@@ -171,7 +136,7 @@ struct ContractsHomeView: View {
                     }
 
                     // MARK: - View All
-                    if scopedContracts.count > 20 {
+                    if currentContracts.count > 20 {
                         Section {
                             NavigationLink {
                                 ContractsListView(businessID: effectiveBusinessID)
@@ -192,9 +157,12 @@ struct ContractsHomeView: View {
         .task {
             // Ensure built-in templates exist (safe to call repeatedly)
             ContractTemplateSeeder.seedIfNeeded(context: modelContext)
-
-            // ✅ Repair older contracts that were created with a random businessID
+        }
+        .task(id: effectiveBusinessID) {
+            // Repair older contracts that were created with a random businessID,
+            // then refresh the contracts snapshot used by this screen.
             repairOrphansIfNeeded()
+            reloadData()
         }
 
         // Manual Test Steps:
@@ -255,6 +223,7 @@ struct ContractsHomeView: View {
         modelContext.delete(contract)
         do {
             try modelContext.save()
+            reloadData()
             Haptics.success()
         }
         catch {
@@ -269,12 +238,12 @@ struct ContractsHomeView: View {
         guard let bizID = effectiveBusinessID else { return }
 
         // Known business IDs = anything you have a BusinessProfile for
-        let knownBizIDs = Set(profiles.map { $0.businessID })
+        let knownBizIDs = Set(loadedProfiles.map { $0.businessID })
         guard !knownBizIDs.isEmpty else { return }
 
         var didChange = false
 
-        for c in contracts {
+        for c in loadedContracts {
             // If contract.businessID isn’t one of our known businessIDs, it was likely created using the old UUID() fallback.
             if !knownBizIDs.contains(c.businessID) {
                 c.businessID = bizID
@@ -286,5 +255,41 @@ struct ContractsHomeView: View {
 
         do { try modelContext.save() }
         catch { print("Failed to repair orphan contracts: \(error)") }
+    }
+
+    @MainActor
+    private func reloadData() {
+        do {
+            let profileDescriptor = FetchDescriptor<BusinessProfile>(
+                sortBy: [SortDescriptor(\BusinessProfile.name, order: .forward)]
+            )
+            loadedProfiles = try modelContext.fetch(profileDescriptor)
+
+            guard let bizID = effectiveBusinessID else {
+                loadedContracts = []
+                loadedClients = []
+                return
+            }
+
+            let contractDescriptor = FetchDescriptor<Contract>(
+                predicate: #Predicate<Contract> { contract in
+                    contract.businessID == bizID
+                },
+                sortBy: [SortDescriptor(\Contract.updatedAt, order: .reverse)]
+            )
+            loadedContracts = try modelContext.fetch(contractDescriptor)
+
+            let clientDescriptor = FetchDescriptor<Client>(
+                predicate: #Predicate<Client> { client in
+                    client.businessID == bizID
+                },
+                sortBy: [SortDescriptor(\Client.name, order: .forward)]
+            )
+            loadedClients = try modelContext.fetch(clientDescriptor)
+        } catch {
+            print("Failed to load contracts home data: \(error)")
+            loadedContracts = []
+            loadedClients = []
+        }
     }
 }

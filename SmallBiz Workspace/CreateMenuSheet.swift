@@ -176,7 +176,8 @@ struct CreateMenuSheet: View {
 
             .sheet(isPresented: $showNewContractSheet) {
                 NavigationStack {
-                    CreateContractStartView(
+                CreateContractStartView(
+                        businessID: activeBiz.activeBusinessID,
                         onCreated: { contract in
                             createdContract = contract
                             showNewContractSheet = false
