@@ -8,42 +8,22 @@ import SwiftData
 
 struct ContractsListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     private let businessID: UUID?
-
-    @Query(sort: \Contract.createdAt, order: .reverse)
-    private var contracts: [Contract]
-    @Query private var clients: [Client]
 
     @State private var searchText: String = ""
     @State private var filter: ContractFilter = .all
     @State private var blockedDeleteMessage: String? = nil
     @State private var selectedContract: Contract? = nil
-    @State private var showCreateContract = false
+    @State private var route: ContractListRoute? = nil
+    @State private var loadedContracts: [Contract] = []
+    @State private var loadedClients: [Client] = []
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
-        if let businessID {
-            _contracts = Query(
-                filter: #Predicate<Contract> { contract in
-                    contract.businessID == businessID
-                },
-                sort: [SortDescriptor(\Contract.createdAt, order: .reverse)]
-            )
-            _clients = Query(
-                filter: #Predicate<Client> { client in
-                    client.businessID == businessID
-                },
-                sort: [SortDescriptor(\Client.name, order: .forward)]
-            )
-        } else {
-            _contracts = Query(sort: [SortDescriptor(\Contract.createdAt, order: .reverse)])
-            _clients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
-        }
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     private enum ContractFilter: String, CaseIterable, Identifiable {
@@ -56,15 +36,21 @@ struct ContractsListView: View {
         var id: String { rawValue }
     }
 
+    private enum ContractListRoute: Hashable, Identifiable {
+        case createContract
+
+        var id: Self { self }
+    }
+
     // MARK: - Scoping
 
     private var scopedContracts: [Contract] {
-        guard let bizID = effectiveBusinessID else { return [] }
-        return contracts.filter { $0.businessID == bizID }
+        guard effectiveBusinessID != nil else { return [] }
+        return loadedContracts
     }
 
     private var clientNameByID: [UUID: String] {
-        Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.name) })
+        Dictionary(uniqueKeysWithValues: loadedClients.map { ($0.id, $0.name) })
     }
 
     // MARK: - Client resolution (Job uses clientID, not relationship)
@@ -133,11 +119,12 @@ struct ContractsListView: View {
                         TextField("Search contracts", text: $searchText)
                             .textInputAutocapitalization(.never)
 
-                        Button {
-                            showCreateContract = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.headline.weight(.semibold))
+                            Button {
+                                guard effectiveBusinessID != nil else { return }
+                                route = .createContract
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
@@ -214,8 +201,11 @@ struct ContractsListView: View {
         .navigationDestination(item: $selectedContract) { contract in
             ContractSummaryView(contract: contract)
         }
-        .navigationDestination(isPresented: $showCreateContract) {
-            CreateContractStartView()
+        .navigationDestination(item: $route) { route in
+            switch route {
+            case .createContract:
+                CreateContractStartView(businessID: effectiveBusinessID)
+            }
         }
         .alert("Can’t Delete", isPresented: Binding(
             get: { blockedDeleteMessage != nil },
@@ -224,6 +214,9 @@ struct ContractsListView: View {
             Button("OK", role: .cancel) { blockedDeleteMessage = nil }
         } message: {
             Text(blockedDeleteMessage ?? "")
+        }
+        .task(id: effectiveBusinessID) {
+            reloadData()
         }
 
         // Manual Test Steps:
@@ -276,6 +269,37 @@ struct ContractsListView: View {
         case .sent: return "SENT"
         case .signed: return "SIGNED"
         case .cancelled: return "EXPIRED"
+        }
+    }
+
+    @MainActor
+    private func reloadData() {
+        guard let bizID = effectiveBusinessID else {
+            loadedContracts = []
+            loadedClients = []
+            return
+        }
+
+        do {
+            let contractDescriptor = FetchDescriptor<Contract>(
+                predicate: #Predicate<Contract> { contract in
+                    contract.businessID == bizID
+                },
+                sortBy: [SortDescriptor(\Contract.createdAt, order: .reverse)]
+            )
+            loadedContracts = try modelContext.fetch(contractDescriptor)
+
+            let clientDescriptor = FetchDescriptor<Client>(
+                predicate: #Predicate<Client> { client in
+                    client.businessID == bizID
+                },
+                sortBy: [SortDescriptor(\Client.name, order: .forward)]
+            )
+            loadedClients = try modelContext.fetch(clientDescriptor)
+        } catch {
+            print("Failed to load contracts list data: \(error)")
+            loadedContracts = []
+            loadedClients = []
         }
     }
 

@@ -9,17 +9,17 @@ import SwiftData
 struct CreateContractStartView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    private let businessID: UUID?
     let onCreated: (Contract) -> Void
     let onCancel: () -> Void
 
     private var scopedInvoices: [Invoice] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = businessID else { return [] }
         return invoices.filter { $0.businessID == bizID }
     }
 
     private var scopedClients: [Client] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = businessID else { return [] }
         return clients.filter { $0.businessID == bizID }
     }
 
@@ -45,9 +45,11 @@ struct CreateContractStartView: View {
     @State private var primaryJobID: UUID? = nil
 
     init(
+        businessID: UUID? = nil,
         onCreated: @escaping (Contract) -> Void = { _ in },
         onCancel: @escaping () -> Void = {}
     ) {
+        self.businessID = businessID
         self.onCreated = onCreated
         self.onCancel = onCancel
     }
@@ -234,7 +236,10 @@ struct CreateContractStartView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
-        .alert("Couldn’t Create Contract", isPresented: .constant(createError != nil), actions: {
+        .alert("Couldn’t Create Contract", isPresented: Binding(
+            get: { createError != nil },
+            set: { if !$0 { createError = nil } }
+        ), actions: {
             Button("OK") { createError = nil }
         }, message: {
             Text(createError ?? "Unknown error.")
@@ -291,7 +296,7 @@ struct CreateContractStartView: View {
 
 
     private var business: BusinessProfile? {
-        guard let bizID = activeBiz.activeBusinessID else { return nil }
+        guard let bizID = businessID else { return nil }
         return profiles.first(where: { $0.businessID == bizID })
     }
 
@@ -306,7 +311,7 @@ struct CreateContractStartView: View {
     }
 
     private var scopedJobs: [Job] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
+        guard let bizID = businessID else { return [] }
         return jobs.filter { $0.businessID == bizID }
     }
 
@@ -335,7 +340,7 @@ struct CreateContractStartView: View {
     private func saveDraft() {
         guard let template = selectedTemplate else { return }
 
-        guard let bizID = activeBiz.activeBusinessID else {
+        guard let bizID = businessID else {
             createError = "No active business selected."
             return
         }

@@ -9,6 +9,7 @@ import SwiftData
 struct ContractTemplatesView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ContractTemplate.name) private var templates: [ContractTemplate]
+    private let businessID: UUID?
 
     @State private var navigateToTemplate: ContractTemplate?
     @State private var selectedCategory: String = "All"
@@ -16,6 +17,10 @@ struct ContractTemplatesView: View {
 
     @State private var showingUseTemplates = false
     @State private var saveError: String? = nil
+
+    init(businessID: UUID? = nil) {
+        self.businessID = businessID
+    }
 
     private func normalizedCategory(_ raw: String) -> String {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -143,7 +148,7 @@ struct ContractTemplatesView: View {
         }
         .sheet(isPresented: $showingUseTemplates) {
             NavigationStack {
-                ContractTemplatePickerView()
+                ContractTemplatePickerView(businessID: businessID)
                     .navigationTitle("Use Template")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {

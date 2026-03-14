@@ -1021,7 +1021,7 @@ struct ClientOverviewView: View {
         }
         .sheet(isPresented: $showContractBuilder) {
             NavigationStack {
-                CreateContractStartView()
+                CreateContractStartView(businessID: client.businessID)
             }
         }
         .sheet(isPresented: $showNewBooking) {
