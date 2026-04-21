@@ -8,7 +8,6 @@ import SwiftData
 
 struct EstimateListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     private let businessID: UUID?
 
     @Query private var invoices: [Invoice]
@@ -66,7 +65,7 @@ struct EstimateListView: View {
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     var body: some View {
@@ -338,10 +337,7 @@ struct EstimateListView: View {
     // MARK: - Data (scoped + filtered)
 
     private var scopedInvoices: [Invoice] {
-        if let bizID = effectiveBusinessID {
-            return invoices.filter { $0.businessID == bizID }
-        }
-        return []
+        invoices.scoped(to: effectiveBusinessID)
     }
 
     @MainActor

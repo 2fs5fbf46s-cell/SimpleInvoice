@@ -23,6 +23,27 @@ private struct DraftInvoiceInput {
     var notes: String
 }
 
+private struct ClientInvoiceListRoute: Identifiable, Hashable {
+    let id: UUID
+    let businessID: UUID
+    let clientID: UUID
+    let clientName: String
+}
+
+private struct ClientContractListRoute: Identifiable, Hashable {
+    let id: UUID
+    let businessID: UUID
+    let clientID: UUID
+    let clientName: String
+}
+
+private struct ClientJobListRoute: Identifiable, Hashable {
+    let id: UUID
+    let businessID: UUID
+    let clientID: UUID
+    let clientName: String
+}
+
 struct ClientSummaryView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var client: Client
@@ -38,9 +59,9 @@ struct ClientSummaryView: View {
     @State private var selectedInvoice: Invoice? = nil
     @State private var selectedContract: Contract? = nil
     @State private var selectedJob: Job? = nil
-    @State private var showAllInvoices = false
-    @State private var showAllContracts = false
-    @State private var showAllJobs = false
+    @State private var invoiceListRoute: ClientInvoiceListRoute?
+    @State private var contractListRoute: ClientContractListRoute?
+    @State private var jobListRoute: ClientJobListRoute?
     @State private var showAttachmentsManager = false
     @State private var showCreateInvoiceDraft = false
     @State private var draftInvoice = DraftInvoiceInput(issueDate: .now, dueDate: Calendar.current.date(byAdding: .day, value: 14, to: .now) ?? .now, notes: "")
@@ -135,6 +156,11 @@ struct ClientSummaryView: View {
     }
 
     var body: some View {
+        mainView
+    }
+
+    private var mainView: AnyView {
+        AnyView(
         List {
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(
@@ -205,7 +231,14 @@ struct ClientSummaryView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    Button("View All") { showAllInvoices = true }
+                    Button("View All") {
+                        invoiceListRoute = ClientInvoiceListRoute(
+                            id: client.id,
+                            businessID: client.businessID,
+                            clientID: client.id,
+                            clientName: clientTitle
+                        )
+                    }
                         .buttonStyle(.bordered)
                 }
             }
@@ -237,7 +270,14 @@ struct ClientSummaryView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    Button("View All") { showAllContracts = true }
+                    Button("View All") {
+                        contractListRoute = ClientContractListRoute(
+                            id: client.id,
+                            businessID: client.businessID,
+                            clientID: client.id,
+                            clientName: clientTitle
+                        )
+                    }
                         .buttonStyle(.bordered)
                 }
             }
@@ -269,7 +309,14 @@ struct ClientSummaryView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    Button("View All") { showAllJobs = true }
+                    Button("View All") {
+                        jobListRoute = ClientJobListRoute(
+                            id: client.id,
+                            businessID: client.businessID,
+                            clientID: client.id,
+                            clientName: clientTitle
+                        )
+                    }
                         .buttonStyle(.bordered)
                 }
             }
@@ -440,14 +487,26 @@ struct ClientSummaryView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: $showAllInvoices) {
-            ClientInvoicesView(client: client)
+        .navigationDestination(item: $invoiceListRoute) { route in
+            ClientInvoicesSummaryView(
+                businessID: route.businessID,
+                clientID: route.clientID,
+                clientName: route.clientName
+            )
         }
-        .navigationDestination(isPresented: $showAllContracts) {
-            ClientContractsView(client: client)
+        .navigationDestination(item: $contractListRoute) { route in
+            ClientContractsView(
+                businessID: route.businessID,
+                clientID: route.clientID,
+                clientName: route.clientName
+            )
         }
-        .navigationDestination(isPresented: $showAllJobs) {
-            ClientJobsBookingsView(client: client)
+        .navigationDestination(item: $jobListRoute) { route in
+            ClientJobsBookingsView(
+                businessID: route.businessID,
+                clientID: route.clientID,
+                clientName: route.clientName
+            )
         }
         .alert("Clients", isPresented: Binding(
             get: { errorMessage != nil },
@@ -456,7 +515,7 @@ struct ClientSummaryView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
-        }
+        })
 
         // Manual Test Steps:
         // 1) Tap Create Invoice, cancel, create again, then save and verify numbering has no cancel gaps.
@@ -580,24 +639,43 @@ struct ClientSummaryView: View {
 }
 
 struct ClientJobsBookingsView: View {
-    @Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)]) private var jobs: [Job]
-    @Bindable var client: Client
+    let businessID: UUID
+    let clientID: UUID
+    let clientName: String
+    @Query private var jobs: [Job]
+    @State private var selectedJobID: UUID?
+
+    init(businessID: UUID, clientID: UUID, clientName: String) {
+        self.businessID = businessID
+        self.clientID = clientID
+        self.clientName = clientName
+        _jobs = Query(
+            filter: #Predicate<Job> { job in
+                job.businessID == businessID
+            },
+            sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+        )
+    }
 
     private var filtered: [Job] {
-        jobs.filter { $0.clientID == client.id }
+        jobs.filter { $0.clientID == clientID }
     }
 
     var body: some View {
         List {
             SummaryKit.SummaryCard {
-                SummaryKit.SummaryHeader(title: "Jobs / Bookings")
+                SummaryKit.SummaryHeader(
+                    title: clientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Client" : clientName,
+                    subtitle: "Jobs / Bookings",
+                    status: filtered.isEmpty ? "EMPTY" : "\(filtered.count) TOTAL"
+                )
                 if filtered.isEmpty {
                     Text("No jobs")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(filtered) { job in
-                        NavigationLink {
-                            JobSummaryView(job: job)
+                        Button {
+                            selectedJobID = job.id
                         } label: {
                             SummaryKit.SummaryListRow(
                                 icon: "calendar.badge.clock",
@@ -605,6 +683,7 @@ struct ClientJobsBookingsView: View {
                                 secondary: job.startDate.formatted(date: .abbreviated, time: .omitted)
                             )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -612,5 +691,47 @@ struct ClientJobsBookingsView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Jobs / Bookings")
+        .navigationDestination(item: $selectedJobID) { jobID in
+            ClientJobRouteView(jobID: jobID)
+        }
+    }
+}
+
+private struct ClientJobRouteView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let jobID: UUID
+
+    @State private var job: Job?
+    @State private var loadError: String?
+
+    var body: some View {
+        Group {
+            if let job {
+                JobSummaryView(job: job)
+            } else if let loadError {
+                ContentUnavailableView(
+                    "Couldn’t Load Job",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(loadError)
+                )
+            } else {
+                ProgressView("Loading job...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+            }
+        }
+        .task(id: jobID) {
+            do {
+                let descriptor = FetchDescriptor<Job>(
+                    predicate: #Predicate<Job> { job in
+                        job.id == jobID
+                    }
+                )
+                job = try modelContext.fetch(descriptor).first
+            } catch {
+                loadError = error.localizedDescription
+            }
+        }
     }
 }

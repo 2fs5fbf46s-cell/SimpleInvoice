@@ -58,7 +58,8 @@ struct BusinessProfileView: View {
     @State private var showNotificationsSection = false
     @State private var showAdvancedSection = false
     @State private var showDebugMetadata = false
-    @FocusState private var paypalMeFocused: Bool
+
+    @FocusState private var focusedField: BusinessProfileField?
 
     var body: some View {
         contentView
@@ -220,9 +221,10 @@ struct BusinessProfileView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") {
-                        normalizePayPalMeIfNeeded()
-                        paypalMeFocused = false
+                    if focusedField != nil {
+                        Button("Done") {
+                            focusedField = nil
+                        }
                     }
                 }
             }
@@ -282,19 +284,31 @@ struct BusinessProfileView: View {
                 VStack(spacing: 10) {
                     FieldRow(title: "Name") {
                         TextField("Business Name", text: Bindable(profile).name)
+                            .focused($focusedField, equals: .name)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                     }
                     FieldRow(title: "Email") {
                         TextField("Email", text: Bindable(profile).email)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.emailAddress)
+                            .focused($focusedField, equals: .email)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                     }
                     FieldRow(title: "Phone") {
                         TextField("Phone", text: Bindable(profile).phone)
                             .keyboardType(.phonePad)
+                            .focused($focusedField, equals: .phone)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                     }
                     FieldRow(title: "Address", verticalAlignTop: true) {
                         TextField("Address", text: Bindable(profile).address, axis: .vertical)
                             .lineLimit(2...6)
+                            .focused($focusedField, equals: .address)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                     }
                 }
                 .padding(.top, 8)
@@ -453,9 +467,9 @@ struct BusinessProfileView: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)
-                                .focused($paypalMeFocused)
+                                .focused($focusedField, equals: .paypalMe)
                                 .submitLabel(.done)
-                                .onSubmit { normalizePayPalMeIfNeeded() }
+                                .onSubmit { focusedField = nil }
                         } else {
                             Text("Select a business to edit PayPal.me.")
                                 .font(.caption)
@@ -580,6 +594,9 @@ struct BusinessProfileView: View {
                         TextField("Prefix (letters before the number)", text: Bindable(profile).invoicePrefix)
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
+                            .focused($focusedField, equals: .invoicePrefix)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                     }
 
                     Stepper(value: Bindable(profile).nextInvoiceNumber, in: 1...999999) {
@@ -1330,4 +1347,13 @@ private extension String {
     var trimmed: String {
         trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+private enum BusinessProfileField: Hashable {
+    case name
+    case email
+    case phone
+    case address
+    case paypalMe
+    case invoicePrefix
 }
