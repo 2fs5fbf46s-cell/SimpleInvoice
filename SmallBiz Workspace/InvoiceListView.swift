@@ -18,7 +18,6 @@ enum InvoiceListFilter: String, CaseIterable, Identifiable {
 
 struct InvoiceListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     private let businessID: UUID?
 
     @Query private var invoices: [Invoice]
@@ -36,6 +35,8 @@ struct InvoiceListView: View {
     // MARK: - Filters
     @State private var filter: InvoiceListFilter
     @State private var searchText: String = ""
+    @State private var visibleInvoices: [Invoice] = []
+    @State private var visibleInvoiceRows: [InvoiceListRowModel] = []
 
     init(businessID: UUID? = nil, initialFilter: InvoiceListFilter? = nil) {
         self.businessID = businessID
@@ -53,7 +54,7 @@ struct InvoiceListView: View {
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     var body: some View {
@@ -113,7 +114,7 @@ struct InvoiceListView: View {
                         systemImage: "building.2",
                         description: Text("Select a business to view invoices.")
                     )
-                } else if filteredInvoices.isEmpty {
+                } else if visibleInvoices.isEmpty {
                     ContentUnavailableView(
                         "No Invoices",
                         systemImage: "doc.text",
@@ -132,11 +133,11 @@ struct InvoiceListView: View {
                         .buttonStyle(.plain)
                     }
                 } else {
-                    ForEach(filteredInvoices) { invoice in
+                    ForEach(visibleInvoiceRows) { rowModel in
                         Button {
-                            selectedInvoice = invoice
+                            selectedInvoice = rowModel.invoice
                         } label: {
-                            row(invoice)
+                            row(rowModel)
                         }
                         .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -145,6 +146,18 @@ struct InvoiceListView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+        }
+        .task(id: effectiveBusinessID) {
+            recomputeVisibleInvoices()
+        }
+        .onChange(of: filter) {
+            recomputeVisibleInvoices()
+        }
+        .onChange(of: searchText) {
+            recomputeVisibleInvoices()
+        }
+        .onChange(of: invoices.count) {
+            recomputeVisibleInvoices()
         }
         .navigationTitle("Invoices")
         .navigationBarTitleDisplayMode(.large)
@@ -232,7 +245,10 @@ struct InvoiceListView: View {
 
     // MARK: - Filtered data (✅ excludes estimates)
 
-    private var filteredInvoices: [Invoice] {
+    private func recomputeVisibleInvoices() {
+        let scopedInvoices: [Invoice]
+        scopedInvoices = invoices.scoped(to: effectiveBusinessID)
+
         let nonEstimates = scopedInvoices.filter { $0.documentType != "estimate" }
 
         let base: [Invoice]
@@ -250,26 +266,25 @@ struct InvoiceListView: View {
         }
 
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return base }
+        let filtered: [Invoice]
+        if q.isEmpty {
+            filtered = base
+        } else {
+            filtered = base.filter { invoice in
+                if invoice.invoiceNumber.localizedCaseInsensitiveContains(q) { return true }
+                if (invoice.client?.name ?? "").localizedCaseInsensitiveContains(q) { return true }
+                if (invoice.notes).localizedCaseInsensitiveContains(q) { return true }
+                if (invoice.sourceBookingRequestId ?? "").localizedCaseInsensitiveContains(q) { return true }
 
-        return base.filter { invoice in
-            if invoice.invoiceNumber.localizedCaseInsensitiveContains(q) { return true }
-            if (invoice.client?.name ?? "").localizedCaseInsensitiveContains(q) { return true }
-            if (invoice.notes).localizedCaseInsensitiveContains(q) { return true }
-            if (invoice.sourceBookingRequestId ?? "").localizedCaseInsensitiveContains(q) { return true }
+                // Convenience: allow searching "final" to find booking-created final drafts
+                if q.lowercased().contains("final"), isFinalDraft(invoice) { return true }
 
-            // Convenience: allow searching "final" to find booking-created final drafts
-            if q.lowercased().contains("final"), isFinalDraft(invoice) { return true }
-
-            return false
+                return false
+            }
         }
-    }
 
-    private var scopedInvoices: [Invoice] {
-        if let bizID = effectiveBusinessID {
-            return invoices.filter { $0.businessID == bizID }
-        }
-        return []
+        visibleInvoices = filtered
+        visibleInvoiceRows = filtered.map(makeRowModel(for:))
     }
 
     private func isFinalDraft(_ invoice: Invoice) -> Bool {
@@ -283,18 +298,27 @@ struct InvoiceListView: View {
 
     // MARK: - Row UI (Option A polish: icon chip + content)
 
-    private func row(_ invoice: Invoice) -> some View {
+    private func row(_ rowModel: InvoiceListRowModel) -> some View {
+        InvoiceRowView(
+            invoiceTitle: rowModel.invoiceTitle,
+            statusText: rowModel.statusText,
+            subtitle: rowModel.subtitle
+        )
+    }
+
+    private func makeRowModel(for invoice: Invoice) -> InvoiceListRowModel {
         let statusText = invoice.isPaid ? "PAID" : "UNPAID"
+        let isFinal = isFinalDraft(invoice)
         let clientName = invoice.client?.name ?? "No Client"
         let date = invoice.issueDate.formatted(date: .abbreviated, time: .omitted)
         let total = invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-        let finalBadge = isFinalDraft(invoice) ? "FINAL • " : ""
+        let finalBadge = isFinal ? "FINAL • " : ""
         let subtitle = "\(finalBadge)\(statusText) • \(clientName) • \(date) • \(total)"
+        let baseTitle = isFinal ? "Final Invoice" : "Invoice"
 
-        return InvoiceRowView(
-            invoiceTitle: invoice.invoiceNumber.isEmpty
-                ? (isFinalDraft(invoice) ? "Final Invoice" : "Invoice")
-                : "\(isFinalDraft(invoice) ? "Final Invoice" : "Invoice") \(invoice.invoiceNumber)",
+        return InvoiceListRowModel(
+            invoice: invoice,
+            invoiceTitle: invoice.invoiceNumber.isEmpty ? baseTitle : "\(baseTitle) \(invoice.invoiceNumber)",
             statusText: statusText,
             subtitle: subtitle.replacingOccurrences(of: "\(statusText) • ", with: "")
         )
@@ -303,8 +327,8 @@ struct InvoiceListView: View {
     // MARK: - Deletes
 
     private func deleteInvoices(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(filteredInvoices[index])
+        for index in offsets.sorted(by: >) {
+            modelContext.delete(visibleInvoices[index])
         }
         do {
             try modelContext.save()
@@ -350,6 +374,14 @@ private struct InvoiceRowView: View {
         .padding(.vertical, 4)
         .frame(minHeight: 56, alignment: .topLeading)
     }
+}
+
+private struct InvoiceListRowModel: Identifiable {
+    let invoice: Invoice
+    let invoiceTitle: String
+    let statusText: String
+    let subtitle: String
+    var id: Invoice.ID { invoice.id }
 }
 
 // MARK: - Templates (unchanged)

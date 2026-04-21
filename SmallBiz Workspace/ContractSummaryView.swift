@@ -88,6 +88,11 @@ struct ContractSummaryView: View {
     }
 
     var body: some View {
+        mainView
+    }
+
+    private var mainView: AnyView {
+        AnyView(
         List {
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(
@@ -324,7 +329,7 @@ struct ContractSummaryView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(portalError ?? "")
-        }
+        })
     }
 
     private func attachmentIconName(for file: FileItem?) -> String {

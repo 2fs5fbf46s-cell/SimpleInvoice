@@ -3,7 +3,6 @@ import SwiftData
 
 struct BusinessInsightsView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     private let businessID: UUID?
     @Query private var businesses: [Business]
@@ -33,7 +32,7 @@ struct BusinessInsightsView: View {
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     private var currentBusiness: Business? {

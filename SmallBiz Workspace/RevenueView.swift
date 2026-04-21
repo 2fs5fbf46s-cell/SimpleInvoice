@@ -2,8 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct RevenueView: View {
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
-
     private let businessID: UUID?
 
     @Query private var invoices: [Invoice]
@@ -33,7 +31,7 @@ struct RevenueView: View {
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     private var scopedInvoices: [Invoice] {
@@ -365,4 +363,3 @@ private enum RevenueDateParsers {
         return formatter
     }()
 }
-

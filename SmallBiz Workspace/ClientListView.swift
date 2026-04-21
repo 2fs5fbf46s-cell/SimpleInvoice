@@ -10,7 +10,6 @@ import SwiftData
 
 struct ClientListView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     private let businessID: UUID?
 
     @Query private var allClients: [Client]
@@ -19,6 +18,9 @@ struct ClientListView: View {
 
     @State private var searchText: String = ""
     @State private var filter: Filter = .all
+    @State private var visibleClients: [Client] = []
+    @State private var visibleClientRows: [ClientListRowModel] = []
+    @State private var clientStatsCache: [UUID: ClientStats] = [:]
 
     // New client sheet
     @State private var newClientDraft: Client? = nil
@@ -55,7 +57,7 @@ struct ClientListView: View {
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     private enum Filter: String, CaseIterable, Identifiable {
@@ -75,51 +77,69 @@ struct ClientListView: View {
     // MARK: - Scoping
 
     private var scopedClients: [Client] {
-        guard let bizID = effectiveBusinessID else { return [] }
-        return allClients.filter { $0.businessID == bizID }
+        allClients.scoped(to: effectiveBusinessID)
     }
 
-    private var clientStatsByID: [UUID: ClientStats] {
-        var stats: [UUID: ClientStats] = [:]
+    private var clientContentSignature: [String] {
+        allClients.map {
+            "\($0.id.uuidString)|\($0.name)|\($0.email)|\($0.phone)|\($0.portalEnabled)"
+        }
+    }
 
-        for job in jobs {
+    private func recomputeVisibleClients() {
+        let scopedClients: [Client]
+        let scopedJobs: [Job]
+        let scopedInvoices: [Invoice]
+        scopedClients = allClients.scoped(to: effectiveBusinessID)
+        scopedJobs = jobs.scoped(to: effectiveBusinessID)
+        scopedInvoices = invoices.scoped(to: effectiveBusinessID)
+
+        var computedStats: [UUID: ClientStats] = [:]
+        for job in scopedJobs {
             guard let clientID = job.clientID else { continue }
-            var current = stats[clientID] ?? ClientStats()
+            var current = computedStats[clientID] ?? ClientStats()
             current.jobsCount += 1
             current.lastActivity = max(current.lastActivity, job.startDate)
-            stats[clientID] = current
+            computedStats[clientID] = current
         }
 
-        for invoice in invoices {
+        for invoice in scopedInvoices {
             guard let clientID = invoice.client?.id else { continue }
-            var current = stats[clientID] ?? ClientStats()
+            var current = computedStats[clientID] ?? ClientStats()
             if !invoice.isPaid && invoice.documentType != "estimate" {
                 current.outstandingBalance += invoice.total
             }
             current.lastActivity = max(current.lastActivity, invoice.issueDate)
-            stats[clientID] = current
+            computedStats[clientID] = current
         }
 
-        return stats
-    }
-
-    private var filtered: [Client] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -45, to: .now) ?? .distantPast
         let base: [Client]
         switch filter {
         case .all:
             base = scopedClients
         case .recent:
-            base = scopedClients.filter { (clientStatsByID[$0.id]?.lastActivity ?? .distantPast) > Calendar.current.date(byAdding: .day, value: -45, to: .now)! }
+            base = scopedClients.filter { (computedStats[$0.id]?.lastActivity ?? .distantPast) > cutoff }
         case .favorites:
             base = scopedClients.filter { $0.portalEnabled }
         }
 
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return base }
-        return base.filter {
-            $0.name.lowercased().contains(q)
-            || $0.email.lowercased().contains(q)
-            || $0.phone.lowercased().contains(q)
+        let filtered: [Client]
+        if q.isEmpty {
+            filtered = base
+        } else {
+            filtered = base.filter {
+                $0.name.lowercased().contains(q)
+                || $0.email.lowercased().contains(q)
+                || $0.phone.lowercased().contains(q)
+            }
+        }
+
+        clientStatsCache = computedStats
+        visibleClients = filtered
+        visibleClientRows = filtered.map { client in
+            makeRowModel(for: client, stats: computedStats[client.id] ?? ClientStats())
         }
     }
 
@@ -147,7 +167,7 @@ struct ClientListView: View {
                         systemImage: "building.2",
                         description: Text("Select a business to view clients.")
                     )
-                } else if filtered.isEmpty {
+                } else if visibleClients.isEmpty {
                     ContentUnavailableView(
                         scopedClients.isEmpty ? "No Clients Yet" : "No Results",
                         systemImage: "person.2",
@@ -167,12 +187,12 @@ struct ClientListView: View {
                         .buttonStyle(.plain)
                     }
                 } else {
-                    ForEach(filtered) { client in
+                    ForEach(visibleClientRows) { rowModel in
                         Button {
                             Haptics.lightTap()
-                            selectedClient = client
+                            selectedClient = rowModel.client
                         } label: {
-                            row(client)
+                            row(rowModel)
                         }
                         .buttonStyle(.plain)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -229,7 +249,7 @@ struct ClientListView: View {
 
                                 do {
                                     try modelContext.save()
-                                    if (clientStatsByID[draft.id]?.jobsCount ?? 0) == 0 {
+                                    if (clientStatsCache[draft.id]?.jobsCount ?? 0) == 0 {
                                         _ = try JobWorkspaceFactory.createInitialJobAndWorkspace(
                                             context: modelContext,
                                             businessID: draft.businessID,
@@ -253,6 +273,24 @@ struct ClientListView: View {
         .navigationDestination(item: $selectedClient) { client in
             ClientSummaryView(client: client)
         }
+        .task(id: effectiveBusinessID) {
+            recomputeVisibleClients()
+        }
+        .onChange(of: filter) {
+            recomputeVisibleClients()
+        }
+        .onChange(of: searchText) {
+            recomputeVisibleClients()
+        }
+        .onChange(of: clientContentSignature) {
+            recomputeVisibleClients()
+        }
+        .onChange(of: jobs.count) {
+            recomputeVisibleClients()
+        }
+        .onChange(of: invoices.count) {
+            recomputeVisibleClients()
+        }
         .overlay(alignment: .top) {
             if showOpenExistingBanner {
                 OpenExistingClientBanner()
@@ -269,8 +307,14 @@ struct ClientListView: View {
 
     // MARK: - Row UI (Option A parity)
 
-    private func row(_ client: Client) -> some View {
-        let stats = clientStatsByID[client.id] ?? ClientStats()
+    private func row(_ rowModel: ClientListRowModel) -> some View {
+        ClientRowView(
+            name: rowModel.name,
+            subtitle: rowModel.subtitle
+        )
+    }
+
+    private func makeRowModel(for client: Client, stats: ClientStats) -> ClientListRowModel {
         let count = stats.jobsCount
         let name = client.name.isEmpty ? "Client" : client.name
         let contact = client.email.isEmpty ? client.phone : client.email
@@ -281,7 +325,8 @@ struct ClientListView: View {
             .compactMap { $0 }
             .joined(separator: " • ")
 
-        return ClientRowView(
+        return ClientListRowModel(
+            client: client,
             name: name,
             subtitle: subtitle.isEmpty ? " " : subtitle
         )
@@ -319,7 +364,7 @@ struct ClientListView: View {
 
 
     private func deleteFiltered(at offsets: IndexSet) {
-        let toDelete = offsets.map { filtered[$0] }
+        let toDelete = offsets.map { visibleClients[$0] }
         for c in toDelete { modelContext.delete(c) }
 
         do {
@@ -354,6 +399,13 @@ private struct ClientRowView: View {
         .padding(.vertical, 4)
         .frame(minHeight: 56, alignment: .topLeading)
     }
+}
+
+private struct ClientListRowModel: Identifiable {
+    let client: Client
+    let name: String
+    let subtitle: String
+    var id: UUID { client.id }
 }
 
 private struct OpenExistingClientBanner: View {

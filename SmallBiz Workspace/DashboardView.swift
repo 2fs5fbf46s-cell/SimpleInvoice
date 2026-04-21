@@ -3,8 +3,8 @@ import SwiftData
 
 struct DashboardView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
-    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var metricsVM = DashboardMetricsVM()
+    @State private var metricState = DashboardMetricState()
 
     // Pull business profile for name + logo
     @Query private var profiles: [BusinessProfile]
@@ -13,6 +13,41 @@ struct DashboardView: View {
     @Query private var invoices: [Invoice]
     @Query(sort: \Job.startDate, order: .forward)
     private var jobs: [Job]
+
+    private var effectiveBusinessID: UUID? {
+        BusinessScoped.effectiveBusinessID(
+            explicit: nil,
+            activeBusinessID: activeBiz.activeBusinessID
+        )
+    }
+
+    private struct DashboardMetricState: Equatable {
+        let effectiveBusinessID: UUID?
+        let weeklyPaidText: String
+        let monthlyPaidText: String
+        let scheduleText: String
+        let isLoading: Bool
+
+        static let placeholderText = "—"
+
+        init(
+            effectiveBusinessID: UUID? = nil,
+            weeklyPaidText: String = placeholderText,
+            monthlyPaidText: String = placeholderText,
+            scheduleText: String = placeholderText,
+            isLoading: Bool = false
+        ) {
+            self.effectiveBusinessID = effectiveBusinessID
+            self.weeklyPaidText = weeklyPaidText
+            self.monthlyPaidText = monthlyPaidText
+            self.scheduleText = scheduleText
+            self.isLoading = isLoading
+        }
+
+        static var noBusiness: DashboardMetricState {
+            DashboardMetricState(isLoading: false)
+        }
+    }
 
     // MARK: - Computed: Profile
     private var currentProfile: BusinessProfile? {
@@ -28,25 +63,6 @@ struct DashboardView: View {
     private var logoImage: UIImage? {
         guard let data = currentProfile?.logoData else { return nil }
         return UIImage(data: data)
-    }
-
-    private var metricsDataSignature: String {
-        guard let bizID = activeBiz.activeBusinessID else { return "none" }
-        let invoiceSignature = invoices
-            .filter { $0.businessID == bizID }
-            .map {
-                "\($0.id.uuidString)|\($0.isPaid)|\($0.issueDate.timeIntervalSince1970)|\(Int(($0.total * 100).rounded()))|\($0.documentType)"
-            }
-            .sorted()
-            .joined(separator: ";")
-        let jobSignature = jobs
-            .filter { $0.businessID == bizID }
-            .map {
-                "\($0.id.uuidString)|\($0.startDate.timeIntervalSince1970)|\($0.stageRaw)|\($0.status)"
-            }
-            .sorted()
-            .joined(separator: ";")
-        return "\(bizID.uuidString)#\(invoiceSignature)#\(jobSignature)"
     }
 
     // MARK: - Layout
@@ -109,124 +125,135 @@ struct DashboardView: View {
                     }
                     .padding(.top, 6)
 
-                    // Stats strip
-                    HStack(spacing: 12) {
-                        DashboardStatCard(
-                            title: "Weekly",
-                            value: currency(cents: metricsVM.weeklyPaidCents),
-                            subtitle: "Paid",
-                            updateKey: metricsVM.weeklyPaidCents
+                    if effectiveBusinessID == nil {
+                        ContentUnavailableView(
+                            "No Business Selected",
+                            systemImage: "building.2",
+                            description: Text("Select a business to view dashboard metrics.")
                         )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 30)
+                    } else {
+                        // Stats strip
+                        HStack(spacing: 12) {
+                            DashboardStatCard(
+                                title: "Weekly",
+                                value: metricState.weeklyPaidText,
+                                subtitle: "Paid",
+                                isLoading: metricState.isLoading
+                            )
 
-                        DashboardStatCard(
-                            title: "Monthly",
-                            value: currency(cents: metricsVM.monthlyPaidCents),
-                            subtitle: "Paid",
-                            updateKey: metricsVM.monthlyPaidCents
-                        )
+                            DashboardStatCard(
+                                title: "Monthly",
+                                value: metricState.monthlyPaidText,
+                                subtitle: "Paid",
+                                isLoading: metricState.isLoading
+                            )
 
-                        DashboardStatCard(
-                            title: "Schedule",
-                            value: "\(metricsVM.scheduleCount)",
-                            subtitle: "Upcoming",
-                            updateKey: metricsVM.scheduleCount
-                        )
+                            DashboardStatCard(
+                                title: "Schedule",
+                                value: metricState.scheduleText,
+                                subtitle: "Upcoming",
+                                isLoading: metricState.isLoading
+                            )
+                        }
+                        .coachMark(id: "walkthrough.dashboard.metrics")
+                        .animation(.easeInOut(duration: 0.18), value: metricState)
+
+                        // Date row (live)
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            let now = context.date
+                            HStack {
+                                Text(formattedDate(now))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                Text(formattedTime(now))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.top, 2)
+                        }
+
+                        // Main tiles grid
+                        LazyVGrid(columns: columns, spacing: 12) {
+
+                            NavigationLink { InvoiceListView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Invoices",
+                                    subtitle: "View & send",
+                                    systemImage: "doc.plaintext",
+                                    tint: .blue
+                                )
+                            }
+
+                            NavigationLink { BookingsListView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Bookings",
+                                    subtitle: "Schedule",
+                                    systemImage: "calendar.badge.clock",
+                                    tint: .blue
+                                )
+                            }
+
+                            NavigationLink { EstimateListView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Estimates",
+                                    subtitle: "Quotes",
+                                    systemImage: "doc.text.magnifyingglass",
+                                    tint: .green
+                                )
+                            }
+
+                            NavigationLink { ClientListView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Customers",
+                                    subtitle: "Clients",
+                                    systemImage: "person.2",
+                                    tint: .green
+                                )
+                            }
+
+                            NavigationLink { PortalDirectoryLauncherView() } label: {
+                                TileCard(
+                                    title: "Client Portal",
+                                    subtitle: "Directory",
+                                    systemImage: "rectangle.portrait.and.arrow.right",
+                                    tint: .gradient
+                                )
+                            }
+
+                            NavigationLink { JobsListView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Jobs",
+                                    subtitle: "Projects",
+                                    systemImage: "tray.full",
+                                    tint: .gradient
+                                )
+                            }
+
+                            NavigationLink { ContractsHomeView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Contracts",
+                                    subtitle: "View & send",
+                                    systemImage: "doc.text",
+                                    tint: .mint
+                                )
+                            }
+
+                            NavigationLink { SavedItemsView(businessID: effectiveBusinessID) } label: {
+                                TileCard(
+                                    title: "Inventory",
+                                    subtitle: "Services & materials",
+                                    systemImage: "tag",
+                                    tint: .mint
+                                )
+                            }
+                        }
+                        .padding(.top, 4)
                     }
-                    .coachMark(id: "walkthrough.dashboard.metrics")
-
-                    // Date row (live)
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        let now = context.date
-                        HStack {
-                            Text(formattedDate(now))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            Spacer()
-
-                            Text(formattedTime(now))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.top, 2)
-                    }
-
-                    // Main tiles grid
-                    LazyVGrid(columns: columns, spacing: 12) {
-
-                        NavigationLink { InvoiceListView(businessID: activeBiz.activeBusinessID) } label: {
-                            TileCard(
-                                title: "Invoices",
-                                subtitle: "View & send",
-                                systemImage: "doc.plaintext",
-                                tint: .blue
-                            )
-                        }
-
-                        NavigationLink { BookingsListView() } label: {
-                            TileCard(
-                                title: "Bookings",
-                                subtitle: "Schedule",
-                                systemImage: "calendar.badge.clock",
-                                tint: .blue
-                            )
-                        }
-
-                        NavigationLink { EstimateListView(businessID: activeBiz.activeBusinessID) } label: {
-                            TileCard(
-                                title: "Estimates",
-                                subtitle: "Quotes",
-                                systemImage: "doc.text.magnifyingglass",
-                                tint: .green
-                            )
-                        }
-
-                        NavigationLink { ClientListView(businessID: activeBiz.activeBusinessID) } label: {
-                            TileCard(
-                                title: "Customers",
-                                subtitle: "Clients",
-                                systemImage: "person.2",
-                                tint: .green
-                            )
-                        }
-
-                        NavigationLink { PortalDirectoryLauncherView() } label: {
-                            TileCard(
-                                title: "Client Portal",
-                                subtitle: "Directory",
-                                systemImage: "rectangle.portrait.and.arrow.right",
-                                tint: .gradient
-                            )
-                        }
-
-                        NavigationLink { JobsListView(businessID: activeBiz.activeBusinessID) } label: {
-                            TileCard(
-                                title: "Jobs",
-                                subtitle: "Projects",
-                                systemImage: "tray.full",
-                                tint: .gradient
-                            )
-                        }
-
-                        NavigationLink { ContractsHomeView(businessID: activeBiz.activeBusinessID) } label: {
-                            TileCard(
-                                title: "Contracts",
-                                subtitle: "View & send",
-                                systemImage: "doc.text",
-                                tint: .mint
-                            )
-                        }
-
-                        NavigationLink { SavedItemsView(businessID: activeBiz.activeBusinessID) } label: {
-                            TileCard(
-                                title: "Inventory",
-                                subtitle: "Services & materials",
-                                systemImage: "tag",
-                                tint: .mint
-                            )
-                        }
-                    }
-                    .padding(.top, 4)
 
                     Spacer(minLength: 18)
                 }
@@ -246,40 +273,64 @@ struct DashboardView: View {
                 .accessibilityLabel("Help Center")
             }
         }
-        .task(id: activeBiz.activeBusinessID?.uuidString ?? "none") {
-            await refreshDashboardMetrics(forceRemote: false)
+        .task(id: effectiveBusinessID) {
+            await recomputeDashboardMetrics(forceRemote: false)
         }
-        .onChange(of: metricsDataSignature) { _, _ in
+        .onChange(of: invoices.count) {
             Task {
-                await refreshDashboardMetrics(forceRemote: false)
+                await recomputeDashboardMetrics(forceRemote: false)
             }
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
+        .onChange(of: jobs.count) {
             Task {
-                await refreshDashboardMetrics(forceRemote: true)
+                await recomputeDashboardMetrics(forceRemote: false)
             }
-        }
-        .refreshable {
-            await refreshDashboardMetrics(forceRemote: true)
         }
     }
 
     // MARK: - Helpers
-    private func refreshDashboardMetrics(forceRemote: Bool) async {
+    private func recomputeDashboardMetrics(forceRemote: Bool) async {
+        guard let businessID = effectiveBusinessID else {
+            metricState = .noBusiness
+            return
+        }
+
+        if metricState.effectiveBusinessID == businessID {
+            metricState = DashboardMetricState(
+                effectiveBusinessID: businessID,
+                weeklyPaidText: metricState.weeklyPaidText,
+                monthlyPaidText: metricState.monthlyPaidText,
+                scheduleText: metricState.scheduleText,
+                isLoading: true
+            )
+        } else {
+            metricState = DashboardMetricState(
+                effectiveBusinessID: businessID,
+                isLoading: true,
+            )
+        }
+
+        let scopedInvoices = invoices.scoped(to: businessID)
+        let scopedJobs = jobs.scoped(to: businessID)
+
         await metricsVM.refresh(
-            invoices: invoices,
-            jobs: jobs,
-            businessID: activeBiz.activeBusinessID,
+            invoices: scopedInvoices,
+            jobs: scopedJobs,
+            businessID: businessID,
             forceRemote: forceRemote
+        )
+
+        metricState = DashboardMetricState(
+            effectiveBusinessID: businessID,
+            weeklyPaidText: formatCurrency(cents: metricsVM.weeklyPaidCents),
+            monthlyPaidText: formatCurrency(cents: metricsVM.monthlyPaidCents),
+            scheduleText: "\(metricsVM.scheduleCount)",
+            isLoading: false
         )
     }
 
-    private func currency(cents: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.maximumFractionDigits = 2
-        return f.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$0.00"
+    private func formatCurrency(cents: Int) -> String {
+        Self.currencyFormatter.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$0.00"
     }
 
     private func formattedDate(_ date: Date) -> String {
@@ -289,6 +340,13 @@ struct DashboardView: View {
     private func formattedTime(_ date: Date) -> String {
         Self.timeFormatter.string(from: date)
     }
+
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -311,8 +369,6 @@ private struct TileCard: View {
         case teal, indigo, orange, purple, mint
         case neutral
     }
-
-    
 
     let title: String
     let subtitle: String
@@ -487,27 +543,15 @@ private struct StatCard: View {
 
 // MARK: - Dashboard Stat Wrapper
 
-private struct DashboardStatCard<UpdateKey: Equatable>: View {
+private struct DashboardStatCard: View {
     let title: String
     let value: String
     let subtitle: String
-    let updateKey: UpdateKey
-
-    @State private var pulse = false
+    let isLoading: Bool
 
     var body: some View {
         StatCard(title: title, value: value, subtitle: subtitle)
-            .scaleEffect(pulse ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.18), value: pulse)
-            .onChange(of: updateKey) { _, _ in
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    pulse = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        pulse = false
-                    }
-                }
-            }
+            .redacted(reason: isLoading ? .placeholder : [])
+            .opacity(isLoading ? 0.7 : 1)
     }
 }

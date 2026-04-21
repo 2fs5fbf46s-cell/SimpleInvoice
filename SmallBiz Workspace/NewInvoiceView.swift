@@ -5,7 +5,6 @@ import SwiftData
 struct NewInvoiceView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     private let businessID: UUID?
     
     private var scopedClients: [Client] {
@@ -42,7 +41,7 @@ struct NewInvoiceView: View {
     }
 
     private var effectiveBusinessID: UUID? {
-        businessID ?? activeBiz.activeBusinessID
+        businessID
     }
 
     var body: some View {

@@ -1,0 +1,30 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project SmallBizWorkspace.xcodeproj -scheme "SmallBiz Workspace" -sdk iphonesimulator -configuration Debug -showdestinations
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  ZIPFoundation: https://github.com/weichsel/ZIPFoundation @ 0.9.20
+
+
+
+	Available destinations for the "SmallBiz Workspace" scheme:
+		{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00006041-000209AC36A1801C, name:My Mac }
+		{ platform:iOS, arch:arm64, id:00008130-00062DE02646001C, name:LMNOP }
+		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+		{ platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
+		{ platform:iOS Simulator, arch:arm64, id:28D2DA45-759D-4397-9D8A-EFC53987997D, OS:26.2, name:iPad (A16) }
+		{ platform:iOS Simulator, arch:arm64, id:3FCF429B-38B6-418C-A51E-6874982BFACB, OS:26.2, name:iPad Air 11-inch (M3) }
+		{ platform:iOS Simulator, arch:arm64, id:CEB424D4-7C83-41EE-A256-1B73C1D3B85C, OS:26.2, name:iPad Air 13-inch (M3) }
+		{ platform:iOS Simulator, arch:arm64, id:23E0379F-AF5F-4C95-BABF-90F008D0E605, OS:26.2, name:iPad Pro 11-inch (M5) }
+		{ platform:iOS Simulator, arch:arm64, id:F6542DEB-43D1-46F9-BACD-094941C3005F, OS:26.2, name:iPad Pro 13-inch (M5) }
+		{ platform:iOS Simulator, arch:arm64, id:ED78FE55-3BF4-4556-B8E2-6E99F4927AED, OS:26.2, name:iPad mini (A17 Pro) }
+		{ platform:iOS Simulator, arch:arm64, id:B2283F2A-6B0B-4E26-8C30-9770ED70ADDD, OS:26.2, name:iPhone 16e }
+		{ platform:iOS Simulator, arch:arm64, id:5931BB36-F883-4593-A0E0-95935A93CEE2, OS:26.2, name:iPhone 17 }
+		{ platform:iOS Simulator, arch:arm64, id:D13E4607-64DA-4B86-8597-07F327AB3F4C, OS:26.2, name:iPhone 17 Pro }
+		{ platform:iOS Simulator, arch:arm64, id:687B4D81-695A-44AF-A59D-1116070B34B5, OS:26.2, name:iPhone 17 Pro Max }
+		{ platform:iOS Simulator, arch:arm64, id:327E0ACE-5D27-43E2-AA78-E79812FD1FEB, OS:26.2, name:iPhone Air }

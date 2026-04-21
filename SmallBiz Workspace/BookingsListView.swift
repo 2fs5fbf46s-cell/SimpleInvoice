@@ -3,9 +3,9 @@ import Foundation
 import SwiftData
 
 struct BookingsListView: View {
-    @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [BusinessProfile]
+    private let businessID: UUID?
 
     @State private var searchText = ""
     @State private var requests: [BookingRequestItem] = []
@@ -18,8 +18,12 @@ struct BookingsListView: View {
     @State private var ensuredFinalInvoiceForBookingIds: Set<String> = []
     @State private var loadGeneration = UUID()
 
+    init(businessID: UUID? = nil) {
+        self.businessID = businessID
+    }
+
     private var taskKey: String {
-        "\(activeBiz.activeBusinessID?.uuidString ?? "none")-\(selectedStatus.rawValue)"
+        "\(businessID?.uuidString ?? "none")-\(selectedStatus.rawValue)"
     }
 
     private var filteredRequests: [BookingRequestItem] {
@@ -277,7 +281,7 @@ struct BookingsListView: View {
     @MainActor
     private func loadRequests() async {
         guard !isLoading else { return }
-        guard let bizId = activeBiz.activeBusinessID else {
+        guard let bizId = businessID else {
             requests = []
             isLoading = false
             return
