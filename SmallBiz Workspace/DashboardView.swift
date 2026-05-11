@@ -5,6 +5,7 @@ struct DashboardView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @StateObject private var metricsVM = DashboardMetricsVM()
     @State private var metricState = DashboardMetricState()
+    @State private var showHelpCenter = false
 
     // Pull business profile for name + logo
     @Query private var profiles: [BusinessProfile]
@@ -261,17 +262,20 @@ struct DashboardView: View {
                 .padding(.bottom, 24)
             }
         }
-        .navigationTitle("") // Keep header custom
+        .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    HelpCenterView()
+                Button {
+                    showHelpCenter = true
                 } label: {
                     Image(systemName: "questionmark.circle")
                 }
                 .accessibilityLabel("Help Center")
             }
+        }
+        .navigationDestination(isPresented: $showHelpCenter) {
+            HelpCenterView()
         }
         .task(id: effectiveBusinessID) {
             await recomputeDashboardMetrics(forceRemote: false)

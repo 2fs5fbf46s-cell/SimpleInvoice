@@ -3,6 +3,7 @@ import SwiftUI
 struct MoreView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @State private var searchText = ""
+    @State private var showHelpCenter = false
 
     private struct MoreItem: Identifiable {
         let id = UUID()
@@ -73,12 +74,6 @@ struct MoreView: View {
                 systemImage: "doc.text.fill",
                 keyword: "Estimates",
                 destination: AnyView(EstimateListView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Files",
-                systemImage: "folder",
-                keyword: "Files",
-                destination: AnyView(FilesHomeView())
             ),
             MoreItem(
                 title: "Inventory",
@@ -179,13 +174,16 @@ struct MoreView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    HelpCenterView()
+                Button {
+                    showHelpCenter = true
                 } label: {
                     Image(systemName: "questionmark.circle")
                 }
                 .accessibilityLabel("Help Center")
             }
+        }
+        .navigationDestination(isPresented: $showHelpCenter) {
+            HelpCenterView()
         }
     }
 
