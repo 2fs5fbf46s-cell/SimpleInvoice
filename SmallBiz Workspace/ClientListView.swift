@@ -153,6 +153,16 @@ struct ClientListView: View {
 
             List {
                 Section {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search clients", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                    }
+                }
+
+                Section {
                     Picker("Filter", selection: $filter) {
                         ForEach(Filter.allCases) { option in
                             Text(option.rawValue).tag(option)
@@ -204,11 +214,6 @@ struct ClientListView: View {
         }
         .navigationTitle("Clients")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search clients"
-        )
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { addClientAndOpenSheet() } label: {

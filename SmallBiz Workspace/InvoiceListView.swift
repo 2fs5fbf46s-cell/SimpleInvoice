@@ -6,6 +6,50 @@
 import SwiftUI
 import SwiftData
 
+private struct InvoiceListSelection: Identifiable, Hashable {
+    let id: UUID
+}
+
+private struct InvoiceListInvoiceRouteView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let invoiceID: UUID
+
+    @State private var invoice: Invoice?
+    @State private var loadError: String?
+
+    var body: some View {
+        Group {
+            if let invoice {
+                InvoiceOverviewView(invoice: invoice)
+            } else if let loadError {
+                ContentUnavailableView(
+                    "Couldn’t Load Invoice",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(loadError)
+                )
+            } else {
+                ProgressView("Loading invoice...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+            }
+        }
+        .task(id: invoiceID) {
+            do {
+                let descriptor = FetchDescriptor<Invoice>(
+                    predicate: #Predicate<Invoice> { invoice in
+                        invoice.id == invoiceID
+                    }
+                )
+                invoice = try modelContext.fetch(descriptor).first
+                loadError = invoice == nil ? "Invoice not found." : nil
+            } catch {
+                loadError = error.localizedDescription
+            }
+        }
+    }
+}
+
 enum InvoiceListFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case draft = "Draft"
@@ -14,6 +58,18 @@ enum InvoiceListFilter: String, CaseIterable, Identifiable {
     case overdue = "Overdue"
 
     var id: String { rawValue }
+}
+
+private enum InvoiceListToolbarRoute: Hashable, Identifiable {
+    case businessProfile
+    case savedItems
+
+    var id: String {
+        switch self {
+        case .businessProfile: return "businessProfile"
+        case .savedItems: return "savedItems"
+        }
+    }
 }
 
 struct InvoiceListView: View {
@@ -27,10 +83,11 @@ struct InvoiceListView: View {
     @State private var showingNewInvoice = false
     @State private var showingTemplates = false
     @State private var showingInvoiceSettings = false
+    @State private var toolbarRoute: InvoiceListToolbarRoute?
 
     // Navigate to the invoice created from a template
-    @State private var navigateToInvoice: Invoice? = nil
-    @State private var selectedInvoice: Invoice? = nil
+    @State private var navigateToInvoice: InvoiceListSelection? = nil
+    @State private var selectedInvoice: InvoiceListSelection? = nil
 
     // MARK: - Filters
     @State private var filter: InvoiceListFilter
@@ -135,7 +192,7 @@ struct InvoiceListView: View {
                 } else {
                     ForEach(visibleInvoiceRows) { rowModel in
                         Button {
-                            selectedInvoice = rowModel.invoice
+                            selectedInvoice = InvoiceListSelection(id: rowModel.invoice.id)
                         } label: {
                             row(rowModel)
                         }
@@ -167,14 +224,14 @@ struct InvoiceListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
-                    NavigationLink {
-                        BusinessProfileView()
+                    Button {
+                        toolbarRoute = .businessProfile
                     } label: {
                         Label("Business Profile", systemImage: "gearshape")
                     }
 
-                    NavigationLink {
-                        CatalogItemListView()
+                    Button {
+                        toolbarRoute = .savedItems
                     } label: {
                         Label("Saved Items", systemImage: "tray")
                     }
@@ -229,11 +286,19 @@ struct InvoiceListView: View {
         }
 
         // Navigate to created invoice after template selection
-        .navigationDestination(item: $navigateToInvoice) { invoice in
-            InvoiceOverviewView(invoice: invoice)
+        .navigationDestination(item: $navigateToInvoice) { selection in
+            InvoiceListInvoiceRouteView(invoiceID: selection.id)
         }
-        .navigationDestination(item: $selectedInvoice) { invoice in
-            InvoiceOverviewView(invoice: invoice)
+        .navigationDestination(item: $selectedInvoice) { selection in
+            InvoiceListInvoiceRouteView(invoiceID: selection.id)
+        }
+        .navigationDestination(item: $toolbarRoute) { route in
+            switch route {
+            case .businessProfile:
+                BusinessProfileView()
+            case .savedItems:
+                CatalogItemListView()
+            }
         }
 
         // Manual Test Steps:
@@ -463,7 +528,7 @@ private extension InvoiceListView {
 
             showingTemplates = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                navigateToInvoice = invoice
+                navigateToInvoice = InvoiceListSelection(id: invoice.id)
             }
         } catch {
             Haptics.error()

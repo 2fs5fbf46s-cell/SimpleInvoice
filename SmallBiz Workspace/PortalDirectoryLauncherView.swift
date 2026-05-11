@@ -50,6 +50,16 @@ struct PortalDirectoryLauncherView: View {
                 .ignoresSafeArea()
 
             List {
+                Section {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search clients", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                    }
+                }
+
                 if let errorText {
                     Text(errorText)
                         .font(.subheadline.weight(.semibold))
@@ -98,11 +108,6 @@ struct PortalDirectoryLauncherView: View {
         }
         .navigationTitle("Client Portal")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search clients"
-        )
         .navigationDestination(item: $navigateToClientSettings) { client in
             ClientEditView(client: client)
         }

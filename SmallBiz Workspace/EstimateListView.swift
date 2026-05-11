@@ -6,6 +6,62 @@
 import SwiftUI
 import SwiftData
 
+private struct EstimateListSelection: Identifiable, Hashable {
+    let id: UUID
+}
+
+private struct EstimateListInvoiceRouteView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let invoiceID: UUID
+
+    @State private var invoice: Invoice?
+    @State private var loadError: String?
+
+    var body: some View {
+        Group {
+            if let invoice {
+                InvoiceOverviewView(invoice: invoice)
+            } else if let loadError {
+                ContentUnavailableView(
+                    "Couldn’t Load Estimate",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(loadError)
+                )
+            } else {
+                ProgressView("Loading estimate...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+            }
+        }
+        .task(id: invoiceID) {
+            do {
+                let descriptor = FetchDescriptor<Invoice>(
+                    predicate: #Predicate<Invoice> { invoice in
+                        invoice.id == invoiceID
+                    }
+                )
+                invoice = try modelContext.fetch(descriptor).first
+                loadError = invoice == nil ? "Estimate not found." : nil
+            } catch {
+                loadError = error.localizedDescription
+            }
+        }
+    }
+}
+
+private enum EstimateListToolbarRoute: Hashable, Identifiable {
+    case businessProfile
+    case savedItems
+
+    var id: String {
+        switch self {
+        case .businessProfile: return "businessProfile"
+        case .savedItems: return "savedItems"
+        }
+    }
+}
+
 struct EstimateListView: View {
     @Environment(\.modelContext) private var modelContext
     private let businessID: UUID?
@@ -16,8 +72,8 @@ struct EstimateListView: View {
     @Query private var businesses: [Business]
 
     // Navigate to the estimate we just created
-    @State private var navigateToEstimate: Invoice? = nil
-    @State private var selectedEstimate: Invoice? = nil
+    @State private var navigateToEstimate: EstimateListSelection? = nil
+    @State private var selectedEstimate: EstimateListSelection? = nil
 
     // MARK: - Rename
     @State private var renamingEstimate: Invoice? = nil
@@ -32,6 +88,7 @@ struct EstimateListView: View {
     @State private var draftName: String = ""
     @State private var draftClient: Client? = nil
     @State private var showingEstimateSettings = false
+    @State private var toolbarRoute: EstimateListToolbarRoute?
 
     // MARK: - Filters
     private enum Filter: String, CaseIterable, Identifiable {
@@ -149,7 +206,7 @@ struct EstimateListView: View {
                 } else {
                     ForEach(filteredEstimates) { estimate in
                         Button {
-                            selectedEstimate = estimate
+                            selectedEstimate = EstimateListSelection(id: estimate.id)
                         } label: {
                             row(estimate)
                         }
@@ -189,14 +246,14 @@ struct EstimateListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
-                    NavigationLink {
-                        BusinessProfileView()
+                    Button {
+                        toolbarRoute = .businessProfile
                     } label: {
                         Label("Business Profile", systemImage: "gearshape")
                     }
 
-                    NavigationLink {
-                        CatalogItemListView()
+                    Button {
+                        toolbarRoute = .savedItems
                     } label: {
                         Label("Saved Items", systemImage: "tray")
                     }
@@ -215,11 +272,19 @@ struct EstimateListView: View {
         }
 
         // Navigate to created estimate (template-style navigation)
-        .navigationDestination(item: $navigateToEstimate) { estimate in
-            InvoiceOverviewView(invoice: estimate)
+        .navigationDestination(item: $navigateToEstimate) { selection in
+            EstimateListInvoiceRouteView(invoiceID: selection.id)
         }
-        .navigationDestination(item: $selectedEstimate) { estimate in
-            InvoiceOverviewView(invoice: estimate)
+        .navigationDestination(item: $selectedEstimate) { selection in
+            EstimateListInvoiceRouteView(invoiceID: selection.id)
+        }
+        .navigationDestination(item: $toolbarRoute) { route in
+            switch route {
+            case .businessProfile:
+                BusinessProfileView()
+            case .savedItems:
+                CatalogItemListView()
+            }
         }
 
         // MARK: - Rename Alert

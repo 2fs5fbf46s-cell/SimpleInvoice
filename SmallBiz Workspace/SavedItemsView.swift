@@ -90,6 +90,16 @@ struct SavedItemsView: View {
                 .ignoresSafeArea()
 
             List {
+                Section {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search items", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                    }
+                }
+
                 categoriesRow
                 categoryFilterRow
 
@@ -139,11 +149,6 @@ struct SavedItemsView: View {
         }
         .navigationTitle("Inventory")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Search items"
-        )
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
 
