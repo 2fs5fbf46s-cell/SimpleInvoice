@@ -19,6 +19,7 @@ struct CreateContractFromInvoiceView: View {
     @State private var selectedJobIDs: [UUID] = []
     @State private var primaryJobID: UUID? = nil
     @State private var showJobsPicker = false
+    @State private var showingMusicSplitSheetForm = false
 
     var body: some View {
         ZStack {
@@ -50,6 +51,14 @@ struct CreateContractFromInvoiceView: View {
                                     .pickerStyle(.menu)
                                 }
                             }
+
+                            Button {
+                                showingMusicSplitSheetForm = true
+                            } label: {
+                                Label("Music Split Sheet (Smart Form)", systemImage: "music.note.list")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
                         }
                     }
 
@@ -153,6 +162,19 @@ struct CreateContractFromInvoiceView: View {
                 .navigationTitle("Select Jobs")
                 .navigationBarTitleDisplayMode(.inline)
             }
+        }
+        .sheet(isPresented: $showingMusicSplitSheetForm) {
+            NavigationStack {
+                MusicSplitSheetFormView(
+                    businessID: invoice.businessID,
+                    linkedClient: invoice.client,
+                    linkedInvoice: invoice
+                ) { _ in
+                    showingMusicSplitSheetForm = false
+                    dismiss()
+                }
+            }
+            .presentationDetents([.large])
         }
         .alert("Error", isPresented: Binding(
             get: { errorText != nil },

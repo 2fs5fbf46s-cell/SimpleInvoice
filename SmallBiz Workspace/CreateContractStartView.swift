@@ -41,6 +41,7 @@ struct CreateContractStartView: View {
 
     @State private var createError: String?
     @State private var showJobsPicker = false
+    @State private var showingMusicSplitSheetForm = false
     @State private var selectedJobIDs: [UUID] = []
     @State private var primaryJobID: UUID? = nil
 
@@ -84,6 +85,14 @@ struct CreateContractStartView: View {
                                     .pickerStyle(.menu)
                                 }
                             }
+
+                            Button {
+                                showingMusicSplitSheetForm = true
+                            } label: {
+                                Label("Music Split Sheet (Smart Form)", systemImage: "music.note.list")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
                         }
                     }
 
@@ -235,6 +244,20 @@ struct CreateContractStartView: View {
                 .navigationTitle("Select Jobs")
                 .navigationBarTitleDisplayMode(.inline)
             }
+        }
+        .sheet(isPresented: $showingMusicSplitSheetForm) {
+            NavigationStack {
+                MusicSplitSheetFormView(
+                    businessID: businessID,
+                    linkedClient: resolvedClient,
+                    linkedInvoice: useInvoice ? selectedInvoice : nil
+                ) { contract in
+                    showingMusicSplitSheetForm = false
+                    onCreated(contract)
+                    dismiss()
+                }
+            }
+            .presentationDetents([.large])
         }
         .alert("Couldn’t Create Contract", isPresented: Binding(
             get: { createError != nil },
