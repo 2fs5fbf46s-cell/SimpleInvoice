@@ -98,4 +98,73 @@ final class ContractsNavigationSmokeTests: XCTestCase {
         XCTAssertTrue(musicTemplate.body.contains("SONGWRITING / PUBLISHING SPLITS"))
         XCTAssertTrue(musicTemplate.body.contains("Total master recording splits must equal 100%."))
     }
+
+    func testMusicSplitSheetDraftValidationFlagsTotalsNamesAndPercentBounds() {
+        var contributor = MusicSplitSheetContributor()
+        contributor.stageNameOrCompany = "Producer Co"
+        contributor.writerSharePercent = 80
+        contributor.publishingSharePercent = 100
+        contributor.masterOwnershipPercent = 100
+        contributor.producerPointsPercent = -1
+
+        var draft = MusicSplitSheetDraft()
+        draft.contributors = [contributor]
+
+        let warnings = draft.validationWarnings.joined(separator: "\n")
+
+        XCTAssertFalse(draft.canGenerateContract)
+        XCTAssertTrue(warnings.contains("Writer share total must equal 100%. Current total: 80%."))
+        XCTAssertTrue(warnings.contains("Producer Co is missing a legal name."))
+        XCTAssertTrue(warnings.contains("producer points cannot be negative."))
+    }
+
+    func testMusicSplitSheetDraftGeneratesProfessionalContractBody() {
+        var writer = MusicSplitSheetContributor()
+        writer.legalName = "Alex Writer"
+        writer.role = "Writer"
+        writer.proAffiliation = "ASCAP"
+        writer.ipiCaeNumber = "123456789"
+        writer.writerSharePercent = 50
+        writer.publishingSharePercent = 50
+        writer.masterOwnershipPercent = 40
+        writer.royaltyNotes = "Paid quarterly."
+
+        var producer = MusicSplitSheetContributor()
+        producer.legalName = "Priya Producer"
+        producer.role = "Producer"
+        producer.writerSharePercent = 50
+        producer.publishingSharePercent = 50
+        producer.masterOwnershipPercent = 60
+        producer.producerPointsPercent = 3
+        producer.isWorkForHire = true
+        producer.flatFeeAmount = "$500"
+        producer.flatFeePaidDate = "May 1, 2026"
+        producer.royaltyNotes = "Producer points survive the flat fee."
+
+        var draft = MusicSplitSheetDraft()
+        draft.songTitle = "Midnight Demo"
+        draft.artistName = "The Example Artist"
+        draft.distributor = "DistroKid"
+        draft.releaseDate = "June 1, 2026"
+        draft.usesSamples = true
+        draft.sampleSource = "Vintage drum break"
+        draft.clearanceResponsibility = "Alex Writer"
+        draft.clearanceStatus = "Pending"
+        draft.proRegistrationResponsibleParty = "Alex Writer"
+        draft.distributorUploadResponsibleParty = "Priya Producer"
+        draft.paymentReportingSchedule = "Quarterly"
+        draft.contributors = [writer, producer]
+
+        XCTAssertTrue(draft.canGenerateContract)
+
+        let body = draft.contractBody(generatedAt: Date(timeIntervalSince1970: 0))
+
+        XCTAssertTrue(body.contains("MUSIC SPLIT SHEET"))
+        XCTAssertTrue(body.contains("Song Title: Midnight Demo"))
+        XCTAssertTrue(body.contains("Alex Writer | Writer | 50% | 50%"))
+        XCTAssertTrue(body.contains("Priya Producer | 60% | 3% | Producer points survive the flat fee."))
+        XCTAssertTrue(body.contains("Samples / Interpolations Used: Yes"))
+        XCTAssertTrue(body.contains("PRO / Publishing Admin Registration Responsibility: Alex Writer"))
+        XCTAssertTrue(body.contains("Contributor Name: Priya Producer"))
+    }
 }

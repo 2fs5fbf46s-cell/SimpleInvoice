@@ -21,6 +21,7 @@ struct ContractTemplatePickerForJobView: View {
 
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
+    @State private var showingMusicSplitSheetForm = false
 
     private func normalizedCategory(_ raw: String) -> String {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -28,8 +29,19 @@ struct ContractTemplatePickerForJobView: View {
     }
 
     private var categories: [String] {
-        let set = Set(templates.map { normalizedCategory($0.category) })
+        var set = Set(templates.map { normalizedCategory($0.category) })
+        set.insert(MusicSplitSheetDraft.templateCategory)
         return ["All"] + set.sorted()
+    }
+
+    private var shouldShowSmartMusicSplitSheet: Bool {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let matchesCategory = selectedCategory == "All" || selectedCategory == MusicSplitSheetDraft.templateCategory
+        guard matchesCategory else { return false }
+
+        if q.isEmpty { return true }
+
+        return MusicSplitSheetDraft.smartFormSearchText.contains(q)
     }
 
     private var filteredTemplates: [ContractTemplate] {
@@ -56,14 +68,27 @@ struct ContractTemplatePickerForJobView: View {
             SBWTheme.headerWash()
 
             List {
+                if shouldShowSmartMusicSplitSheet {
+                    Section {
+                        MusicSplitSheetSmartEntryCard {
+                            showingMusicSplitSheetForm = true
+                        }
+                    }
+                    .modifier(SBWCardRowStyle())
+                }
+
                 if filteredTemplates.isEmpty {
-                    ContentUnavailableView(
-                        searchText.isEmpty ? "No Templates" : "No Results",
-                        systemImage: "doc.text.magnifyingglass",
-                        description: Text(searchText.isEmpty
-                                          ? "No templates are available yet."
-                                          : "Try a different search or category.")
-                    )
+                    if shouldShowSmartMusicSplitSheet {
+                        EmptyView()
+                    } else {
+                        ContentUnavailableView(
+                            searchText.isEmpty ? "No Templates" : "No Results",
+                            systemImage: "doc.text.magnifyingglass",
+                            description: Text(searchText.isEmpty
+                                              ? "No templates are available yet."
+                                              : "Try a different search or category.")
+                        )
+                    }
                 } else {
                     ForEach(filteredTemplates) { template in
                         Section {
@@ -126,6 +151,19 @@ struct ContractTemplatePickerForJobView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
             }
+        }
+        .sheet(isPresented: $showingMusicSplitSheetForm) {
+            NavigationStack {
+                MusicSplitSheetFormView(
+                    businessID: job.businessID,
+                    linkedJob: job
+                ) { contract in
+                    showingMusicSplitSheetForm = false
+                    dismiss()
+                    onCreated(contract)
+                }
+            }
+            .presentationDetents([.large])
         }
     }
 
