@@ -3,9 +3,9 @@ import SwiftData
 
 struct ItemPickerView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \CatalogItem.name) private var catalog: [CatalogItem]
+    private let businessID: UUID?
+    @Query private var catalog: [CatalogItem]
     @Query private var profiles: [BusinessProfile]
 
     @State private var searchText: String = ""
@@ -13,21 +13,54 @@ struct ItemPickerView: View {
 
     let onPick: (CatalogItem) -> Void
 
+    init(businessID: UUID? = nil, onPick: @escaping (CatalogItem) -> Void) {
+        self.businessID = businessID
+        self.onPick = onPick
+
+        if let businessID {
+            _catalog = Query(
+                filter: #Predicate<CatalogItem> { item in
+                    item.businessID == businessID
+                },
+                sort: [SortDescriptor(\CatalogItem.name)]
+            )
+            _profiles = Query(
+                filter: #Predicate<BusinessProfile> { profile in
+                    profile.businessID == businessID
+                }
+            )
+        } else {
+            _catalog = Query(sort: [SortDescriptor(\CatalogItem.name)])
+            _profiles = Query()
+        }
+    }
+
     private func normalizedCategory(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "General" : trimmed
     }
 
-    private var profile: BusinessProfile {
-        profiles.first ?? {
-            let created = BusinessProfile()
-            modelContext.insert(created)
-            return created
-        }()
+    private var profile: BusinessProfile? {
+        if let businessID {
+            return profiles.first(where: { $0.businessID == businessID })
+        }
+        return profiles.first
+    }
+
+    private var defaultCategoriesText: String {
+        """
+        General
+        Photography
+        DJ
+        Audio/Visual
+        Installations
+        Backline
+        Other
+        """
     }
 
     private var profileCategories: [String] {
-        let lines = profile.catalogCategoriesText
+        let lines = (profile?.catalogCategoriesText ?? defaultCategoriesText)
             .split(whereSeparator: \.isNewline)
             .map { normalizedCategory(String($0)) }
             .filter { !$0.isEmpty }
@@ -103,6 +136,11 @@ struct ItemPickerView: View {
         }
         .navigationTitle("Pick Saved Item")
         .searchable(text: $searchText, prompt: "Search items")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { dismiss() }
+            }
+        }
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
                 Picker("Category", selection: $selectedCategory) {

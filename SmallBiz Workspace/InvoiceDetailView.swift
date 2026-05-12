@@ -67,13 +67,14 @@ struct InvoiceDetailView: View {
     @State private var portalURL: URL? = nil
     @State private var portalError: String? = nil
     @State private var portalNotice: String? = nil
+    @State private var businessInfoNotice: String? = nil
     @State private var openingPortal = false
     @State private var uploadingPortalPDF = false
     @State private var portalPDFNotice: String? = nil
     @State private var navigateToClientSettings: Client? = nil
     @State private var selectedLineItem: LineItem? = nil
     @State private var selectedLinkedContract: Contract? = nil
-    @State private var convertedInvoice: Invoice? = nil
+    @State private var invoiceOverviewRoute: Invoice? = nil
 
 
     // Open job workspace folder in Files
@@ -161,13 +162,13 @@ struct InvoiceDetailView: View {
             ClientEditView(client: client)
         }
         .navigationDestination(item: $selectedLineItem) { item in
-            LineItemEditView(item: item)
+            LineItemEditView(item: item, businessID: invoice.businessID)
         }
         .navigationDestination(item: $selectedLinkedContract) { contract in
             ContractDetailView(contract: contract)
         }
-        .navigationDestination(item: $convertedInvoice) { converted in
-            InvoiceOverviewView(invoice: converted)
+        .navigationDestination(item: $invoiceOverviewRoute) { routedInvoice in
+            InvoiceOverviewView(invoice: routedInvoice)
         }
         
         .sheet(isPresented: $showPortal, onDismiss: {
@@ -195,7 +196,7 @@ struct InvoiceDetailView: View {
             await refreshEstimateStatusFromPortal(estimate: invoice)
             await refreshManualReports()
         }
-        .onChange(of: invoice.estimateStatus) { _, _ in
+        .onChange(of: invoice.estimateStatus) { oldValue, newValue in
             let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if status == "accepted" {
                 if invoice.estimateAcceptedAt == nil { invoice.estimateAcceptedAt = .now }
@@ -205,7 +206,19 @@ struct InvoiceDetailView: View {
                 invoice.estimateAcceptedAt = nil
             }
             try? modelContext.save()
-            Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+            let oldStatus = oldValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let newStatus = newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if oldStatus == "draft", ["sent", "accepted", "declined"].contains(newStatus) {
+                _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                    invoice: invoice,
+                    profiles: profiles,
+                    context: modelContext,
+                    reason: .sent,
+                    replaceExistingUnlockedSnapshot: true
+                )
+            } else {
+                Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
+            }
             Task { await indexInvoiceIfPossible() }
         }
         .onChange(of: invoice.invoiceNumber) { _, _ in
@@ -445,15 +458,17 @@ struct InvoiceDetailView: View {
     }
 
     private func resolvedPortalBusinessName() -> String? {
-        let snapshotName = trimmed(invoice.businessSnapshot?.name ?? "")
-        if !snapshotName.isEmpty { return snapshotName }
+        if invoice.isBusinessInfoLocked {
+            let snapshotName = trimmed(invoice.businessSnapshot?.name ?? "")
+            if !snapshotName.isEmpty { return snapshotName }
+        }
 
         let profileName = trimmed(resolvedBusinessProfile()?.name ?? "")
         return profileName.isEmpty ? nil : profileName
     }
 
     private var isSnapshotLockedForInvoice: Bool {
-        invoice.businessSnapshotData != nil
+        invoice.isBusinessInfoLocked
     }
 
     private func normalizeInvoiceDefaultsIfNeeded() {
@@ -501,6 +516,12 @@ struct InvoiceDetailView: View {
                     .font(.title3.weight(.semibold))
 
                 statusPill(text: invoiceStatusText)
+
+                if let lockText = invoice.businessInfoLockStatusText {
+                    Text(lockText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -985,6 +1006,25 @@ struct InvoiceDetailView: View {
                     Spacer()
                 }
 
+                if invoice.canRefreshBusinessInfo {
+                    Button("Refresh Business Info") {
+                        Task { await refreshBusinessSnapshotIfAllowed() }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                } else if let lockText = invoice.businessInfoLockStatusText {
+                    Text(lockText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let businessInfoNotice {
+                    Text(businessInfoNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if invoice.documentType == "estimate" {
                     if let timestamp = estimateStatusTimestampText {
                         Text(timestamp)
@@ -1020,6 +1060,13 @@ struct InvoiceDetailView: View {
                 titleVisibility: .visible
             ) {
                 Button("Mark as Paid", role: .destructive) {
+                    _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                        invoice: invoice,
+                        profiles: profiles,
+                        context: modelContext,
+                        reason: .paid,
+                        replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
+                    )
                     invoice.isPaid = true
                     try? modelContext.save()
                 }
@@ -1193,6 +1240,10 @@ struct InvoiceDetailView: View {
         let num = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = invoice.documentType == "estimate" ? "Estimate" : "Invoice"
         return num.isEmpty ? base : "\(base) \(num)"
+    }
+
+    private var duplicateActionTitle: String {
+        invoice.documentType == "estimate" ? "Duplicate Estimate" : "Duplicate Invoice"
     }
 
     private var invoiceStatusText: String {
@@ -1380,19 +1431,25 @@ struct InvoiceDetailView: View {
             Text("Audit / Snapshot")
                 .font(.headline)
 
-            if invoice.businessSnapshotData != nil {
-                Text("Business Snapshot: Locked")
+            if let lockText = invoice.businessInfoLockStatusText {
+                Text(lockText)
                     .font(.subheadline.weight(.semibold))
             } else {
-                Text("Business Snapshot: Not Locked")
+                Text("Draft invoices use your current Business Profile.")
                     .foregroundStyle(.secondary)
             }
 
-            if invoice.isDraftForSnapshotRefresh {
-                Button("Refresh Snapshot") {
+            if invoice.canRefreshBusinessInfo {
+                Button("Refresh Business Info") {
                     Task { await refreshBusinessSnapshotIfAllowed() }
                 }
                 .buttonStyle(.bordered)
+            }
+
+            if let businessInfoNotice {
+                Text(businessInfoNotice)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .sbwCardRow()
@@ -1593,6 +1650,14 @@ struct InvoiceDetailView: View {
             )
         }
 
+        _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+            invoice: invoice,
+            profiles: profiles,
+            context: modelContext,
+            reason: .portal,
+            replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
+        )
+
         let businessName = resolvedPortalBusinessName()
 
         let token = try await PortalBackend.shared.createInvoicePortalToken(
@@ -1669,7 +1734,7 @@ struct InvoiceDetailView: View {
                 context: modelContext
             )
             if created.id != invoice.id {
-                convertedInvoice = created
+                invoiceOverviewRoute = created
             }
             Task { await ensureSnapshotForFinalizedInvoiceIfNeeded() }
             Task { await indexInvoiceIfPossible() }
@@ -1718,7 +1783,9 @@ struct InvoiceDetailView: View {
                                 invoice: invoice,
                                 profiles: profiles,
                                 context: modelContext,
-                                businesses: businesses
+                                businesses: businesses,
+                                lockBusinessSnapshot: true,
+                                lockReason: .portal
                             )
                             let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
                             let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1757,15 +1824,17 @@ struct InvoiceDetailView: View {
 
             Button { emailPDF() } label: { Image(systemName: "envelope") }
             Button { duplicateInvoice() } label: { Image(systemName: "doc.on.doc") }
+                .accessibilityLabel(duplicateActionTitle)
         }
     }
 
     private var itemPickerSheet: some View {
         NavigationStack {
-            ItemPickerView { picked in
-                let desc = picked.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? picked.name
-                    : "\(picked.name) — \(picked.details)"
+            ItemPickerView(businessID: invoice.businessID) { picked in
+                let desc = CatalogItemAutoSaveService.combineLineItemDescription(
+                    name: picked.name,
+                    details: picked.details
+                )
 
                 let newItem = LineItem(
                     itemDescription: desc,
@@ -1879,23 +1948,34 @@ struct InvoiceDetailView: View {
 
     @MainActor
     private func ensureSnapshotForFinalizedInvoiceIfNeeded() async {
-        guard invoice.isFinalized else { return }
+        guard invoice.isBusinessInfoLocked else { return }
         guard invoice.businessSnapshotData == nil else { return }
         _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
             invoice: invoice,
             profiles: profiles,
-            context: modelContext
+            context: modelContext,
+            reason: invoice.isPaid ? .paid : .historical,
+            replaceExistingUnlockedSnapshot: false
         )
     }
 
     @MainActor
     private func refreshBusinessSnapshotIfAllowed() async {
-        guard invoice.isDraftForSnapshotRefresh else { return }
-        _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+        guard invoice.canRefreshBusinessInfo else { return }
+        _ = InvoicePDFService.refreshBusinessInfoForDraft(
             invoice: invoice,
-            profiles: profiles,
             context: modelContext
         )
+        Haptics.success()
+        showBusinessInfoNotice("Business info refreshed")
+    }
+
+    @MainActor
+    private func showBusinessInfoNotice(_ text: String) {
+        businessInfoNotice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if businessInfoNotice == text { businessInfoNotice = nil }
+        }
     }
 
     private func totalRow(_ label: String, _ amount: Double, isEmphasis: Bool = false) -> some View {
@@ -2026,7 +2106,9 @@ struct InvoiceDetailView: View {
                 invoice: invoice,
                 profiles: profiles,
                 context: modelContext,
-                businesses: businesses
+                businesses: businesses,
+                lockBusinessSnapshot: true,
+                lockReason: .sent
             )
 
             mailAttachment = pdfData
@@ -2044,61 +2126,43 @@ struct InvoiceDetailView: View {
     }
 
     private func duplicateInvoice() {
-        let profile: BusinessProfile = resolvedBusinessProfile() ?? {
-            let created = BusinessProfile(businessID: invoice.businessID)
-            modelContext.insert(created)
-            return created
-        }()
-
-        let newInvoiceNumber = InvoiceNumberGenerator.generateNextNumber(profile: profile)
-
-        let copy = Invoice(
-            businessID: invoice.businessID,
-            invoiceNumber: newInvoiceNumber,
-            issueDate: Date(),
-            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date(),
-            paymentTerms: invoice.paymentTerms,
-            notes: invoice.notes,
-            thankYou: invoice.thankYou,
-            termsAndConditions: invoice.termsAndConditions,
-            taxRate: invoice.taxRate,
-            discountAmount: invoice.discountAmount,
-            isPaid: false,
-            documentType: "invoice",
-            client: invoice.client,
-            job: invoice.job,
-            items: []
-        )
-
-        for item in (invoice.items ?? []) {
-            let newItem = LineItem(
-                itemDescription: item.itemDescription,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice
+        do {
+            let copy = try InvoiceDuplicationService.duplicate(
+                invoice: invoice,
+                profiles: profiles,
+                context: modelContext
             )
-            if copy.items == nil { copy.items = [] }
-            copy.items?.append(newItem)
-            newItem.invoice = copy
+            Haptics.success()
+            invoiceOverviewRoute = copy
+        } catch {
+            Haptics.error()
+            exportError = error.localizedDescription
         }
-
-        modelContext.insert(copy)
-        try? modelContext.save()
     }
 
-    private func persistInvoicePDFToJobFiles() throws -> URL {
+    private func persistInvoicePDFToJobFiles(lockReason: BusinessSnapshotLockReason = .sent) throws -> URL {
         return try DocumentFileIndexService.persistInvoicePDF(
             invoice: invoice,
             profiles: profiles,
-            context: modelContext
+            context: modelContext,
+            lockReason: lockReason
         )
     }
 
     // MARK: - Share actions
 
     private func shareFromPreview(url: URL) {
-        var items: [Any] = [url]
-        items.append(contentsOf: attachmentURLsForInvoice())
-        shareItems = items
+        do {
+            let officialURL = try persistInvoicePDFToJobFiles(lockReason: .sent)
+            var items: [Any] = [officialURL]
+            items.append(contentsOf: attachmentURLsForInvoice())
+            shareItems = items
+        } catch {
+            var items: [Any] = [url]
+            items.append(contentsOf: attachmentURLsForInvoice())
+            shareItems = items
+            exportError = error.localizedDescription
+        }
     }
 
     private func sharePDFOnly() {
@@ -2286,6 +2350,13 @@ struct InvoiceDetailView: View {
             )
 
             if status.paid && !invoice.isPaid {
+                _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                    invoice: invoice,
+                    profiles: profiles,
+                    context: modelContext,
+                    reason: .paid,
+                    replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
+                )
                 invoice.isPaid = true
                 try? modelContext.save()
             }

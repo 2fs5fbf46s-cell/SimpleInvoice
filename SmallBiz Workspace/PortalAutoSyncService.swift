@@ -59,18 +59,27 @@ enum PortalAutoSyncService {
         do {
             let existingBlobUrl = invoice.portalLastUploadedBlobUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let canReuseBlob = !existingBlobUrl.isEmpty && invoice.portalLastUploadedHash == currentHash
+            let profiles = fetchProfiles(businessID: invoice.businessID, context: context)
 
             let blobUrl: String
             if canReuseBlob {
+                _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                    invoice: invoice,
+                    profiles: profiles,
+                    context: context,
+                    reason: .portal,
+                    replaceExistingUnlockedSnapshot: false
+                )
                 blobUrl = existingBlobUrl
             } else {
-                let profiles = fetchProfiles(businessID: invoice.businessID, context: context)
                 let businesses: [Business] = business.map { [$0] } ?? []
                 let pdfData = InvoicePDFService.makePDFData(
                     invoice: invoice,
                     profiles: profiles,
                     context: context,
-                    businesses: businesses
+                    businesses: businesses,
+                    lockBusinessSnapshot: true,
+                    lockReason: .portal
                 )
 
                 let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"

@@ -197,6 +197,13 @@ struct InvoiceListView: View {
                             row(rowModel)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                duplicateAndOpen(rowModel.invoice)
+                            } label: {
+                                Label("Duplicate Invoice", systemImage: "doc.on.doc")
+                            }
+                        }
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                     .onDelete(perform: deleteInvoices)
@@ -401,6 +408,22 @@ struct InvoiceListView: View {
         } catch {
             Haptics.error()
             print("Failed to save deletes: \(error)")
+        }
+    }
+
+    private func duplicateAndOpen(_ invoice: Invoice) {
+        do {
+            let copy = try InvoiceDuplicationService.duplicate(
+                invoice: invoice,
+                profiles: profiles,
+                context: modelContext
+            )
+            Haptics.success()
+            recomputeVisibleInvoices()
+            navigateToInvoice = InvoiceListSelection(id: copy.id)
+        } catch {
+            Haptics.error()
+            print("Failed to duplicate invoice: \(error)")
         }
     }
 }

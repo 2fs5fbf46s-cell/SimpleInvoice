@@ -9,16 +9,31 @@ import SwiftData
 struct LineItemEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var item: LineItem
+    private let businessID: UUID?
 
     // Local editing state (so UI isn't prefilled)
     @State private var nameText: String = ""
     @State private var detailsText: String = ""
     @State private var quantityValue: Double = 1
     @State private var unitPriceValue: Double = 0
+    @State private var showingSavedItemPicker = false
+    @State private var pendingCatalogSaveTask: Task<Void, Never>? = nil
+    @State private var sessionCatalogItem: CatalogItem? = nil
+
+    init(item: LineItem, businessID: UUID? = nil) {
+        self.item = item
+        self.businessID = businessID
+    }
 
     var body: some View {
         Form {
             Section("Item") {
+                Button {
+                    showingSavedItemPicker = true
+                } label: {
+                    Label("Choose Saved Item", systemImage: "tray")
+                }
+
                 TextField(
                     "Name",
                     text: $nameText,
@@ -78,12 +93,23 @@ struct LineItemEditView: View {
         .onChange(of: detailsText) { _, _ in saveToModel() }
         .onChange(of: quantityValue) { _, _ in saveToModel() }
         .onChange(of: unitPriceValue) { _, _ in saveToModel() }
+        .onDisappear {
+            pendingCatalogSaveTask?.cancel()
+            autoSaveCatalogItem()
+        }
+        .sheet(isPresented: $showingSavedItemPicker) {
+            NavigationStack {
+                ItemPickerView(businessID: businessID) { picked in
+                    applySavedItem(picked)
+                }
+            }
+        }
     }
 
     // MARK: - Helpers
 
     private func loadFromModel() {
-        let parts = splitDescription(item.itemDescription)
+        let parts = CatalogItemAutoSaveService.parseLineItemDescription(item.itemDescription)
         nameText = parts.name
         detailsText = parts.details
         quantityValue = item.quantity
@@ -91,30 +117,57 @@ struct LineItemEditView: View {
     }
 
     private func saveToModel() {
-        item.itemDescription = combineDescription(name: nameText, details: detailsText)
+        item.itemDescription = CatalogItemAutoSaveService.combineLineItemDescription(
+            name: nameText,
+            details: detailsText
+        )
         item.quantity = quantityValue
         item.unitPrice = unitPriceValue
 
         try? modelContext.save()
+        scheduleCatalogAutosave()
     }
 
     private var currentLineTotal: Double {
         quantityValue * unitPriceValue
     }
 
-    private func splitDescription(_ value: String) -> (name: String, details: String) {
-        let lines = value.components(separatedBy: .newlines)
-        let name = (lines.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let details = lines.dropFirst().joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (name, details)
+    private func applySavedItem(_ picked: CatalogItem) {
+        nameText = picked.name
+        detailsText = picked.details
+        unitPriceValue = picked.unitPrice
+        if quantityValue <= 0 || quantityValue == 1 {
+            quantityValue = 1
+        }
+        sessionCatalogItem = nil
+        saveToModel()
     }
 
-    private func combineDescription(name: String, details: String) -> String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDetails = details.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedName.isEmpty { return trimmedDetails }
-        if trimmedDetails.isEmpty { return trimmedName }
-        return "\(trimmedName)\n\(trimmedDetails)"
+    private func scheduleCatalogAutosave() {
+        pendingCatalogSaveTask?.cancel()
+        pendingCatalogSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            autoSaveCatalogItem()
+        }
+    }
+
+    private func autoSaveCatalogItem() {
+        do {
+            let result = try CatalogItemAutoSaveService.save(
+                name: nameText,
+                details: detailsText,
+                unitPrice: unitPriceValue,
+                quantity: quantityValue,
+                businessID: businessID,
+                context: modelContext,
+                sessionCatalogItem: sessionCatalogItem
+            )
+            if result?.created == true {
+                sessionCatalogItem = result?.item
+            }
+        } catch {
+            print("Failed to auto-save catalog item: \(error)")
+        }
     }
 }
