@@ -41,14 +41,6 @@ struct WorkspaceTabView: View {
                 Label("Invoices", systemImage: "doc.plaintext")
             }
 
-            NavigationStack {
-                FilesHomeView()
-                    .toolbar { homeToolbar }
-            }
-            .tabItem {
-                Label("Files", systemImage: "folder")
-            }
-
             // ✅ Portal Preview MUST be inside TabView
             NavigationStack {
                 PortalPreviewView()
