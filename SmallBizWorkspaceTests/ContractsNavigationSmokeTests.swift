@@ -118,6 +118,51 @@ final class ContractsNavigationSmokeTests: XCTestCase {
         XCTAssertTrue(warnings.contains("producer points cannot be negative."))
     }
 
+    func testMusicSplitSheetDraftValidationRequiresSelectedClientForGeneration() {
+        var contributor = MusicSplitSheetContributor()
+        contributor.legalName = "Alex Writer"
+        contributor.writerSharePercent = 100
+        contributor.publishingSharePercent = 100
+        contributor.masterOwnershipPercent = 100
+
+        var draft = MusicSplitSheetDraft()
+        draft.contributors = [contributor]
+
+        XCTAssertTrue(draft.canGenerateContract)
+        XCTAssertFalse(draft.canGenerateContract(selectedClient: nil))
+        XCTAssertTrue(draft.validationWarnings(selectedClient: nil).contains("Select a client before generating the split sheet."))
+    }
+
+    func testMusicSplitSheetDraftGeneratedContractReceivesSelectedClient() {
+        let businessID = UUID()
+        let client = Client(businessID: businessID, name: "Primary Artist")
+
+        var contributor = MusicSplitSheetContributor()
+        contributor.legalName = "Alex Writer"
+        contributor.writerSharePercent = 100
+        contributor.publishingSharePercent = 100
+        contributor.masterOwnershipPercent = 100
+
+        var draft = MusicSplitSheetDraft()
+        draft.songTitle = "Portal Ready Song"
+        draft.contributors = [contributor]
+
+        let contract = draft.makeContract(
+            businessID: businessID,
+            business: nil,
+            selectedClient: client,
+            generatedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(contract.businessID, businessID)
+        XCTAssertEqual(contract.client?.id, client.id)
+        XCTAssertEqual(contract.resolvedClient?.id, client.id)
+        XCTAssertEqual(contract.title, "Music Split Sheet - Portal Ready Song")
+        XCTAssertEqual(contract.templateName, MusicSplitSheetDraft.templateName)
+        XCTAssertTrue(contract.portalNeedsUpload)
+        XCTAssertTrue(contract.renderedBody.contains("Song Title: Portal Ready Song"))
+    }
+
     func testMusicSplitSheetDraftGeneratesProfessionalContractBody() {
         var writer = MusicSplitSheetContributor()
         writer.legalName = "Alex Writer"
@@ -166,5 +211,33 @@ final class ContractsNavigationSmokeTests: XCTestCase {
         XCTAssertTrue(body.contains("Samples / Interpolations Used: Yes"))
         XCTAssertTrue(body.contains("PRO / Publishing Admin Registration Responsibility: Alex Writer"))
         XCTAssertTrue(body.contains("Contributor Name: Priya Producer"))
+    }
+
+    @MainActor
+    func testStaticMusicSplitSheetTemplateStillCreatesClientLinkedContract() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let businessID = UUID()
+        let client = Client(businessID: businessID, name: "Static Template Client")
+
+        context.insert(client)
+        ContractTemplateSeeder.seedIfNeeded(context: context)
+
+        let templates = try context.fetch(FetchDescriptor<ContractTemplate>())
+        let template = try XCTUnwrap(templates.first { $0.name == "Music Split Sheet" })
+
+        let contract = try ContractCreation.create(
+            context: context,
+            template: template,
+            businessID: businessID,
+            business: nil,
+            client: client,
+            invoice: nil
+        )
+
+        XCTAssertEqual(contract.templateName, "Music Split Sheet")
+        XCTAssertEqual(contract.client?.id, client.id)
+        XCTAssertEqual(contract.resolvedClient?.id, client.id)
+        XCTAssertTrue(contract.renderedBody.contains("MUSIC SPLIT SHEET"))
     }
 }

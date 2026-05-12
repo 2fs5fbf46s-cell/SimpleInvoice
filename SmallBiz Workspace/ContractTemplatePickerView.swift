@@ -463,6 +463,58 @@ struct MusicSplitSheetDraft: Equatable {
     }
 
     var validationWarnings: [String] {
+        splitValidationWarnings()
+    }
+
+    func validationWarnings(selectedClient: Client?) -> [String] {
+        var warnings: [String] = []
+
+        if selectedClient == nil {
+            warnings.append("Select a client before generating the split sheet.")
+        }
+
+        warnings.append(contentsOf: splitValidationWarnings())
+        return warnings
+    }
+
+    func canGenerateContract(selectedClient: Client?) -> Bool {
+        validationWarnings(selectedClient: selectedClient).isEmpty
+    }
+
+    func makeContract(
+        businessID: UUID,
+        business: BusinessProfile?,
+        selectedClient: Client,
+        linkedJob: Job? = nil,
+        linkedInvoice: Invoice? = nil,
+        generatedAt: Date = .now
+    ) -> Contract {
+        let resolvedJob = linkedJob ?? linkedInvoice?.job
+        let contract = Contract(
+            businessID: businessID,
+            title: contractTitle,
+            createdAt: generatedAt,
+            updatedAt: generatedAt,
+            templateName: Self.templateName,
+            templateCategory: Self.templateCategory,
+            renderedBody: contractBody(preparedBy: business, generatedAt: generatedAt),
+            statusRaw: ContractStatus.draft.rawValue,
+            client: selectedClient,
+            invoice: linkedInvoice,
+            linkedJobIDsCSV: resolvedJob?.id.uuidString ?? ""
+        )
+
+        contract.job = resolvedJob
+        contract.portalNeedsUpload = true
+        return contract
+    }
+
+    var contractTitle: String {
+        let title = songTitle.trimmedForMusicSplitSheet
+        return title.isEmpty ? "Music Split Sheet" : "Music Split Sheet - \(title)"
+    }
+
+    private func splitValidationWarnings() -> [String] {
         var warnings: [String] = []
 
         if contributors.isEmpty {
@@ -730,8 +782,11 @@ struct MusicSplitSheetFormView: View {
     let onCreated: (Contract) -> Void
 
     @Query private var profiles: [BusinessProfile]
+    @Query(sort: \Client.name) private var clients: [Client]
 
     @State private var draft = MusicSplitSheetDraft()
+    @State private var selectedClient: Client?
+    @State private var showingClientPicker = false
     @State private var contributorEditor: MusicContributorEditorState?
     @State private var createError: String?
 
@@ -748,6 +803,7 @@ struct MusicSplitSheetFormView: View {
         self.linkedClient = linkedClient
         self.linkedInvoice = linkedInvoice
         self.onCreated = onCreated
+        _selectedClient = State(initialValue: linkedClient ?? linkedInvoice?.client)
 
         if let resolvedBusinessID {
             _profiles = Query(
@@ -756,8 +812,16 @@ struct MusicSplitSheetFormView: View {
                 },
                 sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]
             )
+
+            _clients = Query(
+                filter: #Predicate<Client> { client in
+                    client.businessID == resolvedBusinessID
+                },
+                sort: [SortDescriptor(\Client.name, order: .forward)]
+            )
         } else {
             _profiles = Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)])
+            _clients = Query(sort: \Client.name)
         }
     }
 
@@ -771,6 +835,7 @@ struct MusicSplitSheetFormView: View {
             SBWTheme.headerWash()
 
             Form {
+                clientSelectionSection
                 songInformationSection
                 contributorsSection
                 publishingSplitsSection
@@ -803,6 +868,15 @@ struct MusicSplitSheetFormView: View {
             }
             .presentationDetents([.large])
         }
+        .sheet(isPresented: $showingClientPicker) {
+            NavigationStack {
+                MusicSplitSheetClientPickerView(
+                    clients: clients,
+                    selectedClient: $selectedClient
+                )
+            }
+            .presentationDetents([.medium, .large])
+        }
         .alert("Couldn’t Generate Contract", isPresented: Binding(
             get: { createError != nil },
             set: { if !$0 { createError = nil } }
@@ -810,6 +884,41 @@ struct MusicSplitSheetFormView: View {
             Button("OK", role: .cancel) { createError = nil }
         } message: {
             Text(createError ?? "")
+        }
+        .onAppear {
+            preselectClientIfNeeded()
+        }
+        .onChange(of: clients.count) { _, _ in
+            preselectClientIfNeeded()
+        }
+    }
+
+    private var clientSelectionSection: some View {
+        Section("Client / Primary Artist") {
+            if let selectedClient {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(selectedClient.name.isEmpty ? "Client" : selectedClient.name)
+                        .font(.subheadline.weight(.semibold))
+
+                    if !selectedClient.email.isEmpty {
+                        Text(selectedClient.email)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if !selectedClient.phone.isEmpty {
+                        Text(selectedClient.phone)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Label("Select a client before generating the split sheet.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+
+            Button(selectedClient == nil ? "Select Client" : "Change Client") {
+                showingClientPicker = true
+            }
         }
     }
 
@@ -972,11 +1081,12 @@ struct MusicSplitSheetFormView: View {
             MusicSplitSheetTotalRow(label: "Publishing", value: draft.publishingShareTotal)
             MusicSplitSheetTotalRow(label: "Master", value: draft.masterOwnershipTotal)
 
-            if draft.validationWarnings.isEmpty {
+            let warnings = draft.validationWarnings(selectedClient: selectedClient)
+            if warnings.isEmpty {
                 Label("Ready to generate", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
             } else {
-                ForEach(draft.validationWarnings, id: \.self) { warning in
+                ForEach(warnings, id: \.self) { warning in
                     Label(warning, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.footnote)
@@ -990,35 +1100,31 @@ struct MusicSplitSheetFormView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!draft.canGenerateContract)
+            .disabled(!draft.canGenerateContract(selectedClient: selectedClient))
         }
     }
 
     @MainActor
     private func generateContract() {
-        guard draft.canGenerateContract else { return }
+        guard draft.canGenerateContract(selectedClient: selectedClient) else { return }
 
         guard let businessID else {
             createError = "No business selected."
             return
         }
 
-        let resolvedJob = linkedJob ?? linkedInvoice?.job
-        let contract = Contract(
-            businessID: businessID,
-            title: titleForContract(),
-            createdAt: .now,
-            updatedAt: .now,
-            templateName: MusicSplitSheetDraft.templateName,
-            templateCategory: MusicSplitSheetDraft.templateCategory,
-            renderedBody: draft.contractBody(preparedBy: businessProfile),
-            statusRaw: ContractStatus.draft.rawValue,
-            client: linkedClient ?? linkedInvoice?.client ?? fetchLinkedClient(),
-            invoice: linkedInvoice,
-            linkedJobIDsCSV: resolvedJob?.id.uuidString ?? ""
-        )
+        guard let selectedClient else {
+            createError = "Select a client before generating the split sheet."
+            return
+        }
 
-        contract.job = resolvedJob
+        let contract = draft.makeContract(
+            businessID: businessID,
+            business: businessProfile,
+            selectedClient: selectedClient,
+            linkedJob: linkedJob,
+            linkedInvoice: linkedInvoice
+        )
 
         modelContext.insert(contract)
 
@@ -1029,11 +1135,6 @@ struct MusicSplitSheetFormView: View {
         } catch {
             createError = error.localizedDescription
         }
-    }
-
-    private func titleForContract() -> String {
-        let title = draft.songTitle.trimmedForMusicSplitSheet
-        return title.isEmpty ? "Music Split Sheet" : "Music Split Sheet - \(title)"
     }
 
     private func saveContributor(_ contributor: MusicSplitSheetContributor, existingID: UUID?) {
@@ -1055,12 +1156,23 @@ struct MusicSplitSheetFormView: View {
         draft.contributors.removeAll { $0.id == contributor.id }
     }
 
-    private func fetchLinkedClient() -> Client? {
-        guard let clientID = linkedJob?.clientID else { return nil }
-        let descriptor = FetchDescriptor<Client>(predicate: #Predicate<Client> { client in
-            client.id == clientID
-        })
-        return try? modelContext.fetch(descriptor).first
+    private func preselectClientIfNeeded() {
+        guard selectedClient == nil else { return }
+
+        if let linkedClient {
+            selectedClient = linkedClient
+            return
+        }
+
+        if let invoiceClient = linkedInvoice?.client {
+            selectedClient = invoiceClient
+            return
+        }
+
+        if let jobClientID = linkedJob?.clientID,
+           let jobClient = clients.first(where: { $0.id == jobClientID }) {
+            selectedClient = jobClient
+        }
     }
 }
 
@@ -1068,6 +1180,73 @@ private struct MusicContributorEditorState: Identifiable {
     let id = UUID()
     let existingID: UUID?
     var contributor: MusicSplitSheetContributor
+}
+
+private struct MusicSplitSheetClientPickerView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let clients: [Client]
+    @Binding var selectedClient: Client?
+
+    var body: some View {
+        ZStack {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            SBWTheme.headerWash()
+
+            List {
+                Section("Clients") {
+                    if clients.isEmpty {
+                        ContentUnavailableView(
+                            "No Clients",
+                            systemImage: "person.crop.circle.badge.exclamationmark",
+                            description: Text("Add a client before generating a portal-ready split sheet.")
+                        )
+                    } else {
+                        ForEach(clients) { client in
+                            Button {
+                                selectedClient = client
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(client.name.isEmpty ? "Client" : client.name)
+                                            .foregroundStyle(.primary)
+
+                                        if !client.email.isEmpty {
+                                            Text(client.email)
+                                                .font(.footnote)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        } else if !client.phone.isEmpty {
+                                            Text(client.phone)
+                                                .font(.footnote)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    if selectedClient?.id == client.id {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Select Client")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+        }
+    }
 }
 
 private struct MusicSplitSheetContributorEditView: View {
