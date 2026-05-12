@@ -545,11 +545,20 @@ struct BookingDetailView: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(isSubmitting)
 
-                            Button("Decline", role: .destructive) {
-                                Task { await declineRequest() }
+                            HStack(spacing: 10) {
+                                Button("Approve") {
+                                    Task { await approveRequest() }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.green)
+                                .disabled(isSubmitting)
+
+                                Button("Deny", role: .destructive) {
+                                    Task { await declineRequest() }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(isSubmitting)
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(isSubmitting)
 
                             if isSubmitting {
                                 HStack {
@@ -954,6 +963,25 @@ struct BookingDetailView: View {
             } else {
                 lastDepositSendWarning = nil
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func approveRequest() async {
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        do {
+            let bizID = try resolveBusinessId()
+            try await PortalBackend.shared.approveBookingRequest(
+                businessId: bizID,
+                requestId: request.requestId
+            )
+            currentStatus = "approved"
+            onStatusChange("approved")
         } catch {
             errorMessage = error.localizedDescription
         }

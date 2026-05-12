@@ -6,7 +6,8 @@ enum EstimateToInvoiceConverter {
     static func convert(estimate: Invoice, profiles: [BusinessProfile], context: ModelContext) throws -> Invoice {
         guard estimate.documentType == "estimate" else { return estimate }
         let status = estimate.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard status == "accepted" else { return estimate }
+        // Allow converting from draft/sent/accepted; only declined is blocked.
+        guard status != "declined" else { return estimate }
 
         var profilesForSnapshot = profiles
         let profile: BusinessProfile

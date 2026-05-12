@@ -120,17 +120,50 @@ struct ContractSummaryView: View {
 
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(title: "Primary Actions")
-                SummaryKit.PrimaryActionRow(actions: [
-                    .init(title: "Send", systemImage: "paperplane") {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                    spacing: 8
+                ) {
+                    Button {
                         sendContractAction()
-                    },
-                    .init(title: "Share Portal", systemImage: "rectangle.portrait.and.arrow.right") {
-                        sharePortalAction()
-                    },
-                    .init(title: "View / Edit", systemImage: "square.and.pencil") {
-                        activeSheet = .editor
+                    } label: {
+                        Label("Send", systemImage: "paperplane")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 48)
                     }
-                ])
+                    .buttonStyle(.borderedProminent)
+                    .tint(SBWTheme.brandBlue)
+
+                    Button {
+                        previewContractPDF()
+                    } label: {
+                        Label("Preview PDF", systemImage: "doc.richtext")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SBWTheme.brandBlue)
+
+                    Button {
+                        sharePortalAction()
+                    } label: {
+                        Label("Share Portal", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SBWTheme.brandBlue)
+
+                    Button {
+                        activeSheet = .editor
+                    } label: {
+                        Label("View / Edit", systemImage: "square.and.pencil")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SBWTheme.brandBlue)
+                }
 
                 if let portalNotice {
                     Text(portalNotice)
@@ -297,11 +330,16 @@ struct ContractSummaryView: View {
                 case .previewPDF:
                     if let previewItem {
                         PDFPreviewView(url: previewItem.url)
-                            .navigationTitle("Signed PDF")
+                            .navigationTitle("Contract PDF")
                             .navigationBarTitleDisplayMode(.inline)
                             .toolbar {
-                                ToolbarItem(placement: .topBarTrailing) {
+                                ToolbarItem(placement: .topBarLeading) {
                                     Button("Done") { activeSheet = nil }
+                                }
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    Button("Share") {
+                                        shareItems = [previewItem.url]
+                                    }
                                 }
                             }
                     }
@@ -432,6 +470,16 @@ struct ContractSummaryView: View {
             business: profiles.first,
             context: modelContext
         )
+    }
+
+    private func previewContractPDF() {
+        do {
+            let url = try persistContractPDFToJobFiles()
+            previewItem = ContractSummaryPDFItem(url: url)
+            activeSheet = .previewPDF
+        } catch {
+            exportError = error.localizedDescription
+        }
     }
 
     private func openSignedPDF() {

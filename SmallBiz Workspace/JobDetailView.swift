@@ -30,10 +30,17 @@ struct JobDetailView: View {
 
     // Attachments (join records)
     @Query private var attachments: [JobAttachment]
+    @Query private var clients: [Client]
 
     @State private var showExistingFilePicker = false
     @State private var showJobFileImporter = false
     @State private var showJobPhotosSheet = false
+    @State private var showingNewClient = false
+    @State private var editingClient: Client? = nil
+    @State private var draftClientName: String = ""
+    @State private var draftClientEmail: String = ""
+    @State private var draftClientPhone: String = ""
+    @State private var draftClientAddress: String = ""
 
     @State private var attachError: String? = nil
     @State private var previewItem: IdentifiableURL? = nil
@@ -63,6 +70,13 @@ struct JobDetailView: View {
                 a.jobKey == key
             },
             sort: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        let businessID = job.businessID
+        self._clients = Query(
+            filter: #Predicate<Client> { client in
+                client.businessID == businessID
+            },
+            sort: [SortDescriptor(\Client.name, order: .forward)]
         )
     }
 
@@ -127,6 +141,48 @@ struct JobDetailView: View {
             JobAttachmentPickerView { file in
                 attachExisting(file)
             }
+        }
+        .sheet(isPresented: $showingNewClient) {
+            NavigationStack {
+                Form {
+                    Section("Client") {
+                        TextField("Name", text: $draftClientName)
+                        TextField("Email", text: $draftClientEmail)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                        TextField("Phone", text: $draftClientPhone)
+                            .keyboardType(.phonePad)
+                    }
+
+                    Section("Address") {
+                        TextField("Address", text: $draftClientAddress, axis: .vertical)
+                            .lineLimit(2...6)
+                    }
+                }
+                .navigationTitle("New Client")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showingNewClient = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { saveNewClientAndLink() }
+                            .disabled(draftClientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $editingClient) { client in
+            NavigationStack {
+                ClientEditView(client: client)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { editingClient = nil }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
         }
 
         // QuickLook
@@ -225,6 +281,11 @@ struct JobDetailView: View {
         "\(job.startDate.formatted(date: .abbreviated, time: .omitted)) - \(job.endDate.formatted(date: .abbreviated, time: .omitted))"
     }
 
+    private var linkedClient: Client? {
+        guard let clientID = job.clientID else { return nil }
+        return clients.first(where: { $0.id == clientID })
+    }
+
     private var pinnedHeader: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
@@ -279,6 +340,41 @@ struct JobDetailView: View {
             .onChange(of: job.stageRaw) { _, _ in
                 scheduleSave()
             }
+
+            Picker("Client", selection: Binding<UUID?>(
+                get: { job.clientID },
+                set: { value in
+                    job.clientID = value
+                    scheduleSave()
+                })
+            ) {
+                Text("No Client").tag(nil as UUID?)
+                ForEach(clients) { client in
+                    Text(client.name.isEmpty ? "Client" : client.name)
+                        .tag(Optional(client.id))
+                }
+            }
+            .pickerStyle(.menu)
+
+            if let linkedClient {
+                Button {
+                    editingClient = linkedClient
+                } label: {
+                    Label("Edit Linked Client", systemImage: "person.text.rectangle")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button {
+                draftClientName = ""
+                draftClientEmail = ""
+                draftClientPhone = ""
+                draftClientAddress = ""
+                showingNewClient = true
+            } label: {
+                Label("New Client", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
         }
         .sbwJobCardRow()
     }
@@ -526,6 +622,28 @@ struct JobDetailView: View {
             }
         }
         .sbwJobCardRow()
+    }
+
+    private func saveNewClientAndLink() {
+        let name = draftClientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+
+        let newClient = Client(businessID: job.businessID)
+        newClient.name = name
+        newClient.email = draftClientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        newClient.phone = draftClientPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        newClient.address = draftClientAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        modelContext.insert(newClient)
+        job.clientID = newClient.id
+
+        do {
+            try modelContext.save()
+            showingNewClient = false
+            scheduleSave()
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 
     private func statusLabel(_ status: ContractStatus) -> String {

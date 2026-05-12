@@ -253,6 +253,12 @@ enum InvoicePDFGenerator {
                 (text as NSString).draw(in: rect, withAttributes: attrs)
             }
 
+            func drawAttributedText(_ text: String,
+                                    rect: CGRect,
+                                    attributes: [NSAttributedString.Key: Any]) {
+                (text as NSString).draw(in: rect, withAttributes: attributes)
+            }
+
             func drawLine(_ lineY: CGFloat, thickness: CGFloat = 1, alpha: CGFloat = 1) {
                 let path = UIBezierPath()
                 path.move(to: CGPoint(x: style.margin, y: lineY))
@@ -286,6 +292,67 @@ enum InvoicePDFGenerator {
 
             func trimmed(_ s: String) -> String {
                 s.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            func normalizedMultilineText(_ text: String) -> String {
+                text
+                    .replacingOccurrences(of: "\\n", with: "\n")
+                    .replacingOccurrences(of: "\r\n", with: "\n")
+                    .replacingOccurrences(of: "\r", with: "\n")
+                    .replacingOccurrences(of: "\u{2028}", with: "\n")
+                    .replacingOccurrences(of: "\u{2029}", with: "\n")
+            }
+
+            func textHeight(_ text: String, width: CGFloat, attributes: [NSAttributedString.Key: Any]) -> CGFloat {
+                let rect = (text as NSString).boundingRect(
+                    with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: attributes,
+                    context: nil
+                )
+                return ceil(rect.height)
+            }
+
+            func largestPrefixThatFits(
+                text: String,
+                width: CGFloat,
+                maxHeight: CGFloat,
+                attributes: [NSAttributedString.Key: Any]
+            ) -> String {
+                let source = text as NSString
+                let length = source.length
+                guard length > 0 else { return "" }
+
+                var low = 1
+                var high = length
+                var best = 0
+
+                while low <= high {
+                    let mid = (low + high) / 2
+                    let candidate = source.substring(to: mid)
+                    let h = textHeight(candidate, width: width, attributes: attributes)
+                    if h <= maxHeight {
+                        best = mid
+                        low = mid + 1
+                    } else {
+                        high = mid - 1
+                    }
+                }
+
+                guard best > 0 else { return "" }
+                var prefix = source.substring(to: best)
+
+                // Prefer a clean break at newline/space if possible.
+                if best < length {
+                    let breakSet = CharacterSet.whitespacesAndNewlines
+                    let prefixNSString = prefix as NSString
+                    let range = prefixNSString.rangeOfCharacter(from: breakSet, options: .backwards)
+                    if range.location != NSNotFound, range.location > 0 {
+                        prefix = prefixNSString.substring(to: range.location)
+                    }
+                }
+
+                return prefix
             }
 
             func drawWatermarkIfNeeded() {
@@ -604,57 +671,87 @@ enum InvoicePDFGenerator {
             ]
 
             var rowIndex = 0
+            let bottomMargin: CGFloat = max(48, style.margin)
             for item in (invoice.items ?? []) {
                 let rawDesc = trimmed(item.itemDescription)
                 let isPlaceholder = rawDesc.isEmpty && item.unitPrice == 0 && item.quantity == 1
                 if isPlaceholder { continue }
 
-                let desc = rawDesc.isEmpty ? "Item" : rawDesc
-                let bounding = (desc as NSString).boundingRect(
-                    with: CGSize(width: descWidth, height: .greatestFiniteMagnitude),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    attributes: descAttrs,
-                    context: nil
-                )
-                let descHeight = ceil(bounding.height)
-                let rowHeight = max(style.baseRowHeight, descHeight)
+                let normalized = normalizedMultilineText(rawDesc)
+                var remaining = normalized.isEmpty ? "Item" : normalized
+                var isFirstSegment = true
 
-                beginNewPageIfNeeded(neededSpace: rowHeight + style.rowGap + 18)
-                if y == style.margin {
-                    drawWatermarkIfNeeded()
-                    drawTableHeader()
-                }
+                while !remaining.isEmpty {
+                    let maxTextHeight = pageHeight - bottomMargin - y
+                    if maxTextHeight <= max(style.baseRowHeight, 20) {
+                        ctx.beginPage()
+                        drawHeaderBackgroundIfNeeded()
+                        y = style.margin
+                        drawWatermarkIfNeeded()
+                        drawTableHeader()
+                        continue
+                    }
 
-                if style.zebraRows && (rowIndex % 2 == 1) {
-                    let zebraRect = CGRect(
-                        x: style.margin,
-                        y: y - 2,
-                        width: pageWidth - (style.margin * 2),
-                        height: rowHeight + style.rowGap + 2
+                    let segment = largestPrefixThatFits(
+                        text: remaining,
+                        width: descWidth,
+                        maxHeight: maxTextHeight,
+                        attributes: descAttrs
                     )
-                    ctx.cgContext.saveGState()
-                    style.zebraFillColor.setFill()
-                    ctx.cgContext.fill(zebraRect)
-                    ctx.cgContext.restoreGState()
+                    let chunk = segment.isEmpty ? String((remaining as NSString).substring(to: 1)) : segment
+                    let chunkHeight = max(style.baseRowHeight, textHeight(chunk, width: descWidth, attributes: descAttrs))
+
+                    if style.zebraRows && (rowIndex % 2 == 1) {
+                        let zebraRect = CGRect(
+                            x: style.margin,
+                            y: y - 2,
+                            width: pageWidth - (style.margin * 2),
+                            height: chunkHeight + style.rowGap + 2
+                        )
+                        ctx.cgContext.saveGState()
+                        style.zebraFillColor.setFill()
+                        ctx.cgContext.fill(zebraRect)
+                        ctx.cgContext.restoreGState()
+                    }
+
+                    drawText(chunk, font: rowFont,
+                             rect: CGRect(x: colDesc, y: y, width: descWidth, height: chunkHeight),
+                             color: style.primaryText)
+
+                    if isFirstSegment {
+                        drawText(String(format: "%.2f", item.quantity), font: rowFont,
+                                 rect: CGRect(x: colQty, y: y, width: 60, height: chunkHeight),
+                                 color: style.secondaryText, alignment: .right)
+
+                        drawText(money(item.unitPrice), font: rowFont,
+                                 rect: CGRect(x: colRate, y: y, width: 70, height: chunkHeight),
+                                 color: style.secondaryText, alignment: .right)
+
+                        drawText(money(item.lineTotal), font: rowFont,
+                                 rect: CGRect(x: colAmt, y: y, width: 46, height: chunkHeight),
+                                 color: style.primaryText, alignment: .right)
+                    }
+
+                    y += chunkHeight + style.rowGap
+
+                    let consumedLength = (chunk as NSString).length
+                    if consumedLength >= (remaining as NSString).length {
+                        remaining = ""
+                    } else {
+                        remaining = (remaining as NSString).substring(from: consumedLength)
+                    }
+
+                    isFirstSegment = false
+
+                    if !remaining.isEmpty {
+                        beginNewPageIfNeeded(neededSpace: style.baseRowHeight + style.rowGap + 18)
+                        if y == style.margin {
+                            drawWatermarkIfNeeded()
+                            drawTableHeader()
+                        }
+                    }
                 }
 
-                drawText(desc, font: rowFont,
-                         rect: CGRect(x: colDesc, y: y, width: descWidth, height: rowHeight),
-                         color: style.primaryText)
-
-                drawText(String(format: "%.2f", item.quantity), font: rowFont,
-                         rect: CGRect(x: colQty, y: y, width: 60, height: rowHeight),
-                         color: style.secondaryText, alignment: .right)
-
-                drawText(money(item.unitPrice), font: rowFont,
-                         rect: CGRect(x: colRate, y: y, width: 70, height: rowHeight),
-                         color: style.secondaryText, alignment: .right)
-
-                drawText(money(item.lineTotal), font: rowFont,
-                         rect: CGRect(x: colAmt, y: y, width: 46, height: rowHeight),
-                         color: style.primaryText, alignment: .right)
-
-                y += rowHeight + style.rowGap
                 rowIndex += 1
             }
 
@@ -717,22 +814,71 @@ enum InvoicePDFGenerator {
             if !blocks.isEmpty {
                 beginNewPageIfNeeded(neededSpace: 60 + CGFloat(blocks.count) * 70)
 
-                func titledBlock(_ title: String, _ text: String, height: CGFloat) {
-                    drawText(title,
-                             font: UIFont.systemFont(ofSize: style.metaFont.pointSize, weight: .semibold),
-                             rect: CGRect(x: style.margin, y: y, width: pageWidth - (style.margin * 2), height: 16),
-                             color: style.primaryText)
-                    y += 18
+                let footerTitleFont = UIFont.systemFont(ofSize: style.metaFont.pointSize, weight: .semibold)
+                let footerTextWidth = pageWidth - (style.margin * 2)
+                let footerParagraph = NSMutableParagraphStyle()
+                footerParagraph.alignment = .left
+                footerParagraph.lineBreakMode = .byWordWrapping
+                footerParagraph.lineSpacing = 2.5
+                footerParagraph.paragraphSpacing = 6
+                let footerTextAttrs: [NSAttributedString.Key: Any] = [
+                    .font: style.bodyFont,
+                    .foregroundColor: style.secondaryText,
+                    .paragraphStyle: footerParagraph
+                ]
 
-                    drawText(text,
-                             font: style.bodyFont,
-                             rect: CGRect(x: style.margin, y: y, width: pageWidth - (style.margin * 2), height: height),
-                             color: style.secondaryText)
-                    y += height + 12
+                func drawFooterBlock(_ title: String, _ text: String, minHeight: CGFloat) {
+                    var remaining = normalizedMultilineText(text)
+                    var isContinuation = false
+
+                    while true {
+                        beginNewPageIfNeeded(neededSpace: 34)
+
+                        let headerTitle = isContinuation ? "\(title) (continued)" : title
+                        drawText(headerTitle,
+                                 font: footerTitleFont,
+                                 rect: CGRect(x: style.margin, y: y, width: footerTextWidth, height: 16),
+                                 color: style.primaryText)
+                        y += 18
+
+                        let bottomMargin: CGFloat = max(48, style.margin)
+                        let maxTextHeight = pageHeight - bottomMargin - y
+                        if maxTextHeight <= 20 {
+                            ctx.beginPage()
+                            drawHeaderBackgroundIfNeeded()
+                            y = style.margin
+                            continue
+                        }
+
+                        let segment = largestPrefixThatFits(
+                            text: remaining,
+                            width: footerTextWidth,
+                            maxHeight: maxTextHeight,
+                            attributes: footerTextAttrs
+                        )
+                        let chunk = segment.isEmpty ? String((remaining as NSString).substring(to: 1)) : segment
+                        let chunkHeight = max(minHeight, textHeight(chunk, width: footerTextWidth, attributes: footerTextAttrs))
+
+                        drawAttributedText(
+                            chunk,
+                            rect: CGRect(x: style.margin, y: y, width: footerTextWidth, height: chunkHeight),
+                            attributes: footerTextAttrs
+                        )
+                        y += chunkHeight + 12
+
+                        let consumedLength = (chunk as NSString).length
+                        if consumedLength >= (remaining as NSString).length {
+                            break
+                        }
+
+                        remaining = (remaining as NSString).substring(from: consumedLength)
+                        isContinuation = true
+                        beginNewPageIfNeeded(neededSpace: 26)
+                    }
                 }
 
                 for block in blocks {
-                    titledBlock(block.title, block.text, height: block.height)
+                    drawFooterBlock(block.title, block.text, minHeight: block.height)
                 }
             }
         }
