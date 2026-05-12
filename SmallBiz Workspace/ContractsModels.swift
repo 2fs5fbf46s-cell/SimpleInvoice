@@ -30,6 +30,8 @@ final class Contract {
 
     /// Final generated contract text snapshot
     var renderedBody: String = ""
+    var smartTemplateType: String? = nil
+    var smartTemplateJSON: String? = nil
 
     var pdfRelativePath: String = ""
     var portalNeedsUpload: Bool = true
@@ -83,6 +85,8 @@ final class Contract {
         templateName: String = "",
         templateCategory: String = "",
         renderedBody: String = "",
+        smartTemplateType: String? = nil,
+        smartTemplateJSON: String? = nil,
         pdfRelativePath: String = "",
         portalNeedsUpload: Bool = true,
         portalUploadInFlight: Bool = false,
@@ -101,6 +105,8 @@ final class Contract {
         self.templateName = templateName
         self.templateCategory = templateCategory
         self.renderedBody = renderedBody
+        self.smartTemplateType = smartTemplateType
+        self.smartTemplateJSON = smartTemplateJSON
         self.pdfRelativePath = pdfRelativePath
         self.portalNeedsUpload = portalNeedsUpload
         self.portalUploadInFlight = portalUploadInFlight

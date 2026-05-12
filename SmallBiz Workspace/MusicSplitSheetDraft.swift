@@ -1,6 +1,6 @@
 import Foundation
 
-struct MusicSplitSheetContributor: Identifiable, Equatable {
+struct MusicSplitSheetContributor: Identifiable, Equatable, Codable {
     var id: UUID = UUID()
     var legalName: String = ""
     var stageNameOrCompany: String = ""
@@ -42,9 +42,10 @@ struct MusicSplitSheetContributor: Identifiable, Equatable {
     }
 }
 
-struct MusicSplitSheetDraft: Equatable {
+struct MusicSplitSheetDraft: Equatable, Codable {
     static let templateName = "Music Split Sheet (Smart Form)"
     static let templateCategory = "Music / Entertainment"
+    static let smartTemplateType = "music_split_sheet"
     static let smartFormSearchText = """
     music split sheet smart form music entertainment define songwriting publishing master recording producer contributor splits before release royalty percentage validation
     """
@@ -133,7 +134,61 @@ struct MusicSplitSheetDraft: Equatable {
 
         contract.job = resolvedJob
         contract.portalNeedsUpload = true
+        applySmartTemplateMetadata(to: contract)
         return contract
+    }
+
+    func update(
+        contract: Contract,
+        business: BusinessProfile?,
+        selectedClient: Client,
+        linkedJob: Job? = nil,
+        linkedInvoice: Invoice? = nil,
+        updatedAt: Date = .now
+    ) {
+        let resolvedJob = linkedJob ?? linkedInvoice?.job ?? contract.job
+
+        contract.title = contractTitle
+        contract.updatedAt = updatedAt
+        contract.templateName = Self.templateName
+        contract.templateCategory = Self.templateCategory
+        contract.renderedBody = contractBody(preparedBy: business, generatedAt: updatedAt)
+        contract.client = selectedClient
+
+        if let linkedInvoice {
+            contract.invoice = linkedInvoice
+        }
+
+        if let resolvedJob {
+            contract.job = resolvedJob
+            if contract.linkedJobIDsCSV.isEmpty {
+                contract.linkedJobIDsCSV = resolvedJob.id.uuidString
+            }
+        }
+
+        contract.portalNeedsUpload = true
+        applySmartTemplateMetadata(to: contract)
+    }
+
+    func applySmartTemplateMetadata(to contract: Contract) {
+        contract.smartTemplateType = Self.smartTemplateType
+        contract.smartTemplateJSON = encodedJSONString()
+    }
+
+    func encodedJSONString() -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(self) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func decodeJSONString(_ json: String?) -> MusicSplitSheetDraft? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(MusicSplitSheetDraft.self, from: data)
+    }
+
+    static func isSmartMusicSplitSheet(_ contract: Contract) -> Bool {
+        contract.smartTemplateType == smartTemplateType
     }
 
     var contractTitle: String {

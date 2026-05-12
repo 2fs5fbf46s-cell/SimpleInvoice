@@ -64,6 +64,9 @@ struct ContractDetailView: View {
     @State private var showPortal = false
     @State private var portalError: String? = nil
     @State private var navigateToClientSettings: Client? = nil
+    @State private var showingMusicSplitSheetEditor = false
+    @State private var musicSplitSheetDraftToEdit: MusicSplitSheetDraft? = nil
+    @State private var smartTemplateError: String? = nil
 
     // Status transition tracking (index once when it transitions TO "sent")
     @State private var lastStatusRaw: String = ""
@@ -163,6 +166,21 @@ struct ContractDetailView: View {
             }
         }
 
+        .sheet(isPresented: $showingMusicSplitSheetEditor) {
+            NavigationStack {
+                if let draft = musicSplitSheetDraftToEdit {
+                    MusicSplitSheetFormView(contract: contract, draft: draft) { _ in
+                        showingMusicSplitSheetEditor = false
+                        musicSplitSheetDraftToEdit = nil
+                        lastAutoRenderedBody = contract.renderedBody
+                    }
+                } else {
+                    EmptyView()
+                }
+            }
+            .presentationDetents([.large])
+        }
+
         .sheet(isPresented: $showExistingFilePicker) {
             ContractAttachmentPickerView { file in
                 attachExisting(file)
@@ -225,6 +243,11 @@ struct ContractDetailView: View {
             Button("OK") { workspaceError = nil }
         } message: {
             Text(workspaceError ?? "")
+        }
+        .alert("Edit Split Sheet", isPresented: .constant(smartTemplateError != nil)) {
+            Button("OK") { smartTemplateError = nil }
+        } message: {
+            Text(smartTemplateError ?? "")
         }
         .confirmationDialog(
             "Overwrite Contract Body?",
@@ -488,6 +511,16 @@ private extension ContractDetailView {
             Text("Contract Body")
                 .font(.headline)
 
+            if MusicSplitSheetDraft.isSmartMusicSplitSheet(contract) {
+                Button {
+                    openMusicSplitSheetEditor()
+                } label: {
+                    Label("Edit Split Sheet", systemImage: "music.note.list")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+            }
+
             TextEditor(text: $contract.renderedBody)
                 .frame(minHeight: 260)
                 .font(.body)
@@ -665,6 +698,19 @@ private extension ContractDetailView {
         contract.renderedBody = rendered
         lastAutoRenderedBody = rendered
         scheduleSave()
+    }
+
+    @MainActor
+    func openMusicSplitSheetEditor() {
+        guard MusicSplitSheetDraft.isSmartMusicSplitSheet(contract) else { return }
+
+        guard let draft = MusicSplitSheetDraft.decodeJSONString(contract.smartTemplateJSON) else {
+            smartTemplateError = "The structured split sheet data is missing or could not be opened. You can still edit the contract body below."
+            return
+        }
+
+        musicSplitSheetDraftToEdit = draft
+        showingMusicSplitSheetEditor = true
     }
 
     @MainActor

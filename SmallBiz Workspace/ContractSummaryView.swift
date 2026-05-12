@@ -36,8 +36,11 @@ struct ContractSummaryView: View {
     @State private var shareItems: [Any]? = nil
     @State private var exportError: String? = nil
     @State private var portalError: String? = nil
+    @State private var smartTemplateError: String? = nil
     @State private var portalNotice: String? = nil
     @State private var previewItem: ContractSummaryPDFItem? = nil
+    @State private var showingMusicSplitSheetEditor = false
+    @State private var musicSplitSheetDraftToEdit: MusicSplitSheetDraft? = nil
 
     init(contract: Contract) {
         self.contract = contract
@@ -163,6 +166,18 @@ struct ContractSummaryView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(SBWTheme.brandBlue)
+
+                    if MusicSplitSheetDraft.isSmartMusicSplitSheet(contract) {
+                        Button {
+                            openMusicSplitSheetEditor()
+                        } label: {
+                            Label("Edit Split Sheet", systemImage: "music.note.list")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SBWTheme.brandBlue)
+                    }
                 }
 
                 if let portalNotice {
@@ -352,6 +367,19 @@ struct ContractSummaryView: View {
         )) {
             ShareSheet(items: shareItems ?? [])
         }
+        .sheet(isPresented: $showingMusicSplitSheetEditor) {
+            NavigationStack {
+                if let draft = musicSplitSheetDraftToEdit {
+                    MusicSplitSheetFormView(contract: contract, draft: draft) { _ in
+                        showingMusicSplitSheetEditor = false
+                        musicSplitSheetDraftToEdit = nil
+                    }
+                } else {
+                    EmptyView()
+                }
+            }
+            .presentationDetents([.large])
+        }
         .alert("Contract", isPresented: Binding(
             get: { exportError != nil },
             set: { if !$0 { exportError = nil } }
@@ -367,7 +395,16 @@ struct ContractSummaryView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(portalError ?? "")
-        })
+        }
+        .alert("Edit Split Sheet", isPresented: Binding(
+            get: { smartTemplateError != nil },
+            set: { if !$0 { smartTemplateError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(smartTemplateError ?? "")
+        }
+        )
     }
 
     private func attachmentIconName(for file: FileItem?) -> String {
@@ -384,6 +421,19 @@ struct ContractSummaryView: View {
         } else {
             expandedSection = section
         }
+    }
+
+    private func openMusicSplitSheetEditor() {
+        guard MusicSplitSheetDraft.isSmartMusicSplitSheet(contract) else { return }
+
+        guard let draft = MusicSplitSheetDraft.decodeJSONString(contract.smartTemplateJSON) else {
+            smartTemplateError = "The structured split sheet data is missing or could not be opened. Opening the standard contract editor instead."
+            activeSheet = .editor
+            return
+        }
+
+        musicSplitSheetDraftToEdit = draft
+        showingMusicSplitSheetEditor = true
     }
 
     private var activityEntries: [(title: String, detail: String)] {

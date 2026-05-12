@@ -9,6 +9,7 @@ struct MusicSplitSheetFormView: View {
     private let linkedJob: Job?
     private let linkedClient: Client?
     private let linkedInvoice: Invoice?
+    private let existingContract: Contract?
     let onCreated: (Contract) -> Void
 
     @Query private var profiles: [BusinessProfile]
@@ -32,6 +33,7 @@ struct MusicSplitSheetFormView: View {
         self.linkedJob = linkedJob
         self.linkedClient = linkedClient
         self.linkedInvoice = linkedInvoice
+        self.existingContract = nil
         self.onCreated = onCreated
         _selectedClient = State(initialValue: linkedClient ?? linkedInvoice?.client)
 
@@ -55,8 +57,44 @@ struct MusicSplitSheetFormView: View {
         }
     }
 
+    init(
+        contract: Contract,
+        draft: MusicSplitSheetDraft,
+        onSaved: @escaping (Contract) -> Void = { _ in }
+    ) {
+        let resolvedBusinessID = contract.businessID
+        let resolvedClient = contract.resolvedClient
+
+        self.businessID = resolvedBusinessID
+        self.linkedJob = contract.job
+        self.linkedClient = resolvedClient
+        self.linkedInvoice = contract.invoice
+        self.existingContract = contract
+        self.onCreated = onSaved
+        _draft = State(initialValue: draft)
+        _selectedClient = State(initialValue: resolvedClient)
+
+        _profiles = Query(
+            filter: #Predicate<BusinessProfile> { profile in
+                profile.businessID == resolvedBusinessID
+            },
+            sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]
+        )
+
+        _clients = Query(
+            filter: #Predicate<Client> { client in
+                client.businessID == resolvedBusinessID
+            },
+            sort: [SortDescriptor(\Client.name, order: .forward)]
+        )
+    }
+
     private var businessProfile: BusinessProfile? {
         profiles.first
+    }
+
+    private var isEditingExistingContract: Bool {
+        existingContract != nil
     }
 
     var body: some View {
@@ -107,7 +145,7 @@ struct MusicSplitSheetFormView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .alert("Couldn’t Generate Contract", isPresented: Binding(
+        .alert(isEditingExistingContract ? "Couldn’t Save Contract" : "Couldn’t Generate Contract", isPresented: Binding(
             get: { createError != nil },
             set: { if !$0 { createError = nil } }
         )) {
@@ -326,7 +364,7 @@ struct MusicSplitSheetFormView: View {
             Button {
                 generateContract()
             } label: {
-                Label("Generate Contract", systemImage: "doc.badge.plus")
+                Label(isEditingExistingContract ? "Save Split Sheet" : "Generate Contract", systemImage: "doc.badge.plus")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -348,20 +386,33 @@ struct MusicSplitSheetFormView: View {
             return
         }
 
-        let contract = draft.makeContract(
-            businessID: businessID,
-            business: businessProfile,
-            selectedClient: selectedClient,
-            linkedJob: linkedJob,
-            linkedInvoice: linkedInvoice
-        )
+        let savedContract: Contract
 
-        modelContext.insert(contract)
+        if let existingContract {
+            draft.update(
+                contract: existingContract,
+                business: businessProfile,
+                selectedClient: selectedClient,
+                linkedJob: linkedJob,
+                linkedInvoice: linkedInvoice
+            )
+            savedContract = existingContract
+        } else {
+            let contract = draft.makeContract(
+                businessID: businessID,
+                business: businessProfile,
+                selectedClient: selectedClient,
+                linkedJob: linkedJob,
+                linkedInvoice: linkedInvoice
+            )
+            modelContext.insert(contract)
+            savedContract = contract
+        }
 
         do {
             try modelContext.save()
             dismiss()
-            onCreated(contract)
+            onCreated(savedContract)
         } catch {
             createError = error.localizedDescription
         }
