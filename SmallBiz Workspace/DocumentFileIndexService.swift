@@ -30,8 +30,14 @@ enum DocumentFileIndexService {
             context: context
         )
 
-        let relativePath = "\(destination.relativePath)/\(invoice.id.uuidString).pdf"
+        let fileName = makeInvoiceFileName(invoice: invoice)
+        let relativePath = "\(destination.relativePath)/\(fileName)"
+        let previousRelativePath = invoice.pdfRelativePath.trimmingCharacters(in: .whitespacesAndNewlines)
         _ = try AppFileStore.writeData(pdfData, toRelativePath: relativePath)
+
+        if !previousRelativePath.isEmpty && previousRelativePath != relativePath {
+            try? deleteStoredPDF(relativePath: previousRelativePath, context: context)
+        }
 
         if invoice.pdfRelativePath != relativePath {
             invoice.pdfRelativePath = relativePath
@@ -192,6 +198,26 @@ enum DocumentFileIndexService {
         try context.save()
     }
 
+    private static func deleteStoredPDF(relativePath: String, context: ModelContext) throws {
+        let descriptor = FetchDescriptor<FileItem>(
+            predicate: #Predicate<FileItem> { item in
+                item.relativePath == relativePath
+            }
+        )
+
+        if let existing = try context.fetch(descriptor).first {
+            try? AppFileStore.deleteFile(for: existing)
+            context.delete(existing)
+            try context.save()
+            return
+        }
+
+        let url = try AppFileStore.absoluteURL(forRelativePath: relativePath)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     private static func fetchInvoices(for job: Job, context: ModelContext) throws -> [Invoice] {
         let all = try context.fetch(FetchDescriptor<Invoice>())
         return all.filter { $0.job?.id == job.id }
@@ -217,12 +243,7 @@ enum DocumentFileIndexService {
     }
 
     private static func makeInvoiceFileName(invoice: Invoice) -> String {
-        let prefix = invoice.documentType == "estimate" ? "Estimate" : "Invoice"
-        let trimmedNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = invoice.id.uuidString
-        let number = trimmedNumber.isEmpty ? String(fallback.prefix(8)) : trimmedNumber
-        let safeNumber = number.replacingOccurrences(of: "/", with: "-")
-        return "\(prefix)-\(safeNumber).pdf"
+        InvoicePDFGenerator.preferredPDFFileName(for: invoice)
     }
 
     private static func makeContractFileName(contract: Contract) -> String {

@@ -7,86 +7,147 @@ struct SmallBizWorkspaceApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    @StateObject private var launch = LaunchCoordinator()
     @StateObject private var lock = AppLockManager()
     @StateObject private var activeBiz = ActiveBusinessStore()
     @State private var estimateSyncPollTask: Task<Void, Never>? = nil
+    @State private var readyServicesTask: Task<Void, Never>? = nil
 
     var body: some Scene {
         WindowGroup {
-            AppLaunchGateView {
-                RootView()
-            }
-            .environmentObject(lock)
-            .environmentObject(activeBiz)
-            .preferredColorScheme(.dark)
+            appContent
+                .environmentObject(lock)
+                .environmentObject(activeBiz)
+                .preferredColorScheme(.dark)
 
-            // ✅ Close Safari when portal redirects back to app via scheme
-            .onOpenURL { url in
-                PortalReturnRouter.shared.handle(url)
-                EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: Self.container.mainContext)
-                NotificationRouter.shared.handleIncomingURL(url)
-            }
-            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
-                guard let url = userActivity.webpageURL else { return }
-                PortalReturnRouter.shared.handle(url)
-                EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: Self.container.mainContext)
-                NotificationRouter.shared.handleIncomingURL(url)
-            }
-
-            // ✅ Xcode 26.2: onChange closure expects ONE argument
-            .onChange(of: scenePhase) { _, newPhase in
-                let context = Self.container.mainContext
-                guard newPhase == .active else {
-                    estimateSyncPollTask?.cancel()
-                    estimateSyncPollTask = nil
-                    return
+                // Close Safari when portal redirects back to app via scheme.
+                .onOpenURL { url in
+                    handleIncomingURL(url)
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
+                    guard let url = userActivity.webpageURL else { return }
+                    handleIncomingURL(url)
                 }
 
-                if activeBiz.activeBusinessID == nil, Self.hasBusinesses(context: context) {
-                    do {
-                        try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
-                    } catch {
-                        print("⚠️ Re-restore active business failed:", error)
-                    }
+                .onChange(of: scenePhase) { _, newPhase in
+                    handleScenePhase(newPhase)
                 }
+                .onChange(of: activeBiz.activeBusinessID) { _, newBusinessID in
+                    refreshBusinessScopedServices(for: newBusinessID)
+                }
+                .task {
+                    launch.start(activeBusiness: activeBiz)
+                }
+                .onChange(of: launch.phase) { _, _ in
+                    startReadyServicesIfNeeded()
+                }
+        }
+    }
 
-                Task { await EstimatePortalSyncService.sync(context: context) }
-                BusinessSitePublishService.shared.startMonitoring(context: context)
-                Task { await BusinessSitePublishService.shared.syncQueuedSites(context: context) }
-                Task { await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID) }
-                Task { await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID) }
+    @ViewBuilder
+    private var appContent: some View {
+        if launch.isReady, let container = launch.modelContainer {
+            RootView()
+                .modelContainer(container)
+        } else {
+            AppStartupShellView(
+                phase: launch.phase,
+                retry: {
+                    launch.retry(activeBusiness: activeBiz)
+                }
+            )
+        }
+    }
+
+    @MainActor
+    private var readyModelContext: ModelContext? {
+        guard launch.isReady else { return nil }
+        return launch.modelContainer?.mainContext
+    }
+
+    @MainActor
+    private func handleIncomingURL(_ url: URL) {
+        PortalReturnRouter.shared.handle(url)
+        NotificationRouter.shared.handleIncomingURL(url)
+
+        guard let context = readyModelContext else {
+            launch.queueIncomingURL(url)
+            return
+        }
+
+        EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: context)
+    }
+
+    @MainActor
+    private func handleScenePhase(_ newPhase: ScenePhase) {
+        guard newPhase == .active else {
+            estimateSyncPollTask?.cancel()
+            estimateSyncPollTask = nil
+            return
+        }
+
+        guard let context = readyModelContext else { return }
+
+        Task {
+            await runWorkspaceServices(context: context)
+            startEstimatePolling(context: context)
+        }
+    }
+
+    @MainActor
+    private func startReadyServicesIfNeeded() {
+        guard let context = readyModelContext else { return }
+
+        readyServicesTask?.cancel()
+        readyServicesTask = Task {
+            processQueuedIncomingURLs(context: context)
+            await runWorkspaceServices(context: context)
+
+            if scenePhase == .active {
                 startEstimatePolling(context: context)
             }
-            .onChange(of: activeBiz.activeBusinessID) { _, newBusinessID in
-                let context = Self.container.mainContext
-                Task {
-                    await LocalReminderScheduler.shared.refreshReminders(
-                        modelContext: context,
-                        activeBusinessID: newBusinessID
-                    )
-                    await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: newBusinessID)
-                }
-            }
-            .task {
-                let context = Self.container.mainContext
-                if activeBiz.activeBusinessID == nil, Self.hasBusinesses(context: context) {
-                    do {
-                        try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
-                    } catch {
-                        print("⚠️ Initial active business restore failed:", error)
-                    }
-                }
-                await EstimatePortalSyncService.sync(context: context)
-                BusinessSitePublishService.shared.startMonitoring(context: context)
-                await BusinessSitePublishService.shared.syncQueuedSites(context: context)
-                await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
-                await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID)
-                if scenePhase == .active {
-                    startEstimatePolling(context: context)
-                }
+        }
+    }
+
+    @MainActor
+    private func runWorkspaceServices(context: ModelContext) async {
+        if activeBiz.activeBusinessID == nil, Self.hasBusinesses(context: context) {
+            do {
+                try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
+            } catch {
+                print("[Launch] Active business restore after ready failed: \(error)")
             }
         }
-        .modelContainer(Self.container)
+
+        await EstimatePortalSyncService.sync(context: context)
+        BusinessSitePublishService.shared.startMonitoring(context: context)
+        await BusinessSitePublishService.shared.syncQueuedSites(context: context)
+        await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
+        await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID)
+    }
+
+    @MainActor
+    private func refreshBusinessScopedServices(for businessID: UUID?) {
+        guard let context = readyModelContext else { return }
+
+        Task {
+            await LocalReminderScheduler.shared.refreshReminders(
+                modelContext: context,
+                activeBusinessID: businessID
+            )
+            await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: businessID)
+        }
+    }
+
+    @MainActor
+    private func processQueuedIncomingURLs(context: ModelContext) {
+        let queuedURLs = launch.consumePendingIncomingURLs()
+        guard !queuedURLs.isEmpty else { return }
+
+        print("[Launch] Processing \(queuedURLs.count) queued incoming URL(s).")
+        for url in queuedURLs {
+            EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: context)
+        }
     }
 
     @MainActor
@@ -99,49 +160,6 @@ struct SmallBizWorkspaceApp: App {
             }
         }
     }
-
-    // MARK: - SwiftData Container (CloudKit with safe fallbacks)
-    private static var container: ModelContainer = {
-        let schema = Schema([
-            Business.self,
-            BusinessProfile.self,
-            PublishedBusinessSite.self,
-            Client.self,
-            Invoice.self,
-            LineItem.self,
-            CatalogItem.self,
-            Contract.self,
-            ClientAttachment.self,
-            JobAttachment.self,
-
-            AuditEvent.self,
-
-            PortalIdentity.self,
-            PortalSession.self,
-            PortalInvite.self,
-            PortalAuditEvent.self,
-            EstimateDecisionRecord.self,
-
-            ContractTemplate.self,
-
-            Folder.self,
-            FileItem.self,
-
-            InvoiceAttachment.self,
-            ContractAttachment.self,
-
-            Job.self,
-            Blockout.self,
-            AppNotification.self
-        ])
-
-        do {
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-            return try ModelContainer(for: schema, configurations: [config])
-        } catch {
-            fatalError("❌ Failed to create ModelContainer: \(error)")
-        }
-    }()
 
     @MainActor
     private static func hasBusinesses(context: ModelContext) -> Bool {

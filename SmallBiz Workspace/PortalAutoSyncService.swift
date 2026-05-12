@@ -82,11 +82,7 @@ enum PortalAutoSyncService {
                     lockReason: .portal
                 )
 
-                let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
-                let trimmed = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-                let fallback = String(invoice.id.uuidString.suffix(8))
-                let namePart = trimmed.isEmpty ? fallback : trimmed.replacingOccurrences(of: "/", with: "-")
-                let fileName = "\(prefix)-\(namePart).pdf"
+                let fileName = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
 
                 let blob = try await PortalBackend.shared.uploadInvoicePDFToBlob(
                     businessId: invoice.businessID.uuidString,

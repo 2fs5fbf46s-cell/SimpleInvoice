@@ -101,7 +101,7 @@ struct InvoiceDetailView: View {
 
     private struct PendingPDFSave {
         let pdfData: Data
-        let fileName: String     // e.g., "Invoice-123.pdf"
+        let fileName: String     // e.g., "Invoice_123.pdf"
         let folder: Folder
         let existing: FileItem?
         let shareAfterSave: [Any]?
@@ -1787,11 +1787,7 @@ struct InvoiceDetailView: View {
                                 lockBusinessSnapshot: true,
                                 lockReason: .portal
                             )
-                            let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
-                            let safeNumber = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let fallbackID = String(describing: invoice.id)
-                            let namePart = safeNumber.isEmpty ? String(fallbackID.suffix(8)) : safeNumber
-                            let pdfFileName = "\(prefix)-\(namePart).pdf"
+                            let pdfFileName = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
 
                             _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
                                 businessId: invoice.businessID.uuidString,
@@ -1870,7 +1866,7 @@ struct InvoiceDetailView: View {
                     body: "Hi,\n\nAttached is \(invoice.documentType == "estimate" ? "estimate" : "invoice") \(invoice.invoiceNumber).\n\nThank you.",
                     attachmentData: data,
                     attachmentMimeType: "application/pdf",
-                    attachmentFileName: mailFilename.isEmpty ? "\(invoice.invoiceNumber).pdf" : mailFilename
+                    attachmentFileName: mailFilename.isEmpty ? InvoicePDFGenerator.preferredPDFFileName(for: invoice) : mailFilename
                 )
             } else {
                 VStack(spacing: 12) {
@@ -2112,7 +2108,7 @@ struct InvoiceDetailView: View {
             )
 
             mailAttachment = pdfData
-            mailFilename = "\(invoice.invoiceNumber).pdf"
+            mailFilename = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
 
             if MFMailComposeViewController.canSendMail() {
                 showingMail = true
@@ -2288,8 +2284,8 @@ struct InvoiceDetailView: View {
             context: modelContext,
             businesses: businesses
         )
-        let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
-        let filename = "\(prefix)-\(invoice.invoiceNumber)-\(suffix)-\(Date().timeIntervalSince1970)"
+        _ = suffix
+        let filename = InvoicePDFGenerator.preferredPDFBaseName(for: invoice)
         return try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
     }
     
@@ -2417,7 +2413,7 @@ struct InvoiceDetailView: View {
             try copyReplacingIfNeeded(from: url, to: dest)
         }
 
-        let zipName = "\(invoice.invoiceNumber)-package-\(Int(Date().timeIntervalSince1970)).zip"
+        let zipName = "\(InvoicePDFGenerator.preferredPDFBaseName(for: invoice))_package_\(Int(Date().timeIntervalSince1970)).zip"
         let zipURL = fm.temporaryDirectory.appendingPathComponent(zipName)
 
         if fm.fileExists(atPath: zipURL.path) {

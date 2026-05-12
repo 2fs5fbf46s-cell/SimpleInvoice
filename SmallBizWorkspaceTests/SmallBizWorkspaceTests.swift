@@ -1,10 +1,72 @@
 import XCTest
 import SwiftData
+import CoreGraphics
 @testable import SmallBizWorkspace
 
 final class SmallBizWorkspaceTests: XCTestCase {
     func testExample() throws {
         XCTAssertTrue(true)
+    }
+}
+
+final class InvoicePDFRenderingTests: XCTestCase {
+    func testLongLineItemsPaginateAndUsePreferredFileName() throws {
+        let consultationScope = """
+        Church Audio & Broadcast Consultation Services
+        - Review the existing front-of-house mix position, wireless microphone coordination, monitor routing, stage patching, livestream feed path, and recording workflow.
+        - Document recommended gain staging, routing cleanup, speaker processing, broadcast matrix sends, volunteer handoff notes, and Sunday service startup checks.
+        - Provide a practical implementation roadmap covering immediate reliability fixes, medium-term training opportunities, and future equipment planning for sanctuary and overflow spaces.
+        - Include follow-up notes for leadership with clear next steps, expected outcomes, and risk areas that could affect weekly services or special events.
+        """
+
+        let trainingScope = """
+        Volunteer Audio Training & Development
+        - Build a training plan for rotating volunteers covering console layout, mute discipline, scene recall, microphone placement, livestream balance, and troubleshooting common service issues.
+        - Deliver coaching notes for new operators with repeatable checklists for rehearsal, pre-service line check, speaker handoff, worship set transitions, and post-service shutdown.
+        - Create development milestones for beginner, intermediate, and lead operators so the team can grow without relying on a single engineer.
+        - Include practical examples for EQ decisions, compression restraint, feedback prevention, and communication between worship leadership, tech leadership, and camera operators.
+        """
+
+        let longConsultation = Array(repeating: consultationScope, count: 12).joined(separator: "\n")
+        let longTraining = Array(repeating: trainingScope, count: 12).joined(separator: "\n")
+        let invoice = Invoice(
+            invoiceNumber: "2026-032",
+            notes: "Please review the scope and contact us with any questions.",
+            thankYou: "Thank you for trusting us with your audio systems.",
+            termsAndConditions: "Payment is due according to the payment terms listed above.",
+            documentType: "invoice",
+            items: [
+                LineItem(itemDescription: longConsultation, quantity: 1, unitPrice: 250),
+                LineItem(itemDescription: longTraining, quantity: 1, unitPrice: 250)
+            ]
+        )
+
+        let data = InvoicePDFGenerator.makePDFData(
+            invoice: invoice,
+            business: BusinessSnapshot(name: "SmallBiz Audio", address: "100 Main Street", phone: "555-0100", email: "hello@example.com")
+        )
+
+        let provider = try XCTUnwrap(CGDataProvider(data: data as CFData))
+        let document = try XCTUnwrap(CGPDFDocument(provider))
+        XCTAssertGreaterThanOrEqual(document.numberOfPages, 2)
+        XCTAssertEqual(InvoicePDFGenerator.preferredPDFFileName(for: invoice), "Invoice_2026-032.pdf")
+
+        let url = try InvoicePDFGenerator.writePDFToTemporaryFile(
+            data: data,
+            filename: InvoicePDFGenerator.preferredPDFFileName(for: invoice)
+        )
+        XCTAssertEqual(url.lastPathComponent, "Invoice_2026-032.pdf")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testPreferredPDFFileNameSanitizesUnsupportedCharacters() {
+        let invoice = Invoice(invoiceNumber: "2026/032:Main*Room?", documentType: "invoice")
+        let fileName = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
+
+        XCTAssertEqual(fileName, "Invoice_2026-032-Main-Room.pdf")
+        for unsupported in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"] {
+            XCTAssertFalse(fileName.contains(unsupported))
+        }
     }
 }
 

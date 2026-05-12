@@ -3,6 +3,57 @@ import UIKit
 
 enum InvoicePDFGenerator {
 
+    static func preferredPDFFileName(for invoice: Invoice, customName: String? = nil) -> String {
+        "\(preferredPDFBaseName(for: invoice, customName: customName)).pdf"
+    }
+
+    static func preferredPDFBaseName(for invoice: Invoice, customName: String? = nil) -> String {
+        let custom = customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !custom.isEmpty {
+            return sanitizedPDFBaseName(custom, fallback: invoice.documentType == "estimate" ? "Estimate" : "Invoice")
+        }
+
+        let prefix = invoice.documentType == "estimate" ? "Estimate" : "Invoice"
+        let number = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let identifier = number.isEmpty ? String(invoice.id.uuidString.prefix(8)) : number
+        return sanitizedPDFBaseName("\(prefix)_\(identifier)", fallback: prefix)
+    }
+
+    static func sanitizedPDFBaseName(_ name: String, fallback: String = "Invoice") -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutPDFExtension: String
+        if (trimmed as NSString).pathExtension.lowercased() == "pdf" {
+            withoutPDFExtension = (trimmed as NSString).deletingPathExtension
+        } else {
+            withoutPDFExtension = trimmed
+        }
+
+        let invalidCharacters = CharacterSet(charactersIn: "/\\:*?\"<>|")
+        let controlCharacters = CharacterSet.controlCharacters
+        var result = ""
+        var lastWasSeparator = false
+
+        func appendSeparator(_ separator: Character) {
+            guard !result.isEmpty, !lastWasSeparator else { return }
+            result.append(separator)
+            lastWasSeparator = true
+        }
+
+        for scalar in withoutPDFExtension.unicodeScalars {
+            if invalidCharacters.contains(scalar) || controlCharacters.contains(scalar) {
+                appendSeparator("-")
+            } else if CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                appendSeparator("_")
+            } else {
+                result.unicodeScalars.append(scalar)
+                lastWasSeparator = false
+            }
+        }
+
+        let sanitized = result.trimmingCharacters(in: CharacterSet(charactersIn: " ._-"))
+        return sanitized.isEmpty ? fallback : sanitized
+    }
+
     static func makePDFData(
         invoice: Invoice,
         business: BusinessSnapshot,
@@ -625,25 +676,35 @@ enum InvoicePDFGenerator {
 
             // Items table
             let colDesc: CGFloat = style.margin
-            let colAmt: CGFloat = pageWidth - style.margin - 46
-            let colRate: CGFloat = colAmt - 80
-            let colQty: CGFloat = colRate - 70
+            let tableMaxX: CGFloat = pageWidth - style.margin
+            let columnGap: CGFloat = 8
+            let amountWidth: CGFloat = 86
+            let rateWidth: CGFloat = 78
+            let qtyWidth: CGFloat = 52
+            let colAmt: CGFloat = tableMaxX - amountWidth
+            let colRate: CGFloat = colAmt - columnGap - rateWidth
+            let colQty: CGFloat = colRate - columnGap - qtyWidth
+            let descWidth = colQty - colDesc - columnGap
+            let bottomMargin: CGFloat = max(48, style.margin)
+            let tableBottomY = pageHeight - bottomMargin
+            let tableHeaderBodyOffset = CGFloat(18) + max(8, style.rowGap + 2)
+            let freshTableBodyTop = style.margin + tableHeaderBodyOffset
 
             func drawTableHeader() {
                 drawText("Description", font: style.tableHeaderFont,
-                         rect: CGRect(x: colDesc, y: y, width: colQty - colDesc - 8, height: 16),
+                         rect: CGRect(x: colDesc, y: y, width: descWidth, height: 16),
                          color: style.primaryText)
 
                 drawText("Qty", font: style.tableHeaderFont,
-                         rect: CGRect(x: colQty, y: y, width: 60, height: 16),
+                         rect: CGRect(x: colQty, y: y, width: qtyWidth, height: 16),
                          color: style.primaryText, alignment: .right)
 
                 drawText("Rate", font: style.tableHeaderFont,
-                         rect: CGRect(x: colRate, y: y, width: 70, height: 16),
+                         rect: CGRect(x: colRate, y: y, width: rateWidth, height: 16),
                          color: style.primaryText, alignment: .right)
 
                 drawText("Amount", font: style.tableHeaderFont,
-                         rect: CGRect(x: colAmt, y: y, width: 46, height: 16),
+                         rect: CGRect(x: colAmt, y: y, width: amountWidth, height: 16),
                          color: style.primaryText, alignment: .right)
 
                 y += 18
@@ -655,10 +716,7 @@ enum InvoicePDFGenerator {
                 y += max(8, style.rowGap + 2)
             }
 
-            drawTableHeader()
-
             let rowFont = style.bodyFont
-            let descWidth = colQty - colDesc - 8
             let descParagraph = {
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.alignment = .left
@@ -669,87 +727,180 @@ enum InvoicePDFGenerator {
                 .font: rowFont,
                 .paragraphStyle: descParagraph
             ]
+            let valueLineHeight = ceil(rowFont.lineHeight)
+            let minLineItemHeight = max(style.baseRowHeight, valueLineHeight)
+            let maxLineItemHeightOnFreshPage = tableBottomY - freshTableBodyTop - style.rowGap
 
-            var rowIndex = 0
-            let bottomMargin: CGFloat = max(48, style.margin)
-            for item in (invoice.items ?? []) {
-                let rawDesc = trimmed(item.itemDescription)
-                let isPlaceholder = rawDesc.isEmpty && item.unitPrice == 0 && item.quantity == 1
-                if isPlaceholder { continue }
+            func fittedSingleLineFont(_ font: UIFont, text: String, width: CGFloat) -> UIFont {
+                let minPointSize = max(8, font.pointSize - 2)
+                var pointSize = font.pointSize
 
-                let normalized = normalizedMultilineText(rawDesc)
-                var remaining = normalized.isEmpty ? "Item" : normalized
+                while pointSize > minPointSize {
+                    let candidate = UIFont(descriptor: font.fontDescriptor, size: pointSize)
+                    let textWidth = ceil((text as NSString).size(withAttributes: [.font: candidate]).width)
+                    if textWidth <= width {
+                        return candidate
+                    }
+                    pointSize -= 0.5
+                }
+
+                return UIFont(descriptor: font.fontDescriptor, size: minPointSize)
+            }
+
+            func drawSingleLineText(_ text: String,
+                                    font: UIFont,
+                                    rect: CGRect,
+                                    color: UIColor,
+                                    alignment: NSTextAlignment = .right) {
+                let fittedFont = fittedSingleLineFont(font, text: text, width: rect.width)
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = alignment
+                paragraph.lineBreakMode = .byClipping
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: fittedFont,
+                    .foregroundColor: color,
+                    .paragraphStyle: paragraph
+                ]
+                (text as NSString).draw(in: rect, withAttributes: attrs)
+            }
+
+            func measureLineItemHeight(_ description: String) -> CGFloat {
+                max(minLineItemHeight, textHeight(description, width: descWidth, attributes: descAttrs))
+            }
+
+            func drawLineItemBackground(rowIndex: Int, rowY: CGFloat, rowHeight: CGFloat) {
+                guard style.zebraRows && (rowIndex % 2 == 1) else { return }
+                let zebraRect = CGRect(
+                    x: style.margin,
+                    y: rowY - 2,
+                    width: pageWidth - (style.margin * 2),
+                    height: rowHeight + style.rowGap + 2
+                )
+                ctx.cgContext.saveGState()
+                style.zebraFillColor.setFill()
+                ctx.cgContext.fill(zebraRect)
+                ctx.cgContext.restoreGState()
+            }
+
+            func drawLineItemRow(_ item: LineItem,
+                                 description: String,
+                                 rowHeight: CGFloat,
+                                 rowIndex: Int,
+                                 drawValues: Bool) {
+                drawLineItemBackground(rowIndex: rowIndex, rowY: y, rowHeight: rowHeight)
+
+                drawText(description, font: rowFont,
+                         rect: CGRect(x: colDesc, y: y, width: descWidth, height: rowHeight),
+                         color: style.primaryText)
+
+                guard drawValues else { return }
+
+                let valueRectHeight = max(rowHeight, valueLineHeight)
+                drawSingleLineText(String(format: "%.2f", item.quantity),
+                                   font: rowFont,
+                                   rect: CGRect(x: colQty, y: y, width: qtyWidth, height: valueRectHeight),
+                                   color: style.secondaryText)
+
+                drawSingleLineText(money(item.unitPrice),
+                                   font: rowFont,
+                                   rect: CGRect(x: colRate, y: y, width: rateWidth, height: valueRectHeight),
+                                   color: style.secondaryText)
+
+                drawSingleLineText(money(item.lineTotal),
+                                   font: rowFont,
+                                   rect: CGRect(x: colAmt, y: y, width: amountWidth, height: valueRectHeight),
+                                   color: style.primaryText)
+            }
+
+            func addPageWithRepeatedHeaderIfNeeded() {
+                ctx.beginPage()
+                drawHeaderBackgroundIfNeeded()
+                drawWatermarkIfNeeded()
+                y = style.margin
+                drawTableHeader()
+            }
+
+            func ensureSpace(_ requiredHeight: CGFloat) {
+                if y + requiredHeight > tableBottomY {
+                    addPageWithRepeatedHeaderIfNeeded()
+                }
+            }
+
+            func trimLeadingWhitespace(_ text: String) -> String {
+                let source = text as NSString
+                let firstContent = source.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.inverted)
+                if firstContent.location == NSNotFound { return "" }
+                return source.substring(from: firstContent.location)
+            }
+
+            func remainingText(after chunk: String, in text: String) -> String {
+                let source = text as NSString
+                let consumedLength = min((chunk as NSString).length, source.length)
+                guard consumedLength < source.length else { return "" }
+                return trimLeadingWhitespace(source.substring(from: consumedLength))
+            }
+
+            func drawSplitLineItemRow(_ item: LineItem, description: String, rowIndex: Int) {
+                var remaining = description
                 var isFirstSegment = true
 
                 while !remaining.isEmpty {
-                    let maxTextHeight = pageHeight - bottomMargin - y
-                    if maxTextHeight <= max(style.baseRowHeight, 20) {
-                        ctx.beginPage()
-                        drawHeaderBackgroundIfNeeded()
-                        y = style.margin
-                        drawWatermarkIfNeeded()
-                        drawTableHeader()
+                    let availableTextHeight = tableBottomY - y - style.rowGap
+                    if isFirstSegment &&
+                        y > freshTableBodyTop &&
+                        availableTextHeight < max(96, minLineItemHeight * 4) {
+                        addPageWithRepeatedHeaderIfNeeded()
+                        continue
+                    }
+
+                    if availableTextHeight < minLineItemHeight {
+                        addPageWithRepeatedHeaderIfNeeded()
                         continue
                     }
 
                     let segment = largestPrefixThatFits(
                         text: remaining,
                         width: descWidth,
-                        maxHeight: maxTextHeight,
+                        maxHeight: availableTextHeight,
                         attributes: descAttrs
                     )
                     let chunk = segment.isEmpty ? String((remaining as NSString).substring(to: 1)) : segment
-                    let chunkHeight = max(style.baseRowHeight, textHeight(chunk, width: descWidth, attributes: descAttrs))
+                    let chunkHeight = measureLineItemHeight(chunk)
 
-                    if style.zebraRows && (rowIndex % 2 == 1) {
-                        let zebraRect = CGRect(
-                            x: style.margin,
-                            y: y - 2,
-                            width: pageWidth - (style.margin * 2),
-                            height: chunkHeight + style.rowGap + 2
-                        )
-                        ctx.cgContext.saveGState()
-                        style.zebraFillColor.setFill()
-                        ctx.cgContext.fill(zebraRect)
-                        ctx.cgContext.restoreGState()
-                    }
-
-                    drawText(chunk, font: rowFont,
-                             rect: CGRect(x: colDesc, y: y, width: descWidth, height: chunkHeight),
-                             color: style.primaryText)
-
-                    if isFirstSegment {
-                        drawText(String(format: "%.2f", item.quantity), font: rowFont,
-                                 rect: CGRect(x: colQty, y: y, width: 60, height: chunkHeight),
-                                 color: style.secondaryText, alignment: .right)
-
-                        drawText(money(item.unitPrice), font: rowFont,
-                                 rect: CGRect(x: colRate, y: y, width: 70, height: chunkHeight),
-                                 color: style.secondaryText, alignment: .right)
-
-                        drawText(money(item.lineTotal), font: rowFont,
-                                 rect: CGRect(x: colAmt, y: y, width: 46, height: chunkHeight),
-                                 color: style.primaryText, alignment: .right)
-                    }
-
+                    drawLineItemRow(item,
+                                    description: chunk,
+                                    rowHeight: chunkHeight,
+                                    rowIndex: rowIndex,
+                                    drawValues: isFirstSegment)
                     y += chunkHeight + style.rowGap
 
-                    let consumedLength = (chunk as NSString).length
-                    if consumedLength >= (remaining as NSString).length {
-                        remaining = ""
-                    } else {
-                        remaining = (remaining as NSString).substring(from: consumedLength)
-                    }
-
+                    remaining = remainingText(after: chunk, in: remaining)
                     isFirstSegment = false
+                }
+            }
 
-                    if !remaining.isEmpty {
-                        beginNewPageIfNeeded(neededSpace: style.baseRowHeight + style.rowGap + 18)
-                        if y == style.margin {
-                            drawWatermarkIfNeeded()
-                            drawTableHeader()
-                        }
-                    }
+            drawTableHeader()
+
+            var rowIndex = 0
+            for item in (invoice.items ?? []) {
+                let rawDesc = trimmed(item.itemDescription)
+                let isPlaceholder = rawDesc.isEmpty && item.unitPrice == 0 && item.quantity == 1
+                if isPlaceholder { continue }
+
+                let normalized = normalizedMultilineText(rawDesc)
+                let description = normalized.isEmpty ? "Item" : normalized
+                let rowHeight = measureLineItemHeight(description)
+
+                if rowHeight <= maxLineItemHeightOnFreshPage {
+                    ensureSpace(rowHeight + style.rowGap)
+                    drawLineItemRow(item,
+                                    description: description,
+                                    rowHeight: rowHeight,
+                                    rowIndex: rowIndex,
+                                    drawValues: true)
+                    y += rowHeight + style.rowGap
+                } else {
+                    drawSplitLineItemRow(item, description: description, rowIndex: rowIndex)
                 }
 
                 rowIndex += 1
@@ -764,6 +915,12 @@ enum InvoicePDFGenerator {
             }
 
             // Totals
+            let totalsRowCount = 2
+                + (invoice.discountAmount > 0 ? 1 : 0)
+                + (invoice.taxRate > 0 ? 1 : 0)
+            let totalsRequiredHeight = CGFloat(totalsRowCount * 18) + 34
+            beginNewPageIfNeeded(neededSpace: totalsRequiredHeight)
+
             let totalsX: CGFloat = pageWidth - style.margin - 240
             let labelWidth: CGFloat = 140
             let valueWidth: CGFloat = 100
@@ -887,9 +1044,7 @@ enum InvoicePDFGenerator {
     }
 
     static func writePDFToTemporaryFile(data: Data, filename: String) throws -> URL {
-        let safe = filename
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
+        let safe = sanitizedPDFBaseName(filename)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(safe).pdf")
         try data.write(to: url, options: [.atomic])
         return url

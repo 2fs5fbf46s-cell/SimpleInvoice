@@ -356,11 +356,7 @@ struct ClientPortalPreviewView: View {
                 context: modelContext,
                 businesses: fetchBusinesses()
             )
-            let prefix = (inv.documentType == "estimate") ? "Estimate" : "Invoice"
-            let safeNumber = inv.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-            let fallbackID = String(describing: inv.id)
-            let namePart = safeNumber.isEmpty ? String(fallbackID.suffix(8)) : safeNumber
-            let filename = "\(prefix)-\(namePart)"
+            let filename = InvoicePDFGenerator.preferredPDFBaseName(for: inv)
             let url = try InvoicePDFGenerator.writePDFToTemporaryFile(data: pdfData, filename: filename)
             pdfPreview = IdentifiableURL(url: url)
         } catch {

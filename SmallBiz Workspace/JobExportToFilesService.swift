@@ -56,7 +56,7 @@ struct JobExportToFilesService {
     /// - If conflictAction is provided and an existing FileItem is passed, we overwrite or save-copy.
     static func savePDF(
         data: Data,
-        preferredFileNameWithExtension: String, // e.g., "Invoice-123.pdf"
+        preferredFileNameWithExtension: String, // e.g., "Invoice_123.pdf"
         into folder: Folder,
         existingMatch: FileItem?,
         conflictAction: ExportConflictAction?,

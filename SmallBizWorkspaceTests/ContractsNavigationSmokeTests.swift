@@ -50,6 +50,115 @@ final class ContractsNavigationSmokeTests: XCTestCase {
         XCTAssertNotNil(start)
     }
 
+    func testClientContractsViewAcceptsExplicitBusinessAndClientScope() {
+        let view = ClientContractsView(
+            businessID: UUID(),
+            clientID: UUID(),
+            clientName: "Client"
+        )
+
+        XCTAssertNotNil(view)
+    }
+
+    @MainActor
+    func testClientContractSummaryScopeRequiresBusinessAndSelectedClient() {
+        let businessID = UUID()
+        let otherBusinessID = UUID()
+        let client = Client(businessID: businessID, name: "Primary Artist")
+        let otherClient = Client(businessID: businessID, name: "Other Client")
+
+        let direct = Contract(
+            businessID: businessID,
+            title: "Direct Contract",
+            statusRaw: ContractStatus.draft.rawValue,
+            client: client
+        )
+
+        let invoice = Invoice(
+            businessID: businessID,
+            invoiceNumber: "INV-001",
+            documentType: "invoice",
+            client: client
+        )
+        let invoiceLinked = Contract(
+            businessID: businessID,
+            title: "Invoice Contract",
+            statusRaw: ContractStatus.sent.rawValue,
+            invoice: invoice
+        )
+
+        let estimate = Invoice(
+            businessID: businessID,
+            invoiceNumber: "EST-001",
+            documentType: "estimate",
+            client: client
+        )
+        let estimateLinked = Contract(
+            businessID: businessID,
+            title: "Estimate Contract",
+            statusRaw: ContractStatus.signed.rawValue
+        )
+        estimateLinked.estimate = estimate
+
+        let job = Job(
+            businessID: businessID,
+            clientID: client.id,
+            title: "Project",
+            startDate: Date(timeIntervalSince1970: 0),
+            endDate: Date(timeIntervalSince1970: 3_600)
+        )
+        let jobLinked = Contract(
+            businessID: businessID,
+            title: "Job Contract",
+            statusRaw: ContractStatus.cancelled.rawValue
+        )
+        jobLinked.job = job
+
+        let wrongClient = Contract(
+            businessID: businessID,
+            title: "Wrong Client",
+            statusRaw: ContractStatus.sent.rawValue,
+            client: otherClient
+        )
+        let wrongBusiness = Contract(
+            businessID: otherBusinessID,
+            title: "Wrong Business",
+            statusRaw: ContractStatus.sent.rawValue,
+            client: client
+        )
+
+        let visible = ClientContractSummaryLogic.visibleContracts(
+            in: [direct, invoiceLinked, estimateLinked, jobLinked, wrongClient, wrongBusiness],
+            businessID: businessID,
+            clientID: client.id
+        )
+
+        XCTAssertEqual(Set(visible.map(\.id)), Set([direct.id, invoiceLinked.id, estimateLinked.id, jobLinked.id]))
+        XCTAssertFalse(ClientContractSummaryLogic.isContract(wrongClient, scopedTo: businessID, clientID: client.id))
+        XCTAssertFalse(ClientContractSummaryLogic.isContract(wrongBusiness, scopedTo: businessID, clientID: client.id))
+    }
+
+    @MainActor
+    func testClientContractSummaryStatusTotalsCountVisibleStatuses() {
+        let businessID = UUID()
+        let client = Client(businessID: businessID, name: "Primary Artist")
+        let contracts = [
+            Contract(businessID: businessID, statusRaw: ContractStatus.draft.rawValue, client: client),
+            Contract(businessID: businessID, statusRaw: ContractStatus.sent.rawValue, client: client),
+            Contract(businessID: businessID, statusRaw: ContractStatus.sent.rawValue, client: client),
+            Contract(businessID: businessID, statusRaw: ContractStatus.signed.rawValue, client: client),
+            Contract(businessID: businessID, statusRaw: ContractStatus.cancelled.rawValue, client: client)
+        ]
+
+        let totals = ClientContractSummaryLogic.statusTotals(for: contracts)
+
+        XCTAssertEqual(totals.total, 5)
+        XCTAssertEqual(totals.draft, 1)
+        XCTAssertEqual(totals.sent, 2)
+        XCTAssertEqual(totals.signed, 1)
+        XCTAssertEqual(totals.expired, 1)
+    }
+
     @MainActor
     func testContractCreationUsesExplicitBusinessID() throws {
         let container = try makeContainer()
