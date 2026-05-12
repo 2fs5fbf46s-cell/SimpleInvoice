@@ -50,11 +50,13 @@ struct InvoiceOverviewView: View {
 private struct InvoiceOverviewSummaryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
     @Bindable var invoice: Invoice
 
     @State private var expandedSection: InvoiceOverviewSection? = nil
     @State private var shareItems: [Any]? = nil
     @State private var exportError: String? = nil
+    @State private var businessInfoNotice: String? = nil
     @State private var convertedInvoice: Invoice? = nil
     @State private var detailInvoice: Invoice? = nil
     @State private var previewPDFURL: URL? = nil
@@ -116,6 +118,25 @@ private struct InvoiceOverviewSummaryView: View {
                 SummaryKit.SummaryKeyValueRow(label: "Amount", value: amountText)
                 SummaryKit.SummaryKeyValueRow(label: dueLabel, value: invoice.dueDate.formatted(date: .abbreviated, time: .omitted))
                 SummaryKit.SummaryKeyValueRow(label: "Client", value: invoice.client?.name.isEmpty == false ? (invoice.client?.name ?? "") : "No Client")
+                if let lockText = invoice.businessInfoLockStatusText {
+                    Text(lockText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if invoice.canRefreshBusinessInfo {
+                    Button {
+                        refreshBusinessInfo()
+                    } label: {
+                        Label("Refresh Business Info", systemImage: "arrow.clockwise")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                if let businessInfoNotice {
+                    Text(businessInfoNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .listRowBackground(Color.clear)
 
@@ -132,7 +153,7 @@ private struct InvoiceOverviewSummaryView: View {
                         }
                     } else {
                         primaryActionButton(title: invoice.isPaid ? "Mark Unpaid" : "Mark Paid", systemImage: "checkmark.circle") {
-                            invoice.isPaid.toggle()
+                            setPaid(!invoice.isPaid)
                             try? modelContext.save()
                         }
                     }
@@ -274,6 +295,30 @@ private struct InvoiceOverviewSummaryView: View {
             ) {
                 VStack(alignment: .leading, spacing: 8) {
                     SummaryKit.SummaryKeyValueRow(label: "Document ID", value: invoice.id.uuidString)
+                    if let lockText = invoice.businessInfoLockStatusText {
+                        Text(lockText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Draft invoices use your current Business Profile.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if invoice.canRefreshBusinessInfo {
+                        Button {
+                            refreshBusinessInfo()
+                        } label: {
+                            Label("Refresh Business Info", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if let businessInfoNotice {
+                        Text(businessInfoNotice)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     NavigationLink {
                         InvoiceDetailView(invoice: invoice)
@@ -311,7 +356,7 @@ private struct InvoiceOverviewSummaryView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
-                                Button("Share") { shareItems = [url] }
+                                Button("Share") { sharePDFOnly() }
                             }
                         }
                 }
@@ -360,7 +405,8 @@ private struct InvoiceOverviewSummaryView: View {
             let url = try DocumentFileIndexService.persistInvoicePDF(
                 invoice: invoice,
                 profiles: profiles,
-                context: modelContext
+                context: modelContext,
+                lockReason: .sent
             )
             shareItems = [url]
         } catch {
@@ -370,15 +416,49 @@ private struct InvoiceOverviewSummaryView: View {
 
     private func previewPDF() {
         do {
-            let url = try DocumentFileIndexService.persistInvoicePDF(
+            let pdfData = InvoicePDFService.makePDFData(
                 invoice: invoice,
                 profiles: profiles,
-                context: modelContext
+                context: modelContext,
+                businesses: businesses
+            )
+            let prefix = (invoice.documentType == "estimate") ? "Estimate" : "Invoice"
+            let namePart = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? String(invoice.id.uuidString.suffix(8))
+                : invoice.invoiceNumber
+            let url = try InvoicePDFGenerator.writePDFToTemporaryFile(
+                data: pdfData,
+                filename: "\(prefix)-\(namePart)-preview"
             )
             previewPDFURL = url
         } catch {
             exportError = error.localizedDescription
         }
+    }
+
+    private func refreshBusinessInfo() {
+        guard invoice.canRefreshBusinessInfo else { return }
+        _ = InvoicePDFService.refreshBusinessInfoForDraft(invoice: invoice, context: modelContext)
+        Haptics.success()
+        businessInfoNotice = "Business info refreshed"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if businessInfoNotice == "Business info refreshed" {
+                businessInfoNotice = nil
+            }
+        }
+    }
+
+    private func setPaid(_ paid: Bool) {
+        if paid && !invoice.isPaid {
+            _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                invoice: invoice,
+                profiles: profiles,
+                context: modelContext,
+                reason: .paid,
+                replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
+            )
+        }
+        invoice.isPaid = paid
     }
 
     private func convertEstimateToInvoice() {
@@ -466,7 +546,7 @@ private struct InvoiceLineItemsSummaryView: View {
             }
         }
         .navigationDestination(item: $selectedLineItem) { item in
-            LineItemEditView(item: item)
+            LineItemEditView(item: item, businessID: invoice.businessID)
         }
     }
 }
@@ -474,6 +554,7 @@ private struct InvoiceLineItemsSummaryView: View {
 private struct InvoicePaymentsSummaryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Query private var profiles: [BusinessProfile]
     @Bindable var invoice: Invoice
 
     var body: some View {
@@ -486,6 +567,15 @@ private struct InvoicePaymentsSummaryView: View {
                     value: invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
                 )
                 Button {
+                    if !invoice.isPaid {
+                        _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                            invoice: invoice,
+                            profiles: profiles,
+                            context: modelContext,
+                            reason: .paid,
+                            replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
+                        )
+                    }
                     invoice.isPaid.toggle()
                     try? modelContext.save()
                 } label: {

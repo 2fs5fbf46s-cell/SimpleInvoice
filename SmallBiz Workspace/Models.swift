@@ -215,6 +215,8 @@ final class Invoice {
     var clientID: UUID? = nil
 
     var businessSnapshotData: Data? = nil
+    var businessSnapshotLockedAt: Date? = nil
+    var businessSnapshotLockReason: String? = nil
 
     var invoiceNumber: String = ""
     var issueDate: Date = Foundation.Date()
@@ -401,22 +403,51 @@ extension Invoice {
         invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    var isFinalized: Bool {
-        if documentType == "invoice" {
-            return !trimmedInvoiceNumber.isEmpty
-        }
+    var normalizedBusinessSnapshotLockReason: String {
+        (businessSnapshotLockReason ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
 
+    var hasBusinessSnapshotLockRecord: Bool {
+        businessSnapshotLockedAt != nil || !normalizedBusinessSnapshotLockReason.isEmpty
+    }
+
+    var hasPortalUploadRecord: Bool {
+        if portalLastUploadedAtMs != nil { return true }
+        if portalLastUploadedHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        if portalLastUploadedBlobUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        return false
+    }
+
+    var estimateLocksBusinessSnapshot: Bool {
+        guard documentType == "estimate" else { return false }
         let status = estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return status == "sent" || status == "accepted"
+        return status == "sent" || status == "accepted" || status == "declined"
+    }
+
+    var isBusinessInfoLocked: Bool {
+        hasBusinessSnapshotLockRecord || isPaid || hasPortalUploadRecord || estimateLocksBusinessSnapshot
+    }
+
+    var canRefreshBusinessInfo: Bool {
+        !isBusinessInfoLocked
+    }
+
+    var businessInfoLockStatusText: String? {
+        guard isBusinessInfoLocked else { return nil }
+        if normalizedBusinessSnapshotLockReason == "sent" || estimateLocksBusinessSnapshot {
+            return "Business info locked on send"
+        }
+        return "Business info locked for historical record"
+    }
+
+    var isFinalized: Bool {
+        isBusinessInfoLocked
     }
 
     var isDraftForSnapshotRefresh: Bool {
-        if documentType == "invoice" {
-            return trimmedInvoiceNumber.isEmpty && businessSnapshotData == nil
-        }
-
-        let status = estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return status == "draft" && businessSnapshotData == nil
+        canRefreshBusinessInfo
     }
 }
 

@@ -8,14 +8,17 @@ enum DocumentFileIndexService {
     static func persistInvoicePDF(
         invoice: Invoice,
         profiles: [BusinessProfile],
-        context: ModelContext
+        context: ModelContext,
+        lockReason: BusinessSnapshotLockReason = .finalized
     ) throws -> URL {
         let business = try fetchBusiness(for: invoice.businessID, context: context)
         let pdfData = InvoicePDFService.makePDFData(
             invoice: invoice,
             profiles: profiles,
             context: context,
-            businesses: [business]
+            businesses: [business],
+            lockBusinessSnapshot: true,
+            lockReason: lockReason
         )
 
         let folderKind: FolderDestinationKind = invoice.documentType == "estimate" ? .estimates : .invoices

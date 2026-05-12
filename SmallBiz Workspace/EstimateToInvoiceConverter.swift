@@ -9,7 +9,6 @@ enum EstimateToInvoiceConverter {
         // Allow converting from draft/sent/accepted; only declined is blocked.
         guard status != "declined" else { return estimate }
 
-        var profilesForSnapshot = profiles
         let profile: BusinessProfile
         if let existing = profiles.first(where: { $0.businessID == estimate.businessID }) {
             profile = existing
@@ -18,7 +17,6 @@ enum EstimateToInvoiceConverter {
             context.insert(created)
             try? context.save()
             profile = created
-            profilesForSnapshot.append(created)
         }
 
         let year = Calendar.current.component(.year, from: .now)
@@ -42,7 +40,7 @@ enum EstimateToInvoiceConverter {
 
         let invoice = Invoice(
             businessID: estimate.businessID,
-            businessSnapshotData: estimate.businessSnapshotData,
+            businessSnapshotData: nil,
             invoiceNumber: newInvoiceNumber,
             issueDate: estimate.issueDate,
             dueDate: estimate.dueDate,
@@ -73,12 +71,6 @@ enum EstimateToInvoiceConverter {
         invoice.sourceBookingDepositInvoiceId = estimate.sourceBookingDepositInvoiceId
 
         context.insert(invoice)
-
-        _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
-            invoice: invoice,
-            profiles: profilesForSnapshot,
-            context: context
-        )
 
         try context.save()
         return invoice
