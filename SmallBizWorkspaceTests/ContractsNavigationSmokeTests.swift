@@ -70,4 +70,32 @@ final class ContractsNavigationSmokeTests: XCTestCase {
 
         XCTAssertEqual(contract.businessID, businessID)
     }
+
+    @MainActor
+    func testSeederAddsMusicSplitSheetToExistingTemplateStore() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        context.insert(ContractTemplate(
+            name: "General Service Agreement",
+            category: "General",
+            body: "Existing body",
+            isBuiltIn: true,
+            version: 1
+        ))
+        try context.save()
+
+        ContractTemplateSeeder.seedIfNeeded(context: context)
+
+        let templates = try context.fetch(FetchDescriptor<ContractTemplate>())
+        let templateNames = templates.map(\.name)
+
+        XCTAssertTrue(templateNames.contains("Music Split Sheet"))
+        XCTAssertEqual(templateNames.filter { $0 == "General Service Agreement" }.count, 1)
+
+        let musicTemplate = try XCTUnwrap(templates.first { $0.name == "Music Split Sheet" })
+        XCTAssertEqual(musicTemplate.category, "Music / Entertainment")
+        XCTAssertTrue(musicTemplate.body.contains("SONGWRITING / PUBLISHING SPLITS"))
+        XCTAssertTrue(musicTemplate.body.contains("Total master recording splits must equal 100%."))
+    }
 }
