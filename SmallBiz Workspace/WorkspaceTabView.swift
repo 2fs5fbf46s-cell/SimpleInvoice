@@ -41,7 +41,7 @@ struct WorkspaceTabView: View {
                 Label("Invoices", systemImage: "doc.plaintext")
             }
 
-            // ✅ Portal Preview MUST be inside TabView
+            #if DEBUG
             NavigationStack {
                 PortalPreviewView()
                     .toolbar { homeToolbar }
@@ -49,6 +49,7 @@ struct WorkspaceTabView: View {
             .tabItem {
                 Label("Portal", systemImage: "person.crop.rectangle")
             }
+            #endif
         }
         .environment(\.dismissToDashboard, { dismiss() })
         .task {

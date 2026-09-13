@@ -22,8 +22,21 @@ private enum AppTabRouteDestination: Hashable {
 struct AppTabView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+
+    /// Only used as a "data changed" heartbeat for the pending-estimate deep link.
+    /// Scoped to the active business so the root view — which is mounted for the
+    /// whole life of the app — doesn't hold every invoice of every business.
+    /// Record lookups go through `invoice(withID:)` / `contract(withID:)` instead.
     @Query private var invoices: [Invoice]
-    @Query private var contracts: [Contract]
+
+    init(businessID: UUID? = nil) {
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        _invoices = Query(
+            filter: #Predicate<Invoice> { invoice in
+                invoice.businessID == scopedID
+            }
+        )
+    }
 
     @State private var tab: AppTab = .dashboard
     @State private var lastSelectedTab: AppTab = .dashboard
@@ -55,7 +68,7 @@ struct AppTabView: View {
         TabView(selection: $tab) {
 
             NavigationStack(path: $dashboardPath) {
-                DashboardView()
+                DashboardView(businessID: activeBiz.activeBusinessID)
             }
             .id(dashboardResetID)
             .tag(AppTab.dashboard)
@@ -407,9 +420,27 @@ struct AppTabView: View {
         tab = destination
     }
 
+    // MARK: - Deep-link lookups
+
+    private func invoice(withID id: UUID) -> Invoice? {
+        var descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate<Invoice> { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private func contract(withID id: UUID) -> Contract? {
+        var descriptor = FetchDescriptor<Contract>(
+            predicate: #Predicate<Contract> { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
+    }
+
     private func routeToEstimate(id: UUID?) {
         guard let id else { return }
-        guard let invoice = invoices.first(where: { $0.id == id }) else { return }
+        guard let invoice = invoice(withID: id) else { return }
         tab = .invoices
         deepLinkedEstimate = invoice
     }
@@ -425,7 +456,7 @@ struct AppTabView: View {
 
         if let invoiceID = effectivePayload.invoiceId,
            let id = UUID(uuidString: invoiceID),
-           let invoice = invoices.first(where: { $0.id == id }) {
+           let invoice = invoice(withID: id) {
             tab = .invoices
             deepLinkedInvoice = invoice
             notificationRouter.consumePendingPayload()
@@ -434,7 +465,7 @@ struct AppTabView: View {
 
         if let contractID = effectivePayload.contractId,
            let id = UUID(uuidString: contractID),
-           let contract = contracts.first(where: { $0.id == id }) {
+           let contract = contract(withID: id) {
             tab = .more
             deepLinkedContract = contract
             notificationRouter.consumePendingPayload()

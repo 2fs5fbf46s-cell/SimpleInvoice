@@ -16,14 +16,29 @@ struct NewEstimateSheet: View {
     let onCancel: () -> Void
     let onCreate: () -> Void
 
-    // Pull all clients; filter after based on active business.
-    @Query(sort: \Client.name, order: .forward)
-    private var allClients: [Client]
+    // Scoped in the fetch rather than loading every client in the account.
+    @Query private var allClients: [Client]
 
-    private var scopedClients: [Client] {
-        guard let bizID = activeBiz.activeBusinessID else { return [] }
-        return allClients.filter { $0.businessID == bizID }
+    init(
+        name: Binding<String>,
+        client: Binding<Client?>,
+        businessID: UUID? = nil,
+        onCancel: @escaping () -> Void,
+        onCreate: @escaping () -> Void
+    ) {
+        _name = name
+        _client = client
+        self.onCancel = onCancel
+        self.onCreate = onCreate
+
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        _allClients = Query(
+            filter: #Predicate<Client> { $0.businessID == scopedID },
+            sort: [SortDescriptor(\Client.name, order: .forward)]
+        )
     }
+
+    private var scopedClients: [Client] { allClients }
 
     var body: some View {
         NavigationStack {

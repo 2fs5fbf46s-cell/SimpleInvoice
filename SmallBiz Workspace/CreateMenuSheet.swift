@@ -169,6 +169,7 @@ struct CreateMenuSheet: View {
                 NewEstimateSheet(
                     name: $draftEstimateName,
                     client: $draftEstimateClient,
+                    businessID: activeBiz.activeBusinessID,
                     onCancel: { showNewEstimateSheet = false },
                     onCreate: { createEstimateFromDraftAndOpen() }
                 )

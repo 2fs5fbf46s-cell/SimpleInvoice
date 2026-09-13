@@ -16,21 +16,10 @@ struct BusinessSwitcherView: View {
     @Query private var businesses: [Business]
     @Query private var profiles: [BusinessProfile]
 
-    // These queries are used for cascade-delete.
-    @Query private var clients: [Client]
-    @Query private var invoices: [Invoice]
-    @Query private var jobs: [Job]
-    @Query private var contracts: [Contract]
-    @Query private var contractSignatures: [ContractSignature]
-    @Query private var catalogItems: [CatalogItem]
-    @Query private var attachments: [Attachment]
-    @Query private var folders: [Folder]
-    @Query private var blockouts: [Blockout]
-    @Query private var auditEvents: [AuditEvent]
-    @Query private var portalIdentities: [PortalIdentity]
-    @Query private var portalInvites: [PortalInvite]
-    @Query private var portalSessions: [PortalSession]
-    @Query private var portalAuditEvents: [PortalAuditEvent]
+    // Cascade-delete used to keep a live @Query over all fourteen of these tables,
+    // which meant this list view held every record in the database for as long as
+    // it was on screen — to support an action that usually never runs. The records
+    // are now fetched, scoped to the business, at the moment of deletion.
 
     @State private var newBusinessName: String = ""
 
@@ -194,21 +183,21 @@ struct BusinessSwitcherView: View {
             }
         }
 
-        deleteItems(profiles.filter { $0.businessID == businessID })
-        deleteItems(clients.filter { $0.businessID == businessID })
-        deleteItems(invoices.filter { $0.businessID == businessID })
-        deleteItems(jobs.filter { $0.businessID == businessID })
-        deleteItems(contracts.filter { $0.businessID == businessID })
-        deleteItems(contractSignatures.filter { $0.businessID == businessID })
-        deleteItems(catalogItems.filter { $0.businessID == businessID })
-        deleteItems(attachments.filter { $0.businessID == businessID })
-        deleteItems(folders.filter { $0.businessID == businessID })
-        deleteItems(blockouts.filter { $0.businessID == businessID })
-        deleteItems(auditEvents.filter { $0.businessID == businessID })
-        deleteItems(portalIdentities.filter { $0.businessID == businessID })
-        deleteItems(portalInvites.filter { $0.businessID == businessID })
-        deleteItems(portalSessions.filter { $0.businessID == businessID })
-        deleteItems(portalAuditEvents.filter { $0.businessID == businessID })
+        deleteAll(BusinessProfile.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Client.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Invoice.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Job.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Contract.self, #Predicate { $0.businessID == businessID })
+        deleteAll(ContractSignature.self, #Predicate { $0.businessID == businessID })
+        deleteAll(CatalogItem.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Attachment.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Folder.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Blockout.self, #Predicate { $0.businessID == businessID })
+        deleteAll(AuditEvent.self, #Predicate { $0.businessID == businessID })
+        deleteAll(PortalIdentity.self, #Predicate { $0.businessID == businessID })
+        deleteAll(PortalInvite.self, #Predicate { $0.businessID == businessID })
+        deleteAll(PortalSession.self, #Predicate { $0.businessID == businessID })
+        deleteAll(PortalAuditEvent.self, #Predicate { $0.businessID == businessID })
 
         modelContext.delete(business)
 
@@ -219,7 +208,14 @@ struct BusinessSwitcherView: View {
         }
     }
 
-    private func deleteItems<T: PersistentModel>(_ items: [T]) {
+    /// Fetch just this business's rows of one type and delete them.
+    ///
+    /// Deletes each object individually rather than using a bulk delete, so
+    /// SwiftData's relationship delete rules fire exactly as they did when these
+    /// were driven off live queries.
+    private func deleteAll<T: PersistentModel>(_ type: T.Type, _ predicate: Predicate<T>) {
+        let descriptor = FetchDescriptor<T>(predicate: predicate)
+        guard let items = try? modelContext.fetch(descriptor) else { return }
         for item in items { modelContext.delete(item) }
     }
 }

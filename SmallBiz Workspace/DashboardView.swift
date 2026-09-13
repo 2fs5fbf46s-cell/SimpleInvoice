@@ -7,13 +7,29 @@ struct DashboardView: View {
     @State private var metricState = DashboardMetricState()
     @State private var showHelpCenter = false
 
-    // Pull business profile for name + logo
+    // Pull business profile for name + logo. One row per business, so this one
+    // stays unfiltered — the whole table is a handful of records.
     @Query private var profiles: [BusinessProfile]
 
-    // Pull invoices/jobs for stats
+    // Stats for the active business only. These grow with use, so they are
+    // filtered in the fetch rather than loaded whole and filtered in memory.
     @Query private var invoices: [Invoice]
-    @Query(sort: \Job.startDate, order: .forward)
-    private var jobs: [Job]
+    @Query private var jobs: [Job]
+
+    init(businessID: UUID? = nil) {
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        _invoices = Query(
+            filter: #Predicate<Invoice> { invoice in
+                invoice.businessID == scopedID
+            }
+        )
+        _jobs = Query(
+            filter: #Predicate<Job> { job in
+                job.businessID == scopedID
+            },
+            sort: [SortDescriptor(\Job.startDate, order: .forward)]
+        )
+    }
 
     private var effectiveBusinessID: UUID? {
         BusinessScoped.effectiveBusinessID(

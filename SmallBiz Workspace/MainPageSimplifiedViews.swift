@@ -3,16 +3,28 @@ import SwiftData
 import SwiftUI
 
 struct ClientInvoicesView: View {
-    @Query(sort: \Invoice.issueDate, order: .reverse) private var invoices: [Invoice]
+    // Filtered to this client in the fetch. Loading every invoice in the database
+    // and matching on client id in memory made this view's cost grow with the
+    // whole account rather than with the client being viewed.
+    @Query private var invoices: [Invoice]
     @Bindable var client: Client
+
+    init(client: Client) {
+        _client = Bindable(client)
+        let clientID = client.id
+        _invoices = Query(
+            filter: #Predicate<Invoice> { invoice in
+                invoice.client?.id == clientID
+            },
+            sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+        )
+    }
 
     @State private var searchText: String = ""
     @State private var newInvoice: Invoice? = nil
 
     private var filteredInvoices: [Invoice] {
-        let filtered = invoices.filter { invoice in
-            invoice.client?.id == client.id
-        }
+        let filtered = invoices
         guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return filtered
         }

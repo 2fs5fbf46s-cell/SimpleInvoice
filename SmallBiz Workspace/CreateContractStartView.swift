@@ -53,6 +53,20 @@ struct CreateContractStartView: View {
         self.businessID = businessID
         self.onCreated = onCreated
         self.onCancel = onCancel
+
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        _invoices = Query(
+            filter: #Predicate<Invoice> { $0.businessID == scopedID },
+            sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+        )
+        _clients = Query(
+            filter: #Predicate<Client> { $0.businessID == scopedID },
+            sort: [SortDescriptor(\Client.name)]
+        )
+        _jobs = Query(
+            filter: #Predicate<Job> { $0.businessID == scopedID },
+            sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+        )
     }
 
     var body: some View {

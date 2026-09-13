@@ -6,8 +6,19 @@ struct BookingAnalyticsView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Invoice.issueDate, order: .reverse) private var invoices: [Invoice]
+    @Query private var invoices: [Invoice]
     @Query private var jobs: [Job]
+
+    init(businessID: UUID? = nil) {
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        _invoices = Query(
+            filter: #Predicate<Invoice> { $0.businessID == scopedID },
+            sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+        )
+        _jobs = Query(
+            filter: #Predicate<Job> { $0.businessID == scopedID }
+        )
+    }
 
     @State private var selectedRange: BookingAnalyticsRange = .days30
     @State private var isLoading = false

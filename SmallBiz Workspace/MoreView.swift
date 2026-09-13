@@ -98,16 +98,18 @@ struct MoreView: View {
                 systemImage: "tray.full",
                 keyword: "Jobs",
                 destination: AnyView(JobsListView(businessID: activeBiz.activeBusinessID))
-            ),
+            )
+        ]
+
+        #if DEBUG
+        base.append(
             MoreItem(
                 title: "Portal Preview",
                 systemImage: "person.crop.rectangle",
                 keyword: "Client Portal",
                 destination: AnyView(PortalPreviewView())
             )
-        ]
-
-        #if DEBUG
+        )
         base.append(
             MoreItem(
                 title: "Developer Tools",

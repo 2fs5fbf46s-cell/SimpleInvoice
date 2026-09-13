@@ -128,7 +128,7 @@ struct BookingsListView: View {
             }
         }
         .navigationDestination(isPresented: $showAnalytics) {
-            BookingAnalyticsView()
+            BookingAnalyticsView(businessID: businessID)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

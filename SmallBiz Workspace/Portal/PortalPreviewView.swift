@@ -1,6 +1,10 @@
 import SwiftUI
 import SwiftData
 
+// Developer-only. This screen drives portal internals directly and takes an admin
+// key as free text, so it must never be reachable in a release build.
+#if DEBUG
+
 /// Internal developer tool to test the end-to-end client portal flow:
 /// Enable portal → Create invite → Mark sent → Accept invite → Get *web* session token (payload.signature).
 struct PortalPreviewView: View {
@@ -367,3 +371,5 @@ private extension View {
         modifier(SBWPortalCardRow())
     }
 }
+
+#endif

@@ -15,7 +15,7 @@ struct RootGateView: View {
             if shouldShowOnboarding {
                 OnboardingFlowView()
             } else {
-                AppTabView()
+                AppTabView(businessID: activeBiz.activeBusinessID)
             }
         }
         .task(id: gateTaskKey) {

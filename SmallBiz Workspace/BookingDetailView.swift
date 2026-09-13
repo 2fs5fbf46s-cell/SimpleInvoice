@@ -447,11 +447,27 @@ struct BookingDetailView: View {
         } else {
             _totalAmountText = State(initialValue: "")
         }
+
+        let requestId = request.requestId
+        _invoices = Query(
+            filter: #Predicate<Invoice> { invoice in
+                invoice.sourceBookingRequestId == requestId
+            }
+        )
+        _jobs = Query(
+            filter: #Predicate<Job> { job in
+                job.sourceBookingRequestId == requestId
+            }
+        )
     }
 
-    @Query(sort: \Client.name) private var clients: [Client]
     @Query private var profiles: [BusinessProfile]
     @Query private var businesses: [Business]
+
+    // Narrowed to the records this booking actually produced. These were whole-table
+    // queries scanned with first(where:), which meant opening one booking loaded
+    // every invoice and job in the account. A `clients` query was declared here too
+    // and never read at all.
     @Query private var jobs: [Job]
     @Query private var invoices: [Invoice]
 

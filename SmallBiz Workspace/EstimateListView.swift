@@ -320,6 +320,7 @@ struct EstimateListView: View {
             NewEstimateSheet(
                 name: $draftName,
                 client: $draftClient,
+                businessID: businessID,
                 onCancel: { showingCreateEstimate = false },
                 onCreate: { createEstimateFromDraft() }
             )
