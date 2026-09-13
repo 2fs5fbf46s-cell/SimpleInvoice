@@ -176,25 +176,23 @@ struct SetupPaymentsView: View {
         .sheet(isPresented: $showPayPalHelpSheet) {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Setup PayPal (Admin)")
+                    Text("Taking PayPal payments")
                         .font(.headline)
-                    Text("PayPal platform payments are \(payPalPlatformReadyText).")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if !payPalPartnerAvailable {
-                        Text("Partner onboarding is not enabled yet.")
+                    if payPalPartnerAvailable {
+                        Text("Connect your PayPal business account and customers can pay PayPal invoices straight from their portal link.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("Tap Connect to sign in to PayPal. You'll come back here when it's done.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Partner onboarding is available. Use Connect to link your merchant account.")
+                        Text("Direct PayPal checkout isn't available in the app yet — we're finishing the approval process with PayPal.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("In the meantime you can add a PayPal.me link and customers can pay you there. Your invoice will show it as a payment option.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    Text("Required:")
-                        .font(.subheadline.weight(.semibold))
-                    Text("• PAYPAL_PARTNER_CLIENT_ID\n• PAYPAL_PARTNER_CLIENT_SECRET\n• PAYPAL_PARTNER_RETURN_URL_BASE\n• PAYPAL_PARTNER_PRIVACY_URL\n• PAYPAL_PARTNER_USER_AGREEMENT_URL")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                     Spacer()
                 }
                 .padding(20)
@@ -608,15 +606,18 @@ struct SetupPaymentsView: View {
         }
         switch payPalState {
         case .unavailable:
-            return "Partner onboarding is not enabled yet. You can still use a PayPal.me fallback."
+            return "Direct PayPal checkout isn't available yet. Add a PayPal.me link and customers can still pay you with PayPal."
         case .active:
-            let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "unknown"
-            return "Environment: \(env)"
+            let env = payPalConnectStatus?.env?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            // "sandbox" is a test account and worth saying plainly; live needs no label.
+            return env == "sandbox"
+                ? "Connected to a PayPal test account — payments won't be real."
+                : "Connected. Customers can pay with PayPal."
         case .notConfigured:
             if payPalPartnerAvailable {
-                return "Add PAYPAL_PARTNER_CLIENT_ID and PAYPAL_PARTNER_CLIENT_SECRET."
+                return "Tap Connect to link your PayPal business account."
             }
-            return "Partner onboarding is not enabled yet."
+            return "Direct PayPal checkout isn't available yet. A PayPal.me link works in the meantime."
         case .notConnected:
             return "Finish setup to link your PayPal merchant account."
         case .pending:
@@ -864,7 +865,7 @@ struct SetupPaymentsView: View {
                     configured: platform?.configured ?? false,
                     env: platform?.env,
                     canCreateOrder: platform?.canCreateOrder ?? false,
-                    message: "Partner onboarding is not enabled yet.",
+                    message: "Direct PayPal checkout isn't available yet.",
                     onboardingStatus: "not_connected",
                     paypalMerchantId: business.paypalMerchantId,
                     paypalLinkedAtMs: business.paypalLinkedAtMs,
@@ -872,7 +873,7 @@ struct SetupPaymentsView: View {
                 )
                 business.paypalEnv = platform?.env
                 business.paypalLastCheckedAtMs = nowMs
-                payPalStatusNote = "Partner onboarding is not enabled yet."
+                payPalStatusNote = "Direct PayPal checkout isn't available yet. You can add a PayPal.me link instead."
                 payPalLastCheckedAt = Date()
                 save()
                 return
@@ -952,7 +953,7 @@ struct SetupPaymentsView: View {
         switch payPalState {
         case .disabled: return "Enable PayPal"
         case .unavailable: return "Configure"
-        case .notConfigured: return "Setup PayPal (Admin)"
+        case .notConfigured: return "Set up PayPal"
         case .notConnected: return "Connect PayPal"
         case .pending: return "Finish Setup"
         case .active: return "Manage"

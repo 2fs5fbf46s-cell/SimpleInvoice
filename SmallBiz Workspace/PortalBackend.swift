@@ -51,17 +51,53 @@ enum PortalBackendError: Error {
 }
 
 extension PortalBackendError: LocalizedError {
+    /// What the customer reads.
+    ///
+    /// This used to interpolate the raw response body and the internal route path,
+    /// so a business owner would see "Portal backend HTTP 500 at
+    /// /api/portal/invoice. {…}". Say what happened and what to do; the detail
+    /// belongs in `diagnosticDescription`, which goes to the log.
     var errorDescription: String? {
         switch self {
-        case .missingAdminKey: return "Missing PORTAL_ADMIN_KEY (PortalSecrets.plist)."
-        case .badURL: return "Invalid portal backend URL."
+        case .missingAdminKey:
+            return "This device isn't set up to sync yet. Reopen the app, and contact support if it keeps happening."
+        case .badURL:
+            return "Couldn't reach the sync service. Check your connection and try again."
+        case .http(let code, _, _):
+            switch code {
+            case 401, 403:
+                return "This device is no longer signed in for this business. Reopen the app to sign in again."
+            case 404:
+                return "That item isn't on the server yet. Try syncing again in a moment."
+            case 409:
+                return "Someone else changed this first. Reopen it to see the latest version."
+            case 413:
+                return "That file is too large to upload. Try a smaller one."
+            case 429:
+                return "Too many requests just now. Wait a moment and try again."
+            case 500...599:
+                return "The sync service is having trouble. Your work is saved on this device — try again shortly."
+            default:
+                return "Couldn't complete that just now. Your work is saved on this device — try again shortly."
+            }
+        case .decode:
+            return "Got an unexpected response from the sync service. Try again shortly."
+        }
+    }
+
+    /// Full detail, for logs and bug reports. Never shown in the UI.
+    var diagnosticDescription: String {
+        switch self {
+        case .missingAdminKey:
+            return "PortalBackendError.missingAdminKey (PortalSecrets.plist)"
+        case .badURL:
+            return "PortalBackendError.badURL"
         case .http(let code, let body, let path):
             let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedPath.isEmpty {
-                return "Portal backend HTTP \(code). \(body)"
-            }
-            return "Portal backend HTTP \(code) at \(trimmedPath). \(body)"
-        case .decode(let body): return "Portal backend decode failed. \(body)"
+            let where_ = trimmedPath.isEmpty ? "" : " at \(trimmedPath)"
+            return "PortalBackendError.http \(code)\(where_): \(body)"
+        case .decode(let body):
+            return "PortalBackendError.decode: \(body)"
         }
     }
 }

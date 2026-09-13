@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 import CryptoKit
 
@@ -10,6 +11,11 @@ enum PortalAutoSyncResult: Equatable {
 }
 
 enum PortalAutoSyncService {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "SmallBizWorkspace",
+        category: "PortalSync"
+    )
+
 
     @MainActor
     static func markInvoiceNeedsUploadIfChanged(invoice: Invoice, business: Business?) {
@@ -280,7 +286,18 @@ enum PortalAutoSyncService {
         ms(Date())
     }
 
+    /// The message stored on the document and shown to the business owner.
+    ///
+    /// `localizedDescription` is deliberately customer-readable. The full detail —
+    /// status code, route, response body — goes to the log via
+    /// `diagnosticDescription` so a failed sync is still debuggable.
     private static func truncatedErrorMessage(_ error: any Error) -> String {
+        if let portalError = error as? PortalBackendError {
+            Self.logger.error("Portal upload failed: \(portalError.diagnosticDescription, privacy: .public)")
+        } else {
+            Self.logger.error("Portal upload failed: \(String(describing: error), privacy: .public)")
+        }
+
         let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty {
             return "Upload failed."
