@@ -2,10 +2,12 @@ import SwiftUI
 import SwiftData
 
 struct DashboardView: View {
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @StateObject private var metricsVM = DashboardMetricsVM()
     @State private var metricState = DashboardMetricState()
     @State private var showHelpCenter = false
+    @State private var quickStart = QuickStartChecklist()
 
     // Pull business profile for name + logo. One row per business, so this one
     // stays unfiltered — the whole table is a handful of records.
@@ -141,6 +143,10 @@ struct DashboardView: View {
                         )
                     }
                     .padding(.top, 6)
+
+                    if !quickStart.isFullyComplete, effectiveBusinessID != nil {
+                        QuickStartDashboardCard(checklist: quickStart)
+                    }
 
                     if effectiveBusinessID == nil {
                         ContentUnavailableView(
@@ -296,6 +302,7 @@ struct DashboardView: View {
         .task(id: effectiveBusinessID) {
             await recomputeDashboardMetrics(forceRemote: false)
         }
+        .task(id: quickStartRefreshKey) { await refreshQuickStart() }
         .onChange(of: invoices.count) {
             Task {
                 await recomputeDashboardMetrics(forceRemote: false)
@@ -379,6 +386,22 @@ struct DashboardView: View {
         formatter.dateFormat = "h:mm a"
         return formatter
     }()
+
+    /// Re-derives when the business changes or the data behind a step moves.
+    private var quickStartRefreshKey: String {
+        "\(effectiveBusinessID?.uuidString ?? "none")-\(invoices.count)"
+    }
+
+    @MainActor
+    private func refreshQuickStart() async {
+        let status = await NotificationManager().getAuthorizationStatus()
+        quickStart = QuickStartChecklist.fromStoredData(
+            businessID: effectiveBusinessID,
+            context: modelContext,
+            notificationsEnabled: QuickStartChecklist.notificationsAreEnabled(status: status)
+        )
+    }
+
 }
 
 // MARK: - Tile Card
@@ -573,5 +596,40 @@ private struct DashboardStatCard: View {
         StatCard(title: title, value: value, subtitle: subtitle)
             .redacted(reason: isLoading ? .placeholder : [])
             .opacity(isLoading ? 0.7 : 1)
+    }
+}
+
+
+
+/// Entry point to Quick Start from the dashboard.
+///
+/// The checklist was previously reachable only through More -> Help Center ->
+/// Quick Start, three taps from a dashboard that never mentioned it.
+private struct QuickStartDashboardCard: View {
+    let checklist: QuickStartChecklist
+
+    var body: some View {
+        NavigationLink {
+            QuickStartView()
+        } label: {
+            SBWCardContainer {
+                VStack(alignment: .leading, spacing: 10) {
+                    QuickStartProgressHeader(checklist: checklist)
+
+                    if let next = checklist.nextStep {
+                        HStack(spacing: 6) {
+                            Text("Next: \(next.title)")
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SBWTheme.brandBlue)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Quick Start, \(checklist.completedCount) of \(checklist.totalCount) steps complete")
+        .accessibilityHint(checklist.nextStep.map { "Next: \($0.title)" } ?? "")
     }
 }

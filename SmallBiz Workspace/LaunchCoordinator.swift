@@ -188,8 +188,13 @@ final class LaunchCoordinator: ObservableObject {
 }
 
 enum AppModelContainerFactory {
-    static func makeContainer() throws -> ModelContainer {
-        let schema = Schema([
+    /// The authoritative model list.
+    ///
+    /// Tests build their own in-memory containers from this rather than keeping
+    /// parallel lists — a partial schema traps at `save()` when the app's real
+    /// container is already open in the same process, and drifting copies mean a
+    /// newly added `@Model` silently isn't covered.
+    static let models: [any PersistentModel.Type] = [
             Business.self,
             BusinessProfile.self,
             PublishedBusinessSite.self,
@@ -220,9 +225,18 @@ enum AppModelContainerFactory {
             Job.self,
             Blockout.self,
             AppNotification.self
-        ])
+    ]
 
+    static func makeContainer() throws -> ModelContainer {
+        let schema = Schema(models)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    /// An isolated in-memory container over the same models. For tests.
+    static func makeInMemoryContainer() throws -> ModelContainer {
+        let schema = Schema(models)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [config])
     }
 }
