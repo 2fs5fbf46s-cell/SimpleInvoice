@@ -1,3 +1,4 @@
+import OSLog
 //
 //  ClientListView.swift
 //  SmallBiz Workspace
@@ -264,7 +265,7 @@ struct ClientListView: View {
                                     searchText = ""
                                     newClientDraft = nil
                                 } catch {
-                                    print("Failed to save new client: \(error)")
+                                    SBWLog.ui.problem("Failed to save new client: \(error)")
                                 }
                             }
                         }
@@ -341,7 +342,7 @@ struct ClientListView: View {
 
     private func addClientAndOpenSheet() {
         guard let bizID = effectiveBusinessID else {
-            print("❌ No active business selected")
+            SBWLog.ui.problem("❌ No active business selected")
             return
         }
 
@@ -378,7 +379,7 @@ struct ClientListView: View {
         }
         catch {
             Haptics.error()
-            print("Failed to save deletes: \(error)")
+            SBWLog.ui.problem("Failed to save deletes: \(error)")
         }
     }
 

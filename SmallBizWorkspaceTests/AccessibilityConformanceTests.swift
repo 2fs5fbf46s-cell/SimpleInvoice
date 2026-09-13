@@ -72,6 +72,39 @@ final class AccessibilityConformanceTests: XCTestCase {
         )
     }
 
+    /// `print` does not reach the unified log in a release build, so a diagnostic
+    /// written with it is invisible exactly when it is needed — a user reporting
+    /// that something will not sync.
+    func testNoPrintStatements() throws {
+        let files = try sourceFiles()
+        try XCTSkipIf(files.isEmpty, "No sources found; nothing to check")
+
+        var offenders: [String] = []
+        for file in files {
+            if file.lastPathComponent == "SBWLog.swift" { continue }
+
+            let source = try String(contentsOf: file, encoding: .utf8)
+            for (index, line) in source.components(separatedBy: .newlines).enumerated() {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.hasPrefix("//") else { continue }
+                if line.contains("print(") && !line.contains("SBWLog") {
+                    offenders.append("\(file.lastPathComponent):\(index + 1)")
+                }
+            }
+        }
+
+        XCTAssertEqual(
+            offenders,
+            [],
+            """
+            These use print, which is dropped in release builds. Use SBWLog with \
+            the category for the area — .note for normal diagnostics, .problem \
+            for failures:
+            \(offenders.joined(separator: "\n"))
+            """
+        )
+    }
+
     func testScaledSystemProducesAFont() {
         // Exercises the UIFontMetrics path rather than asserting a point size,
         // which legitimately varies with the simulator's text setting.

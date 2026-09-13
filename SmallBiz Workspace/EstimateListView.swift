@@ -1,3 +1,4 @@
+import OSLog
 //
 //  EstimateListView.swift
 //  SmallBiz Workspace
@@ -224,7 +225,7 @@ struct EstimateListView: View {
                             Button(role: .destructive) {
                                 modelContext.delete(estimate)
                                 do { try modelContext.save() }
-                                catch { print("Failed to save deletes: \(error)") }
+                                catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -302,7 +303,7 @@ struct EstimateListView: View {
                 est.invoiceNumber = trimmed
 
                 do { try modelContext.save() }
-                catch { print("Failed to save rename: \(error)") }
+                catch { SBWLog.ui.problem("Failed to save rename: \(error)") }
                 Haptics.success()
 
                 renamingEstimate = nil
@@ -527,7 +528,7 @@ struct EstimateListView: View {
     private func createEstimateFromDraft() {
         do {
             guard let bizID = effectiveBusinessID else {
-                print("❌ No active business selected")
+                SBWLog.ui.problem("❌ No active business selected")
                 return
             }
 
@@ -574,7 +575,7 @@ struct EstimateListView: View {
             newEstimate = estimate
             showingNewEstimate = true
         } catch {
-            print("Failed to create estimate: \(error)")
+            SBWLog.ui.problem("Failed to create estimate: \(error)")
         }
     }
 
@@ -595,7 +596,7 @@ struct EstimateListView: View {
         if forceDelete || isEmptyDraft {
             modelContext.delete(inv)
             do { try modelContext.save() }
-            catch { print("Failed to save cancel delete: \(error)") }
+            catch { SBWLog.ui.problem("Failed to save cancel delete: \(error)") }
         }
 
         newEstimate = nil
@@ -608,6 +609,6 @@ struct EstimateListView: View {
             modelContext.delete(filteredEstimates[index])
         }
         do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
+        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
     }
 }

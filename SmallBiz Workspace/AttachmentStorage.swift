@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UniformTypeIdentifiers
 
 struct AttachmentStorageResult {
@@ -47,7 +48,7 @@ enum AttachmentStorage {
         do {
             try AppFileStore.deleteFile(for: file)
         } catch {
-            print("Attachment file delete failed: \(error)")
+            SBWLog.files.problem("Attachment file delete failed: \(error)")
         }
     }
 

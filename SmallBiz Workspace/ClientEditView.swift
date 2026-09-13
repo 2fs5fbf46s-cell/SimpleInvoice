@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
@@ -768,7 +769,7 @@ struct ClientEditView: View {
         do {
             _ = try WorkspaceProvisioningService.ensureJobWorkspace(job: job, context: modelContext)
         } catch {
-            print("Workspace provisioning failed for new client job: \(error)")
+            SBWLog.ui.problem("Workspace provisioning failed for new client job: \(error)")
         }
 
         // Navigate into job immediately

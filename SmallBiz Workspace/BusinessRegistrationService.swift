@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Claims a business on the backend and keeps its device token current.
 ///
@@ -47,7 +48,7 @@ enum BusinessRegistrationService {
             // Leave the token unset: business-scoped calls will fail with a clear
             // 401 rather than silently acting as some other business.
             PortalBackend.activeBusinessToken = nil
-            print("[BusinessAuth] Registration failed for \(businessID): \(error.localizedDescription)")
+            SBWLog.portal.problem("[BusinessAuth] Registration failed for \(businessID): \(error.localizedDescription)")
             return false
         }
     }

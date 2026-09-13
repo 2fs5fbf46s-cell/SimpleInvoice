@@ -177,7 +177,7 @@ final class LaunchCoordinator: ObservableObject {
     }
 
     private func log(_ message: String) {
-        print("[Launch] \(message)")
+        SBWLog.launch.note("[Launch] \(message)")
         Self.logger.info("\(message, privacy: .public)")
     }
 

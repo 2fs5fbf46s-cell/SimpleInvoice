@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
 
 enum ContractTemplateSeeder {
@@ -23,9 +24,9 @@ enum ContractTemplateSeeder {
             }
 
             try context.save()
-            print("✅ Seeded default contract templates (\(missingTemplates.count))")
+            SBWLog.data.note("✅ Seeded default contract templates (\(missingTemplates.count))")
         } catch {
-            print("❌ ContractTemplateSeeder failed: \(error)")
+            SBWLog.data.problem("❌ ContractTemplateSeeder failed: \(error)")
         }
     }
 

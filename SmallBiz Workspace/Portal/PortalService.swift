@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 /// PortalService manages local portal identities/invites/sessions (SwiftData)
@@ -459,7 +460,7 @@ final class PortalService {
                 do {
                     try await PortalBackend.shared.indexContractForPortalDirectory(contract: contract)
                 } catch {
-                    print("🌐 portal contract index failed:", error.localizedDescription)
+                    SBWLog.portal.problem("🌐 portal contract index failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -482,7 +483,7 @@ final class PortalService {
                 do {
                     try await PortalBackend.shared.indexInvoiceForPortalDirectory(invoice: invoice)
                 } catch {
-                    print("🌐 portal invoice index failed:", error.localizedDescription)
+                    SBWLog.portal.problem("🌐 portal invoice index failed: \(error.localizedDescription)")
                 }
             }
         }

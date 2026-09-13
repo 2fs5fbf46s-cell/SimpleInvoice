@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 
@@ -216,7 +217,7 @@ struct ClientOutstandingDetailView: View {
 
         let startedAt = Date()
         #if DEBUG
-        print("[ClientOutstandingDetail] load start business=\(businessID.uuidString) client=\(clientID.uuidString) mode=\(mode == .overdueOnly ? "overdue" : "outstanding")")
+        SBWLog.ui.note("[ClientOutstandingDetail] load start business=\(businessID.uuidString) client=\(clientID.uuidString) mode=\(mode == .overdueOnly ? "overdue" : "outstanding")")
         #endif
 
         do {
@@ -304,7 +305,7 @@ struct ClientOutstandingDetailView: View {
 
             #if DEBUG
             let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[ClientOutstandingDetail] load done rows=\(result.rows.count) totalMs=\(ms)")
+            SBWLog.ui.note("[ClientOutstandingDetail] load done rows=\(result.rows.count) totalMs=\(ms)")
             #endif
         } catch {
             guard loadGeneration == generation else { return }
@@ -315,7 +316,7 @@ struct ClientOutstandingDetailView: View {
 
             #if DEBUG
             let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[ClientOutstandingDetail] load failed loadMs=\(ms) error=\(error)")
+            SBWLog.ui.problem("[ClientOutstandingDetail] load failed loadMs=\(ms) error=\(error)")
             #endif
         }
     }

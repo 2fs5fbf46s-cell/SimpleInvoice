@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 
 // MARK: - Config
 
@@ -22,7 +23,7 @@ enum PortalSecrets {
             let data = try? Data(contentsOf: url),
             let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         else {
-            print("🔐 PortalSecrets.plist not found or unreadable.")
+            SBWLog.portal.note("🔐 PortalSecrets.plist not found or unreadable.")
             return nil
         }
 
@@ -1357,7 +1358,7 @@ final class PortalBackend {
     ) async throws -> (url: String, fileName: String) {
         let adminKey = try requireAdminKey()
         let endpointPath = "/api/portal/invoice/pdf-upload"
-        print("⬆️ Portal binary upload", "path:", endpointPath, "bytes:", pdfData.count)
+        SBWLog.portal.note("⬆️ Portal binary upload path: \(endpointPath) bytes: \(pdfData.count)")
 
         do {
             return try await uploadPDFBinary(
@@ -1373,7 +1374,7 @@ final class PortalBackend {
             )
         } catch let error as PortalBackendError {
             if case .http(let code, _, _) = error, code == 400 || code == 415 {
-                print("↩️ Falling back to legacy JSON upload", "path:", endpointPath, "status:", code)
+                SBWLog.portal.note("↩️ Falling back to legacy JSON upload path: \(endpointPath) status: \(code)")
                 return try await uploadPDFLegacyJSON(
                     endpointPath: endpointPath,
                     payload: [
@@ -1417,7 +1418,7 @@ final class PortalBackend {
     ) async throws -> (url: String, fileName: String) {
         let adminKey = try requireAdminKey()
         let endpointPath = "/api/portal/contract/pdf-upload"
-        print("⬆️ Portal binary upload", "path:", endpointPath, "bytes:", pdfData.count)
+        SBWLog.portal.note("⬆️ Portal binary upload path: \(endpointPath) bytes: \(pdfData.count)")
 
         do {
             return try await uploadPDFBinary(
@@ -1433,7 +1434,7 @@ final class PortalBackend {
             )
         } catch let error as PortalBackendError {
             if case .http(let code, _, _) = error, code == 400 || code == 415 {
-                print("↩️ Falling back to legacy JSON upload", "path:", endpointPath, "status:", code)
+                SBWLog.portal.note("↩️ Falling back to legacy JSON upload path: \(endpointPath) status: \(code)")
                 return try await uploadPDFLegacyJSON(
                     endpointPath: endpointPath,
                     payload: [
@@ -1478,7 +1479,7 @@ final class PortalBackend {
             throw PortalBackendError.http(-1, body: raw, path: endpointPath)
         }
         guard (200...299).contains(http.statusCode) else {
-            print("⚠️ Portal upload failed", "path:", endpointPath, "status:", http.statusCode)
+            SBWLog.portal.problem("⚠️ Portal upload failed path: \(endpointPath) status: \(http.statusCode)")
             throw PortalBackendError.http(http.statusCode, body: raw, path: endpointPath)
         }
 
@@ -1753,7 +1754,7 @@ final class PortalBackend {
             "ownerEmail": trimmedOwner
         ]
         #if DEBUG
-        print("[bookinglink] upsert request", payload)
+        SBWLog.portal.note("[bookinglink] upsert request \(payload)")
         #endif
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
@@ -1762,13 +1763,13 @@ final class PortalBackend {
 
         guard let http = resp as? HTTPURLResponse else {
             #if DEBUG
-            print("[bookinglink] upsert response error", raw)
+            SBWLog.portal.problem("[bookinglink] upsert response error \(raw)")
             #endif
             throw PortalBackendError.http(-1, body: raw)
         }
         guard (200...299).contains(http.statusCode) else {
             #if DEBUG
-            print("[bookinglink] upsert response error", http.statusCode, raw)
+            SBWLog.portal.problem("[bookinglink] upsert response error \(http.statusCode) \(raw)")
             #endif
             throw PortalBackendError.http(http.statusCode, body: raw)
         }
@@ -1777,7 +1778,7 @@ final class PortalBackend {
     func fetchBookingRequests(businessId: UUID) async throws -> [BookingRequestDTO] {
         let adminKey = try requireAdminKey()
 
-        print("📥 Fetch booking requests", "businessId:", businessId.uuidString)
+        SBWLog.portal.note("📥 Fetch booking requests businessId: \(businessId.uuidString)")
 
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/api/booking/admin/requests"),
@@ -1817,9 +1818,7 @@ final class PortalBackend {
     ) async throws -> [BookingRequestDTO] {
         let adminKey = try requireAdminKey()
 
-        print("📥 Fetch booking requests",
-              "businessId:", businessId,
-              "status:", status)
+        SBWLog.portal.note("📥 Fetch booking requests businessId: \(businessId) status: \(status)")
 
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/api/booking/admin/requests"),
@@ -1862,7 +1861,7 @@ final class PortalBackend {
         let adminKey = try requireAdminKey()
 
         #if DEBUG
-        print("📥 BookingSettings fetch: businessId=\(businessId)")
+        SBWLog.portal.note("📥 BookingSettings fetch: businessId=\(businessId)")
         #endif
 
         var comps = URLComponents(
@@ -1889,7 +1888,7 @@ final class PortalBackend {
         }
 
         #if DEBUG
-        print("✅ BookingSettings fetch response: \(raw)")
+        SBWLog.portal.note("✅ BookingSettings fetch response: \(raw)")
         #endif
 
         if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
@@ -1980,9 +1979,9 @@ final class PortalBackend {
 
         #if DEBUG
         if let payloadJSONString = String(data: payloadData, encoding: .utf8) {
-            print("⬆️ BookingSettings upsert payload: \(payloadJSONString)")
+            SBWLog.portal.note("⬆️ BookingSettings upsert payload: \(payloadJSONString)")
         } else {
-            print("⬆️ BookingSettings upsert payload: <non-utf8 payload>")
+            SBWLog.portal.note("⬆️ BookingSettings upsert payload: <non-utf8 payload>")
         }
         #endif
 
@@ -1998,7 +1997,7 @@ final class PortalBackend {
         }
 
         #if DEBUG
-        print("✅ BookingSettings upsert response: \(raw)")
+        SBWLog.portal.note("✅ BookingSettings upsert response: \(raw)")
         #endif
 
         if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
@@ -2046,7 +2045,7 @@ final class PortalBackend {
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
 
         #if DEBUG
-        print("✅ BookingSettings fetch response (legacy): \(raw)")
+        SBWLog.portal.note("✅ BookingSettings fetch response (legacy): \(raw)")
         #endif
         if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {
             return dto
@@ -2095,7 +2094,7 @@ final class PortalBackend {
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
 
         #if DEBUG
-        print("✅ BookingSettings upsert response (legacy): \(raw)")
+        SBWLog.portal.note("✅ BookingSettings upsert response (legacy): \(raw)")
         #endif
 
         if let dto = try? decoder().decode(BookingSettingsDTO.self, from: data) {

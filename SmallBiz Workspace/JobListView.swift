@@ -1,3 +1,4 @@
+import OSLog
 //
 //  JobsListView.swift
 //  SmallBiz Workspace
@@ -217,7 +218,7 @@ struct JobsListView: View {
                                         showingNewJob = false
                                     } catch {
                                         Haptics.error()
-                                        print("Failed to save new job: \(error)")
+                                        SBWLog.ui.problem("Failed to save new job: \(error)")
                                     }
                                 }
                             }
@@ -275,7 +276,7 @@ struct JobsListView: View {
 
     private func addJobAndOpenSheet() {
         guard let bizID = effectiveBusinessID else {
-            print("❌ No active business selected")
+            SBWLog.ui.problem("❌ No active business selected")
             return
         }
 
@@ -294,7 +295,7 @@ struct JobsListView: View {
         showingNewJob = true
 
         do { try modelContext.save() }
-        catch { print("Failed to save new job draft: \(error)") }
+        catch { SBWLog.ui.problem("Failed to save new job draft: \(error)") }
         Haptics.lightTap()
     }
 
@@ -309,7 +310,7 @@ struct JobsListView: View {
         }
 
         do { try modelContext.save() }
-        catch { print("Failed to save after cancel: \(error)") }
+        catch { SBWLog.ui.problem("Failed to save after cancel: \(error)") }
 
         showingNewJob = false
     }
@@ -325,7 +326,7 @@ struct JobsListView: View {
         }
 
         do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
+        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
         Haptics.success()
     }
 

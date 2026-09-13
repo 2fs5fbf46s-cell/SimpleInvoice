@@ -1,3 +1,4 @@
+import OSLog
 //
 //  ContractTemplatePickerForJobView.swift
 //  SmallBiz Workspace
@@ -216,7 +217,7 @@ struct ContractTemplatePickerForJobView: View {
             dismiss()
             onCreated(draft)
         } catch {
-            print("Failed to create job-linked draft contract: \(error)")
+            SBWLog.ui.problem("Failed to create job-linked draft contract: \(error)")
         }
     }
 

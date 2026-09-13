@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftUI
 import SwiftData
 
@@ -158,7 +159,7 @@ struct BusinessSwitcherView: View {
         do {
             try modelContext.save()
         } catch {
-            print("Failed to rename business: \(error)")
+            SBWLog.ui.problem("Failed to rename business: \(error)")
         }
     }
 
@@ -204,7 +205,7 @@ struct BusinessSwitcherView: View {
         do {
             try modelContext.save()
         } catch {
-            print("Failed to delete business: \(error)")
+            SBWLog.ui.problem("Failed to delete business: \(error)")
         }
     }
 

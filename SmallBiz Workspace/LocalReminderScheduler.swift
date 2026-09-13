@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 @MainActor
@@ -21,7 +22,7 @@ final class LocalReminderScheduler {
                 invoices: scopedInvoices
             )
         } catch {
-            print("⚠️ Failed to fetch invoices for reminders: \(error)")
+            SBWLog.notifications.problem("⚠️ Failed to fetch invoices for reminders: \(error)")
         }
 
         do {
@@ -36,7 +37,7 @@ final class LocalReminderScheduler {
                 bookings: scopedBookings
             )
         } catch {
-            print("⚠️ Failed to fetch bookings for reminders: \(error)")
+            SBWLog.notifications.problem("⚠️ Failed to fetch bookings for reminders: \(error)")
         }
     }
 }

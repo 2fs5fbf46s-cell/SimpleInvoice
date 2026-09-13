@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 enum ContractCreation {
@@ -15,10 +16,10 @@ enum ContractCreation {
 
         // ✅ Safety check: if a client/invoice exists, ensure it matches the businessID we’re creating under.
         if let c = client, c.businessID != businessID {
-            print("⚠️ ContractCreation: client.businessID != active businessID (client will still be linked).")
+            SBWLog.data.problem("⚠️ ContractCreation: client.businessID != active businessID (client will still be linked).")
         }
         if let inv = invoice, inv.businessID != businessID {
-            print("⚠️ ContractCreation: invoice.businessID != active businessID (invoice will still be linked).")
+            SBWLog.data.problem("⚠️ ContractCreation: invoice.businessID != active businessID (invoice will still be linked).")
         }
 
         let ctx = ContractContext(

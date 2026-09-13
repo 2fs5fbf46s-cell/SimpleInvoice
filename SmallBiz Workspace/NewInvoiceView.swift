@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftUI
 import SwiftData
 
@@ -166,7 +167,7 @@ struct NewInvoiceView: View {
     private func createInvoice() {
         let profile = profileEnsured()
         if let client = selectedClient, client.businessID != profile.businessID {
-            print("❌ Client belongs to a different business")
+            SBWLog.ui.problem("❌ Client belongs to a different business")
             return
         }
 
@@ -218,7 +219,7 @@ struct NewInvoiceView: View {
             try modelContext.save()
             dismiss()
         } catch {
-            print("Failed to save invoice: \(error)")
+            SBWLog.ui.problem("Failed to save invoice: \(error)")
         }
     }
 

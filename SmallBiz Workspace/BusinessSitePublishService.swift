@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 import Network
 import UIKit
@@ -182,7 +183,7 @@ final class BusinessSitePublishService {
                     )
                 } catch {
                     #if DEBUG
-                    print("⚠️ Public site domain mapping failed: \(error.localizedDescription)")
+                    SBWLog.portal.problem("⚠️ Public site domain mapping failed: \(error.localizedDescription)")
                     #endif
                     if case PortalBackendError.http(let code, _, _) = error, code == 409 {
                         domainWarning = "This domain is already connected to another business."

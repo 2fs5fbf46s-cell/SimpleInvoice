@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 
@@ -144,7 +145,7 @@ struct CatalogItemListView: View {
 
     private func add() {
         guard let bizID = activeBiz.activeBusinessID else {
-            print("❌ No active business selected")
+            SBWLog.ui.problem("❌ No active business selected")
             return
         }
 
@@ -162,7 +163,7 @@ struct CatalogItemListView: View {
         do {
             try modelContext.save()
         } catch {
-            print("Failed to save new catalog item: \(error)")
+            SBWLog.ui.problem("Failed to save new catalog item: \(error)")
         }
     }
 
@@ -175,14 +176,14 @@ struct CatalogItemListView: View {
         do {
             try modelContext.save()
         } catch {
-            print("Failed to save deletes: \(error)")
+            SBWLog.ui.problem("Failed to save deletes: \(error)")
         }
     }
 
     private func debugLogInsertedCatalogItem(_ item: CatalogItem, activeBusinessID: UUID, source: String) {
 #if DEBUG
         let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "General" : item.category
-        print("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) activeBusinessID=\(activeBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
+        SBWLog.ui.note("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) activeBusinessID=\(activeBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
 #endif
     }
 }

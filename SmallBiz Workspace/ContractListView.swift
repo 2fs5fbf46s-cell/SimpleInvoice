@@ -1,3 +1,4 @@
+import OSLog
 //
 //  ContractsListView.swift
 //  SmallBiz Workspace
@@ -297,7 +298,7 @@ struct ContractsListView: View {
             )
             loadedClients = try modelContext.fetch(clientDescriptor)
         } catch {
-            print("Failed to load contracts list data: \(error)")
+            SBWLog.ui.problem("Failed to load contracts list data: \(error)")
             loadedContracts = []
             loadedClients = []
         }
@@ -320,7 +321,7 @@ struct ContractsListView: View {
         }
 
         do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
+        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
 
         if blockedCount > 0 {
             blockedDeleteMessage = "Only Draft contracts can be deleted. \(blockedCount) contract(s) weren’t deleted because they aren’t Draft."
@@ -336,6 +337,6 @@ struct ContractsListView: View {
         modelContext.delete(contract)
 
         do { try modelContext.save() }
-        catch { print("Failed to delete contract: \(error)") }
+        catch { SBWLog.ui.problem("Failed to delete contract: \(error)") }
     }
 }

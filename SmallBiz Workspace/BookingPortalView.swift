@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 import UIKit
@@ -560,7 +561,7 @@ struct BookingPortalView: View {
             let candidate = (attempt == 1) ? baseSlug : "\(baseSlug)-\(attempt)"
             do {
                 #if DEBUG
-                print("[bookinglink] generate start", businessId.uuidString, candidate)
+                SBWLog.ui.note("[bookinglink] generate start \(businessId.uuidString) \(candidate)")
                 #endif
                 try await PortalBackend.shared.upsertBookingSlug(
                     businessId: businessId,
@@ -570,13 +571,13 @@ struct BookingPortalView: View {
                 )
                 #if DEBUG
                 let link = "\(bookingBaseURL)/\(candidate)"
-                print("[bookinglink] generate success", link)
+                SBWLog.ui.note("[bookinglink] generate success \(link)")
                 #endif
                 return candidate
             } catch {
                 lastError = error
                 #if DEBUG
-                print("[bookinglink] generate error", error)
+                SBWLog.ui.problem("[bookinglink] generate error \(error)")
                 #endif
                 if case PortalBackendError.http(let code, _, _) = error, code == 409, attempt < 10 {
                     continue
@@ -597,7 +598,7 @@ struct BookingPortalView: View {
 
         do {
             #if DEBUG
-            print("📘 booking slug register attempt", profile.businessID.uuidString, trimmedSlug, trimmedOwner)
+            SBWLog.ui.note("📘 booking slug register attempt \(profile.businessID.uuidString) \(trimmedSlug) \(trimmedOwner)")
             #endif
             try await PortalBackend.shared.upsertBookingSlug(
                 businessId: profile.businessID,
@@ -606,11 +607,11 @@ struct BookingPortalView: View {
                 ownerEmail: trimmedOwner
             )
             #if DEBUG
-            print("✅ booking slug register success", profile.name, trimmedOwner)
+            SBWLog.ui.note("✅ booking slug register success \(profile.name) \(trimmedOwner)")
             #endif
         } catch {
             #if DEBUG
-            print("❌ booking slug register failed", error.localizedDescription)
+            SBWLog.ui.problem("❌ booking slug register failed \(error.localizedDescription)")
             #endif
         }
     }

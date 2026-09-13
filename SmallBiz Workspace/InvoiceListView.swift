@@ -1,3 +1,4 @@
+import OSLog
 //
 //  InvoiceListView.swift
 //  SmallBiz Workspace
@@ -407,7 +408,7 @@ struct InvoiceListView: View {
             Haptics.success()
         } catch {
             Haptics.error()
-            print("Failed to save deletes: \(error)")
+            SBWLog.ui.problem("Failed to save deletes: \(error)")
         }
     }
 
@@ -423,7 +424,7 @@ struct InvoiceListView: View {
             navigateToInvoice = InvoiceListSelection(id: copy.id)
         } catch {
             Haptics.error()
-            print("Failed to duplicate invoice: \(error)")
+            SBWLog.ui.problem("Failed to duplicate invoice: \(error)")
         }
     }
 }
@@ -506,7 +507,7 @@ private extension InvoiceListView {
     func createInvoiceFromTemplate(_ template: InvoiceTemplate) {
         do {
             guard let bizID = effectiveBusinessID else {
-                print("❌ No active business selected")
+                SBWLog.ui.problem("❌ No active business selected")
                 return
             }
 
@@ -555,7 +556,7 @@ private extension InvoiceListView {
             }
         } catch {
             Haptics.error()
-            print("Failed to create invoice from template: \(error)")
+            SBWLog.ui.problem("Failed to create invoice from template: \(error)")
         }
     }
 }

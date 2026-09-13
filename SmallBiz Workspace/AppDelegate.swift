@@ -1,3 +1,4 @@
+import OSLog
 import UIKit
 import UserNotifications
 
@@ -16,7 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        print("✅ APNs token received: \(token)")
+        SBWLog.launch.note("✅ APNs token received: \(token)")
 
         Task {
             await PushRegistrationService.shared.registerDeviceToken(token)
@@ -27,7 +28,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        print("⚠️ APNs registration failed: \(error)")
+        SBWLog.launch.problem("⚠️ APNs registration failed: \(error)")
     }
 
     func userNotificationCenter(

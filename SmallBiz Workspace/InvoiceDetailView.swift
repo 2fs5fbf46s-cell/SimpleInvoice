@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftUI
 import SwiftData
 import MessageUI
@@ -817,7 +818,7 @@ struct InvoiceDetailView: View {
                                 showPortal = true
                             } catch {
                                 portalURL = nil
-                                print("Portal open failed:", error)
+                                SBWLog.ui.problem("Portal open failed: \(error)")
                                 portalError = error.localizedDescription
                             }
 
@@ -856,7 +857,7 @@ struct InvoiceDetailView: View {
                                     UIPasteboard.general.string = url.absoluteString
                                     showNotice("Client link copied")
                                 } catch {
-                                    print("Copy link failed:", error)
+                                    SBWLog.ui.problem("Copy link failed: \(error)")
                                     portalError = error.localizedDescription
                                 }
 
@@ -877,7 +878,7 @@ struct InvoiceDetailView: View {
                                     shareItems = [url]
                                     showNotice("Sharing link…")
                                 } catch {
-                                    print("Share link failed:", error)
+                                    SBWLog.ui.problem("Share link failed: \(error)")
                                     portalError = error.localizedDescription
                                 }
 
@@ -2334,7 +2335,7 @@ struct InvoiceDetailView: View {
             }
             try? modelContext.save()
         } catch {
-            print("Estimate status refresh failed:", error.localizedDescription)
+            SBWLog.ui.problem("Estimate status refresh failed: \(error.localizedDescription)")
         }
     }
 
@@ -2363,7 +2364,7 @@ struct InvoiceDetailView: View {
         } catch {
             // Optional: show a non-blocking error
             // portalError = "Couldn’t refresh payment status"
-            print("Payment status refresh failed:", error)
+            SBWLog.ui.problem("Payment status refresh failed: \(error)")
         }
     }
 
@@ -2379,7 +2380,7 @@ struct InvoiceDetailView: View {
             )
             manualReports = reports
         } catch {
-            print("Manual reports refresh failed:", error.localizedDescription)
+            SBWLog.ui.problem("Manual reports refresh failed: \(error.localizedDescription)")
         }
     }
 

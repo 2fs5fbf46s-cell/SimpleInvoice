@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 @MainActor
 final class PushRegistrationService {
@@ -20,7 +21,7 @@ final class PushRegistrationService {
         let resolvedBusinessID = rawBusinessID.flatMap(UUID.init(uuidString:))?.uuidString
 
         guard let resolvedBusinessID, !resolvedBusinessID.isEmpty else {
-            print("⚠️ Skipping push token registration: no valid active business UUID.")
+            SBWLog.notifications.problem("⚠️ Skipping push token registration: no valid active business UUID.")
             return
         }
 
@@ -32,9 +33,9 @@ final class PushRegistrationService {
                 deviceToken: token,
                 environment: env
             )
-            print("✅ Registered push token for business \(resolvedBusinessID) [\(env)].")
+            SBWLog.notifications.note("✅ Registered push token for business \(resolvedBusinessID) [\(env)].")
         } catch {
-            print("⚠️ Push token registration failed: \(error)")
+            SBWLog.notifications.problem("⚠️ Push token registration failed: \(error)")
         }
     }
 

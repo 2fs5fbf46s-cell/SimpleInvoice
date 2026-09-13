@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 import UIKit
@@ -115,7 +116,7 @@ struct SmallBizWorkspaceApp: App {
             do {
                 try activeBiz.loadOrCreateDefaultBusiness(modelContext: context)
             } catch {
-                print("[Launch] Active business restore after ready failed: \(error)")
+                SBWLog.launch.problem("[Launch] Active business restore after ready failed: \(error)")
             }
         }
 
@@ -158,7 +159,7 @@ struct SmallBizWorkspaceApp: App {
         let queuedURLs = launch.consumePendingIncomingURLs()
         guard !queuedURLs.isEmpty else { return }
 
-        print("[Launch] Processing \(queuedURLs.count) queued incoming URL(s).")
+        SBWLog.launch.note("[Launch] Processing \(queuedURLs.count) queued incoming URL(s).")
         for url in queuedURLs {
             EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: context)
         }

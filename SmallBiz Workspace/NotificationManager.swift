@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UserNotifications
 
 @MainActor
@@ -15,7 +16,7 @@ final class NotificationManager {
         do {
             return try await center.requestAuthorization(options: [.alert, .sound, .badge])
         } catch {
-            print("⚠️ Notification authorization request failed: \(error)")
+            SBWLog.notifications.problem("⚠️ Notification authorization request failed: \(error)")
             return false
         }
     }
@@ -48,7 +49,7 @@ final class NotificationManager {
         do {
             try await center.add(request)
         } catch {
-            print("⚠️ Failed to schedule local notification: \(error)")
+            SBWLog.notifications.problem("⚠️ Failed to schedule local notification: \(error)")
         }
     }
 
@@ -94,7 +95,7 @@ final class NotificationManager {
             do {
                 try await center.add(request)
             } catch {
-                print("⚠️ Failed to schedule invoice reminder for \(invoice.id): \(error)")
+                SBWLog.notifications.problem("⚠️ Failed to schedule invoice reminder for \(invoice.id): \(error)")
             }
         }
     }
@@ -138,7 +139,7 @@ final class NotificationManager {
             do {
                 try await center.add(request)
             } catch {
-                print("⚠️ Failed to schedule booking reminder for \(booking.id): \(error)")
+                SBWLog.notifications.problem("⚠️ Failed to schedule booking reminder for \(booking.id): \(error)")
             }
         }
     }

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Combine
 import SwiftData
 
@@ -21,7 +22,7 @@ final class OutstandingBalancesViewModel: ObservableObject {
         let startedAt = Date()
 
         #if DEBUG
-        print("[OutstandingBalances] load start business=\(businessID.uuidString) mode=\(mode == .overdueOnly ? "overdue" : "outstanding")")
+        SBWLog.data.note("[OutstandingBalances] load start business=\(businessID.uuidString) mode=\(mode == .overdueOnly ? "overdue" : "outstanding")")
         #endif
 
         do {
@@ -72,7 +73,7 @@ final class OutstandingBalancesViewModel: ObservableObject {
 
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[OutstandingBalances] load done rows=\(computed.count) loadMs=\(loadMs)")
+            SBWLog.data.note("[OutstandingBalances] load done rows=\(computed.count) loadMs=\(loadMs)")
             #endif
         } catch {
             guard loadToken == token else { return }
@@ -81,7 +82,7 @@ final class OutstandingBalancesViewModel: ObservableObject {
 
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[OutstandingBalances] load failed loadMs=\(loadMs) error=\(error)")
+            SBWLog.data.problem("[OutstandingBalances] load failed loadMs=\(loadMs) error=\(error)")
             #endif
         }
     }

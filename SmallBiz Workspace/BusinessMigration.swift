@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 import SwiftData
 
 enum BusinessMigration {
@@ -220,6 +221,6 @@ enum BusinessMigration {
         // 9️⃣ Mark migration complete
         defaults.set(currentVersion, forKey: key)
 
-        print("✅ Business migration v\(currentVersion) completed")
+        SBWLog.launch.note("✅ Business migration v\(currentVersion) completed")
     }
 }

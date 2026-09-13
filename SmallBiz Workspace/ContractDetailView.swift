@@ -1,3 +1,4 @@
+import OSLog
 //
 //  ContractDetailView.swift
 //  SmallBiz Workspace
@@ -803,7 +804,7 @@ private extension ContractDetailView {
                 contract.updatedAt = .now
                 try modelContext.save()
             } catch {
-                print("Auto-save failed: \(error)")
+                SBWLog.ui.problem("Auto-save failed: \(error)")
             }
         }
         saveWorkItem = work
@@ -816,7 +817,7 @@ private extension ContractDetailView {
             contract.updatedAt = .now
             try modelContext.save()
         } catch {
-            print("Force save failed: \(error)")
+            SBWLog.ui.problem("Force save failed: \(error)")
         }
     }
 

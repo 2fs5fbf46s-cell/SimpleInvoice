@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 @MainActor
@@ -23,7 +24,7 @@ final class NotificationInboxService {
             _ = try await refresh(modelContext: modelContext, businessId: businessId)
             defaults.set(false, forKey: refreshKey)
         } catch {
-            print("⚠️ Inbox refresh failed: \(error)")
+            SBWLog.notifications.problem("⚠️ Inbox refresh failed: \(error)")
         }
     }
 
@@ -80,7 +81,7 @@ final class NotificationInboxService {
                 notificationId: notification.id
             )
         } catch {
-            print("⚠️ Failed to mark notification read remotely: \(error)")
+            SBWLog.notifications.problem("⚠️ Failed to mark notification read remotely: \(error)")
         }
     }
 
@@ -98,7 +99,7 @@ final class NotificationInboxService {
         do {
             try await PortalBackend.shared.markAllNotificationsRead(businessId: businessId)
         } catch {
-            print("⚠️ Failed to mark all notifications read remotely: \(error)")
+            SBWLog.notifications.problem("⚠️ Failed to mark all notifications read remotely: \(error)")
         }
     }
 

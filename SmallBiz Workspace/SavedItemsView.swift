@@ -1,3 +1,4 @@
+import OSLog
 //
 //  SavedItemsView.swift
 //  SmallBiz Workspace
@@ -133,7 +134,7 @@ struct SavedItemsView: View {
                             Button(role: .destructive) {
                                 modelContext.delete(item)
                                 do { try modelContext.save() }
-                                catch { print("Failed to delete item: \(error)") }
+                                catch { SBWLog.ui.problem("Failed to delete item: \(error)") }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -192,7 +193,7 @@ struct SavedItemsView: View {
                             selectedItem = nil
                         } catch {
                             Haptics.error()
-                            print("Failed to save item edits: \(error)")
+                            SBWLog.ui.problem("Failed to save item edits: \(error)")
                         }
                     }
                 )
@@ -326,7 +327,7 @@ struct SavedItemsView: View {
 
     private func addDraftAndOpenEditor() {
         guard let bizID = businessID else {
-            print("❌ No active business selected")
+            SBWLog.ui.problem("❌ No active business selected")
             return
         }
 
@@ -350,7 +351,7 @@ struct SavedItemsView: View {
             selectedItem = draft
         } catch {
             modelContext.delete(draft)
-            print("Failed to save draft item: \(error)")
+            SBWLog.ui.problem("Failed to save draft item: \(error)")
         }
     }
 
@@ -371,7 +372,7 @@ struct SavedItemsView: View {
         if forceDelete || isEmptyDraft {
             modelContext.delete(item)
             do { try modelContext.save() }
-            catch { print("Failed to delete empty draft: \(error)") }
+            catch { SBWLog.ui.problem("Failed to delete empty draft: \(error)") }
         }
         self.draftItemID = nil
     }
@@ -381,7 +382,7 @@ struct SavedItemsView: View {
         for item in toDelete { modelContext.delete(item) }
 
         do { try modelContext.save() }
-        catch { print("Failed to save deletes: \(error)") }
+        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
     }
 
     private func applyDraft(_ draft: CatalogItemDraft, to item: CatalogItem) {
@@ -397,19 +398,19 @@ struct SavedItemsView: View {
     private func debugLogInsertedCatalogItem(_ item: CatalogItem, scopedBusinessID: UUID, source: String) {
 #if DEBUG
         let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "General" : item.category
-        print("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) scopedBusinessID=\(scopedBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
+        SBWLog.ui.note("[CatalogItemAdd][\(source)] id=\(item.id.uuidString) businessID=\(item.businessID.uuidString) scopedBusinessID=\(scopedBusinessID.uuidString) name='\(item.name)' category='\(normalizedCategory)' unitPrice=\(item.unitPrice) defaultQty=\(item.defaultQuantity)")
 #endif
     }
 
     private func debugLogSelectedCatalogItem(_ item: CatalogItem, source: String) {
 #if DEBUG
-        print("[CatalogItemSelect][\(source)] selectedID=\(item.id.uuidString) businessID=\(item.businessID.uuidString)")
+        SBWLog.ui.note("[CatalogItemSelect][\(source)] selectedID=\(item.id.uuidString) businessID=\(item.businessID.uuidString)")
 #endif
     }
 
     private func debugLogScopedCount(source: String) {
 #if DEBUG
-        print("[CatalogItemCount][\(source)] scopedCount=\(scopedItems.count)")
+        SBWLog.ui.note("[CatalogItemCount][\(source)] scopedCount=\(scopedItems.count)")
 #endif
     }
 }

@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
@@ -361,7 +362,7 @@ struct AttachmentsManagerView: View {
         } catch {
             Haptics.error()
             notice = "Could not add attachment."
-            print("Attachment import failed: \(error)")
+            SBWLog.files.problem("Attachment import failed: \(error)")
         }
     }
 
@@ -387,7 +388,7 @@ struct AttachmentsManagerView: View {
         } catch {
             Haptics.error()
             notice = "Could not delete attachment."
-            print("Attachment delete failed: \(error)")
+            SBWLog.files.problem("Attachment delete failed: \(error)")
         }
     }
 
@@ -402,7 +403,7 @@ struct AttachmentsManagerView: View {
         } catch {
             Haptics.error()
             notice = "Could not rename attachment."
-            print("Attachment rename failed: \(error)")
+            SBWLog.files.problem("Attachment rename failed: \(error)")
         }
         renameTarget = nil
     }

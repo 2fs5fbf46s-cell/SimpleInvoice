@@ -1,3 +1,4 @@
+import OSLog
 //
 //  ContractsHomeView.swift
 //  SmallBiz Workspace
@@ -228,7 +229,7 @@ struct ContractsHomeView: View {
         }
         catch {
             Haptics.error()
-            print("Failed to delete draft contract: \(error)")
+            SBWLog.ui.problem("Failed to delete draft contract: \(error)")
         }
     }
 
@@ -254,7 +255,7 @@ struct ContractsHomeView: View {
         guard didChange else { return }
 
         do { try modelContext.save() }
-        catch { print("Failed to repair orphan contracts: \(error)") }
+        catch { SBWLog.ui.problem("Failed to repair orphan contracts: \(error)") }
     }
 
     @MainActor
@@ -287,7 +288,7 @@ struct ContractsHomeView: View {
             )
             loadedClients = try modelContext.fetch(clientDescriptor)
         } catch {
-            print("Failed to load contracts home data: \(error)")
+            SBWLog.ui.problem("Failed to load contracts home data: \(error)")
             loadedContracts = []
             loadedClients = []
         }

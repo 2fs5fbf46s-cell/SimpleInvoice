@@ -1,3 +1,4 @@
+import OSLog
 //
 //  LineItemEditView.swift
 //  SmallBiz Workspace
@@ -167,7 +168,7 @@ struct LineItemEditView: View {
                 sessionCatalogItem = result?.item
             }
         } catch {
-            print("Failed to auto-save catalog item: \(error)")
+            SBWLog.ui.problem("Failed to auto-save catalog item: \(error)")
         }
     }
 }

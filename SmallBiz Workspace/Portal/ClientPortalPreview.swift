@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 
@@ -275,7 +276,7 @@ struct ClientPortalPreviewView: View {
 
             if changed > 0 { try modelContext.save() }
         } catch {
-            print("repairInvoiceBusinessIDs error: \(error)")
+            SBWLog.portal.problem("repairInvoiceBusinessIDs error: \(error)")
         }
     }
 
@@ -297,7 +298,7 @@ struct ClientPortalPreviewView: View {
 
             if changed > 0 { try modelContext.save() }
         } catch {
-            print("repairContractBusinessIDs error: \(error)")
+            SBWLog.portal.problem("repairContractBusinessIDs error: \(error)")
         }
     }
 
@@ -403,7 +404,7 @@ struct ClientPortalPreviewView: View {
             let all = try modelContext.fetch(FetchDescriptor<BusinessProfile>())
             return all.first(where: { $0.businessID == businessID })
         } catch {
-            print("businessProfile fetch error: \(error)")
+            SBWLog.portal.problem("businessProfile fetch error: \(error)")
             return nil
         }
     }
@@ -412,7 +413,7 @@ struct ClientPortalPreviewView: View {
         do {
             return try modelContext.fetch(FetchDescriptor<BusinessProfile>())
         } catch {
-            print("profiles fetch error: \(error)")
+            SBWLog.portal.problem("profiles fetch error: \(error)")
             return []
         }
     }
@@ -421,7 +422,7 @@ struct ClientPortalPreviewView: View {
         do {
             return try modelContext.fetch(FetchDescriptor<Business>())
         } catch {
-            print("business fetch error: \(error)")
+            SBWLog.portal.problem("business fetch error: \(error)")
             return []
         }
     }

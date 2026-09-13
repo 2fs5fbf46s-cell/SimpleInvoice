@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import SwiftData
 
@@ -243,7 +244,7 @@ struct BusinessInsightsView: View {
 
         let startedAt = Date()
         #if DEBUG
-        print("[BusinessInsights] load start business=\(businessID.uuidString)")
+        SBWLog.ui.note("[BusinessInsights] load start business=\(businessID.uuidString)")
         #endif
 
         do {
@@ -274,7 +275,7 @@ struct BusinessInsightsView: View {
 
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[BusinessInsights] load done rows=\(snapshot.records.count) loadMs=\(loadMs)")
+            SBWLog.ui.note("[BusinessInsights] load done rows=\(snapshot.records.count) loadMs=\(loadMs)")
             #endif
         } catch {
             guard loadGeneration == token else { return }
@@ -283,7 +284,7 @@ struct BusinessInsightsView: View {
 
             #if DEBUG
             let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            print("[BusinessInsights] load failed loadMs=\(loadMs) error=\(error)")
+            SBWLog.ui.problem("[BusinessInsights] load failed loadMs=\(loadMs) error=\(error)")
             #endif
         }
     }

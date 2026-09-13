@@ -1,3 +1,4 @@
+import OSLog
 //
 //  CreateMenuSheet.swift
 //  SmallBiz Workspace
@@ -233,7 +234,7 @@ struct CreateMenuSheet: View {
                                         newClientDraft = nil
                                     } catch {
                                         newClientSaveError = error.localizedDescription
-                                        print("Failed to save new client: \(error)")
+                                        SBWLog.ui.problem("Failed to save new client: \(error)")
                                     }
                                 }
                             }
@@ -279,7 +280,7 @@ struct CreateMenuSheet: View {
                                             _ = try WorkspaceProvisioningService.ensureJobWorkspace(job: newJobDraft, context: modelContext)
                                             showNewJobSheet = false
                                         }
-                                        catch { print("Failed to save new job: \(error)") }
+                                        catch { SBWLog.ui.problem("Failed to save new job: \(error)") }
                                     }
                                 }
                             }
@@ -372,7 +373,7 @@ struct CreateMenuSheet: View {
 
     private func createInvoiceDraftAndOpen() {
         guard let bizID = activeBiz.activeBusinessID else {
-            print("❌ No active business selected"); return
+            SBWLog.ui.problem("❌ No active business selected"); return
         }
 
         let inv = Invoice(
@@ -392,7 +393,7 @@ struct CreateMenuSheet: View {
 
     private func createEstimateFromDraftAndOpen() {
         guard let bizID = activeBiz.activeBusinessID else {
-            print("❌ No active business selected"); return
+            SBWLog.ui.problem("❌ No active business selected"); return
         }
 
         let trimmedName = draftEstimateName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -422,7 +423,7 @@ struct CreateMenuSheet: View {
 
     private func addClientAndOpenSheet() {
         guard let bizID = activeBiz.activeBusinessID else {
-            print("❌ No active business selected"); return
+            SBWLog.ui.problem("❌ No active business selected"); return
         }
 
         let c = Client(businessID: bizID)
@@ -452,7 +453,7 @@ struct CreateMenuSheet: View {
 
     private func addJobAndOpenSheet() {
         guard let bizID = activeBiz.activeBusinessID else {
-            print("❌ No active business selected"); return
+            SBWLog.ui.problem("❌ No active business selected"); return
         }
 
         let job = Job(
