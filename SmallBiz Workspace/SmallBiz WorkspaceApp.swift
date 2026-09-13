@@ -124,7 +124,7 @@ struct SmallBizWorkspaceApp: App {
             await BusinessRegistrationService.ensureRegistered(businessID: businessID)
         }
 
-        await EstimatePortalSyncService.sync(context: context)
+        await EstimatePortalSyncService.sync(context: context, businessID: activeBiz.activeBusinessID)
         BusinessSitePublishService.shared.startMonitoring(context: context)
         await BusinessSitePublishService.shared.syncQueuedSites(context: context)
         await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
@@ -164,13 +164,33 @@ struct SmallBizWorkspaceApp: App {
         }
     }
 
+    /// Watch for estimate decisions made in the client portal.
+    ///
+    /// The interval adapts: 90s while something is genuinely awaiting a decision,
+    /// 15 minutes when nothing is, and exponential backoff while the network is
+    /// failing. Previously this ran every 90 seconds for as long as the app was
+    /// foregrounded no matter what, so a device with no outstanding estimates —
+    /// and a device with no connection — both polled at full rate.
     @MainActor
     private func startEstimatePolling(context: ModelContext) {
         estimateSyncPollTask?.cancel()
-        estimateSyncPollTask = Task {
+        estimateSyncPollTask = Task { @MainActor in
+            var consecutiveFailures = 0
+
             while !Task.isCancelled {
-                await EstimatePortalSyncService.sync(context: context)
-                try? await Task.sleep(nanoseconds: 90_000_000_000)
+                let outcome = await EstimatePortalSyncService.sync(
+                    context: context,
+                    businessID: activeBiz.activeBusinessID
+                )
+
+                consecutiveFailures = outcome.looksOffline ? consecutiveFailures + 1 : 0
+
+                let interval = EstimatePollSchedule.nextInterval(
+                    candidates: outcome.candidates,
+                    consecutiveFailures: consecutiveFailures
+                )
+
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
     }

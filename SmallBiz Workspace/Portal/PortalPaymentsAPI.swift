@@ -189,7 +189,7 @@ final class PortalPaymentsAPI {
 
         guard let url = comps?.url else { throw PortalBackendError.badURL }
 
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await PortalBackend.session.data(from: url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -230,7 +230,7 @@ final class PortalPaymentsAPI {
         let payload: [String: Any] = ["businessId": businessId.uuidString]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -252,7 +252,7 @@ final class PortalPaymentsAPI {
 
         guard let url = comps?.url else { throw PortalBackendError.badURL }
 
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await PortalBackend.session.data(from: url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -291,7 +291,7 @@ final class PortalPaymentsAPI {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -325,7 +325,7 @@ final class PortalPaymentsAPI {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -394,7 +394,7 @@ final class PortalPaymentsAPI {
         req.httpMethod = "GET"
         attachAdminHeaders(&req, adminKey: adminKey)
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -423,7 +423,7 @@ final class PortalPaymentsAPI {
 
     func fetchPayPalPlatformStatus() async throws -> PayPalPlatformStatus {
         let url = baseURL.appendingPathComponent("/api/payments/paypal/status")
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await PortalBackend.session.data(from: url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         let friendly = "PayPal status unavailable. Please verify backend deployment and environment variables."
         guard let http = resp as? HTTPURLResponse else {
@@ -469,7 +469,7 @@ final class PortalPaymentsAPI {
             "returnURL": returnURL.absoluteString
         ], options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else {
             throw PortalBackendError.http(-1, body: raw, path: "/api/payments/paypal/connect/start")
@@ -507,7 +507,7 @@ final class PortalPaymentsAPI {
         req.httpMethod = "GET"
         attachAdminHeaders(&req, adminKey: adminKey)
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else {
             throw PortalBackendError.http(-1, body: raw, path: "/api/payments/paypal/connect/status")
@@ -577,7 +577,7 @@ final class PortalPaymentsAPI {
         attachAdminHeaders(&req, adminKey: key)
 
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await PortalBackend.session.data(for: req)
             let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
             guard let http = resp as? HTTPURLResponse else {
                 return AdminBackendDiagnosticResult(status: "Server Error", details: raw)
@@ -614,7 +614,7 @@ final class PortalPaymentsAPI {
         req.httpMethod = "GET"
         attachAdminHeaders(&req, adminKey: adminKey)
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else {
@@ -637,7 +637,7 @@ final class PortalPaymentsAPI {
             "action": action
         ], options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else {
@@ -659,7 +659,7 @@ final class PortalPaymentsAPI {
         attachAdminHeaders(&req, adminKey: key)
 
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await PortalBackend.session.data(for: req)
             let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
             guard let http = resp as? HTTPURLResponse else {
                 return AdminBackendDiagnosticResult(status: "Server Error", details: raw)

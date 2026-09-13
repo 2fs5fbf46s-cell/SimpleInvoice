@@ -16,6 +16,7 @@
 		B7A000000000000000000020 /* InvoiceMoneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000021 /* InvoiceMoneyTests.swift */; };
 		B7A000000000000000000022 /* QuickStartChecklistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000023 /* QuickStartChecklistTests.swift */; };
 		B7A000000000000000000024 /* AccessibilityConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000025 /* AccessibilityConformanceTests.swift */; };
+		B7A000000000000000000026 /* EstimatePollScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000027 /* EstimatePollScheduleTests.swift */; };
 		B7A000000000000000000014 /* ContractsNavigationSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */; };
 		B7A000000000000000000017 /* MusicSplitSheetSmartEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */; };
 /* End PBXBuildFile section */
@@ -41,6 +42,7 @@
 		B7A000000000000000000021 /* InvoiceMoneyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceMoneyTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000023 /* QuickStartChecklistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStartChecklistTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000025 /* AccessibilityConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityConformanceTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000027 /* EstimatePollScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimatePollScheduleTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractsNavigationSmokeTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSplitSheetSmartEditingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -103,6 +105,7 @@
 				B7A000000000000000000021 /* InvoiceMoneyTests.swift */,
 				B7A000000000000000000023 /* QuickStartChecklistTests.swift */,
 				B7A000000000000000000025 /* AccessibilityConformanceTests.swift */,
+				B7A000000000000000000027 /* EstimatePollScheduleTests.swift */,
 				B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */,
 			);
 			path = SmallBizWorkspaceTests;
@@ -242,6 +245,7 @@
 				B7A000000000000000000020 /* InvoiceMoneyTests.swift in Sources */,
 				B7A000000000000000000022 /* QuickStartChecklistTests.swift in Sources */,
 				B7A000000000000000000024 /* AccessibilityConformanceTests.swift in Sources */,
+				B7A000000000000000000026 /* EstimatePollScheduleTests.swift in Sources */,
 				B7A000000000000000000014 /* ContractsNavigationSmokeTests.swift in Sources */,
 				B7A000000000000000000017 /* MusicSplitSheetSmartEditingTests.swift in Sources */,
 				B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */,

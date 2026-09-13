@@ -713,6 +713,23 @@ final class PortalBackend {
 
     // MARK: - Shared
 
+    // MARK: - Networking
+
+    /// The session every portal call goes through.
+    ///
+    /// `URLSession.shared` defaults to a 60-second request timeout, so one stalled
+    /// call could block a sync pass for a full minute with nothing shown to the
+    /// user. These are sized for a mobile connection: long enough to ride out a
+    /// slow handshake, short enough that a dead network surfaces quickly.
+    nonisolated(unsafe) static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 20
+        // Uploads carry PDFs, so the whole-resource budget is larger.
+        config.timeoutIntervalForResource = 60
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     // MARK: - Per-business auth
 
     /// The device token for the business the app is currently acting as.
@@ -759,7 +776,7 @@ final class PortalBackend {
         applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -976,7 +993,7 @@ final class PortalBackend {
         applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = body
 
-        let (bodyData, resp) = try await URLSession.shared.data(for: req)
+        let (bodyData, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -1048,7 +1065,7 @@ final class PortalBackend {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
-        let (bodyData, resp) = try await URLSession.shared.data(for: req)
+        let (bodyData, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -1094,7 +1111,7 @@ final class PortalBackend {
         )
         req.httpBody = try JSONEncoder().encode(body)
 
-        let (bodyData, resp) = try await URLSession.shared.data(for: req)
+        let (bodyData, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: bodyData, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -1150,7 +1167,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: req)
+            let (data, _) = try await PortalBackend.session.data(for: req)
             if let decoded = try? decoder().decode(DomainVerifyDTO.self, from: data) {
                 return decoded
             }
@@ -1454,7 +1471,7 @@ final class PortalBackend {
         applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = pdfData
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -1488,7 +1505,7 @@ final class PortalBackend {
         applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -1568,7 +1585,7 @@ final class PortalBackend {
 
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -1603,7 +1620,7 @@ final class PortalBackend {
 
         guard let url = comps.url else { throw PortalBackendError.badURL }
 
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await PortalBackend.session.data(from: url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -1635,7 +1652,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         applyAuthHeaders(&req, adminKey: adminKey)
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -1740,7 +1757,7 @@ final class PortalBackend {
         #endif
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -1776,7 +1793,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -1819,7 +1836,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -1862,7 +1879,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -1971,7 +1988,7 @@ final class PortalBackend {
 
         req.httpBody = payloadData
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -2023,7 +2040,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2071,7 +2088,7 @@ final class PortalBackend {
         }
 
         req.httpBody = try JSONEncoder().encode(fallbackSettings)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -2109,7 +2126,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         applyAuthHeaders(&req, adminKey: adminKey)
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2139,7 +2156,7 @@ final class PortalBackend {
             options: []
         )
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2160,7 +2177,7 @@ final class PortalBackend {
             options: []
         )
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2189,7 +2206,7 @@ final class PortalBackend {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2248,7 +2265,7 @@ final class PortalBackend {
 
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let (respData, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: respData, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else {
@@ -2356,7 +2373,7 @@ final class PortalBackend {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2397,7 +2414,7 @@ final class PortalBackend {
         req.httpMethod = "GET"
         req.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2442,7 +2459,7 @@ final class PortalBackend {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
@@ -2466,7 +2483,7 @@ final class PortalBackend {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }

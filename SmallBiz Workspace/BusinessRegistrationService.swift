@@ -83,7 +83,7 @@ enum BusinessRegistrationService {
             withJSONObject: ["businessId": businessID.uuidString.lowercased()]
         )
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await PortalBackend.session.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if status == 409 {

@@ -6,19 +6,32 @@ enum EstimatePortalSyncService {
     private static let log = Logger(subsystem: "com.javonfreeman.smallbizworkspace", category: "EstimateSync")
 
     @MainActor
-    static func sync(context: ModelContext) async {
-        await sync(context: context, maxCount: 40)
+    @discardableResult
+    static func sync(context: ModelContext, businessID: UUID? = nil) async -> EstimateSyncOutcome {
+        await sync(context: context, businessID: businessID, maxCount: 40)
     }
 
     @MainActor
-    private static func sync(context: ModelContext, maxCount: Int) async {
+    private static func sync(
+        context: ModelContext,
+        businessID: UUID?,
+        maxCount: Int
+    ) async -> EstimateSyncOutcome {
         // Always try to apply locally-cached decisions first.
         let appliedBefore = EstimateDecisionSync.applyPendingDecisions(in: context)
 
-        let descriptor = FetchDescriptor<Invoice>(
-            predicate: #Predicate<Invoice> { $0.documentType == "estimate" },
-            sortBy: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
-        )
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        let descriptor = businessID == nil
+            ? FetchDescriptor<Invoice>(
+                predicate: #Predicate<Invoice> { $0.documentType == "estimate" },
+                sortBy: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+              )
+            : FetchDescriptor<Invoice>(
+                predicate: #Predicate<Invoice> { invoice in
+                    invoice.documentType == "estimate" && invoice.businessID == scopedID
+                },
+                sortBy: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+              )
 
         let estimates = ((try? context.fetch(descriptor)) ?? [])
             .filter { estimate in
@@ -27,6 +40,7 @@ enum EstimatePortalSyncService {
             }
             .prefix(maxCount)
 
+        let candidates = estimates.count
         var checked = 0
         var updated = 0
         var failed = 0
@@ -72,5 +86,7 @@ enum EstimatePortalSyncService {
             log.info("Estimate sync checked=\(checked, privacy: .public) updated=\(updated, privacy: .public) failed=\(failed, privacy: .public)")
         }
         #endif
+
+        return EstimateSyncOutcome(candidates: candidates, updated: updated, failed: failed)
     }
 }
