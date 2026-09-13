@@ -39,7 +39,7 @@ enum BookingAnalyticsEngine {
             .filter { $0.isPaid }
             .filter { $0.issueDate >= start && $0.issueDate <= now }
             .reduce(0) { partial, invoice in
-                partial + Int((invoice.total * 100.0).rounded())
+                partial + invoice.totalCents
             }
 
         let totalRevenueCents = max(0, depositRevenueCents) + max(0, paidInvoiceRevenueCents)
@@ -202,7 +202,7 @@ enum BookingAnalyticsEngine {
             .filter { $0.isPaid }
             .filter { $0.issueDate >= previousStart && $0.issueDate < previousEnd }
             .reduce(0) { partial, invoice in
-                partial + Int((invoice.total * 100.0).rounded())
+                partial + invoice.totalCents
             }
 
         let current = buildSnapshotCore(
@@ -262,7 +262,7 @@ enum BookingAnalyticsEngine {
             .filter { $0.isPaid }
             .filter { $0.issueDate >= start && $0.issueDate <= end }
             .reduce(0) { partial, invoice in
-                partial + Int((invoice.total * 100.0).rounded())
+                partial + invoice.totalCents
             }
 
         return SnapshotCore(

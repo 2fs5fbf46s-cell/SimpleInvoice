@@ -1639,7 +1639,7 @@ struct InvoiceDetailView: View {
             )
         }
 
-        let amountCents = Int((invoice.total * 100).rounded())
+        let amountCents = invoice.totalCents
         guard amountCents > 0 else {
             throw NSError(
                 domain: "Portal",

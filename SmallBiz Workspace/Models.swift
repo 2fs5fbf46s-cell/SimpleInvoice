@@ -355,10 +355,27 @@ final class Invoice {
     }
 
 
-    var subtotal: Double { (items ?? []).reduce(0) { $0 + $1.lineTotal } }
-    var discountedSubtotal: Double { max(0, subtotal - discountAmount) }
-    var taxAmount: Double { discountedSubtotal * taxRate }
-    var total: Double { discountedSubtotal + taxAmount }
+    // MARK: - Money
+    //
+    // Integer cents are authoritative: they are what the client is charged, and
+    // the only values sent to the portal or a payment provider. The Double
+    // accessors below exist purely for display/formatting and are derived from
+    // the cents, so a rendered total can never disagree with a charged total.
+    //
+    // Do not reintroduce a Double-first computation here. Summing unrounded line
+    // totals and rounding once at the end produces a different answer than
+    // rounding each line and summing — three items at $0.335 give 1.005 one way
+    // and 1.02 the other — and that difference reaches customers as a PDF whose
+    // total does not match their checkout page.
+
+    var subtotal: Double { Self.dollars(subtotalCents) }
+    var discountedSubtotal: Double { Self.dollars(discountedSubtotalCents) }
+    var taxAmount: Double { Self.dollars(taxCents) }
+    var total: Double { Self.dollars(totalCents) }
+
+    private static func dollars(_ cents: Int) -> Double {
+        Double(cents) / 100.0
+    }
 
     var subtotalCents: Int {
         (items ?? []).reduce(0) { partial, item in

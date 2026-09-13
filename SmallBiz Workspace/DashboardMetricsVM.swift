@@ -114,7 +114,7 @@ private enum DashboardMetricsService {
             }
 
             guard let paidDate = resolvedPaidDate(for: invoice) else { continue }
-            let amountCents = max(0, Int((invoice.total * 100).rounded()))
+            let amountCents = max(0, invoice.totalCents)
 
             if paidDate >= weeklyStart && paidDate <= now {
                 weeklyInvoicePaidCents += amountCents
