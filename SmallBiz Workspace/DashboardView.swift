@@ -8,6 +8,8 @@ struct DashboardView: View {
     @State private var metricState = DashboardMetricState()
     @State private var showHelpCenter = false
     @State private var quickStart = QuickStartChecklist()
+    @State private var syncHealth = PortalSyncHealth.healthy
+    @State private var isRetryingSync = false
 
     // Pull business profile for name + logo. One row per business, so this one
     // stays unfiltered — the whole table is a handful of records.
@@ -143,6 +145,14 @@ struct DashboardView: View {
                         )
                     }
                     .padding(.top, 6)
+
+                    if syncHealth.hasFailures, effectiveBusinessID != nil {
+                        PortalSyncHealthCard(
+                            health: syncHealth,
+                            isRetrying: isRetryingSync,
+                            retry: { Task { await retrySync() } }
+                        )
+                    }
 
                     if !quickStart.isFullyComplete, effectiveBusinessID != nil {
                         QuickStartDashboardCard(checklist: quickStart)
@@ -303,6 +313,7 @@ struct DashboardView: View {
             await recomputeDashboardMetrics(forceRemote: false)
         }
         .task(id: quickStartRefreshKey) { await refreshQuickStart() }
+        .task(id: quickStartRefreshKey) { refreshSyncHealth() }
         .onChange(of: invoices.count) {
             Task {
                 await recomputeDashboardMetrics(forceRemote: false)
@@ -400,6 +411,44 @@ struct DashboardView: View {
             context: modelContext,
             notificationsEnabled: QuickStartChecklist.notificationsAreEnabled(status: status)
         )
+    }
+
+
+    @MainActor
+    private func refreshSyncHealth() {
+        syncHealth = PortalSyncHealth.current(
+            businessID: effectiveBusinessID,
+            context: modelContext
+        )
+    }
+
+    /// Retry every document that failed, rather than making the user open each one.
+    @MainActor
+    private func retrySync() async {
+        guard !isRetryingSync, let businessID = effectiveBusinessID else { return }
+        isRetryingSync = true
+        defer { isRetryingSync = false }
+
+        let invoiceIDs = ((try? modelContext.fetch(
+            FetchDescriptor<Invoice>(
+                predicate: #Predicate<Invoice> { $0.businessID == businessID && $0.portalNeedsUpload }
+            )
+        )) ?? []).map(\.id)
+
+        let contractIDs = ((try? modelContext.fetch(
+            FetchDescriptor<Contract>(
+                predicate: #Predicate<Contract> { $0.businessID == businessID && $0.portalNeedsUpload }
+            )
+        )) ?? []).map(\.id)
+
+        for id in invoiceIDs {
+            _ = await PortalAutoSyncService.uploadInvoice(invoiceId: id, context: modelContext)
+        }
+        for id in contractIDs {
+            _ = await PortalAutoSyncService.uploadContract(contractId: id, context: modelContext)
+        }
+
+        refreshSyncHealth()
     }
 
 }
@@ -631,5 +680,54 @@ private struct QuickStartDashboardCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Quick Start, \(checklist.completedCount) of \(checklist.totalCount) steps complete")
         .accessibilityHint(checklist.nextStep.map { "Next: \($0.title)" } ?? "")
+    }
+}
+
+
+/// Account-level sync status.
+///
+/// Sits above Quick Start because a document that failed to reach a client is
+/// more urgent than a setup step, and disappears entirely when nothing has failed.
+private struct PortalSyncHealthCard: View {
+    let health: PortalSyncHealth
+    let isRetrying: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        SBWCardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text(health.summary)
+                        .font(.headline)
+                    Spacer(minLength: 8)
+                }
+
+                if let message = health.latestMessage {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button(action: retry) {
+                    HStack(spacing: 6) {
+                        if isRetrying {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text(isRetrying ? "Retrying…" : "Retry all")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+                .disabled(isRetrying)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(health.summary)
+        .accessibilityHint("Retries sending them to your clients")
     }
 }
