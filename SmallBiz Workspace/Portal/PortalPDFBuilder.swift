@@ -15,7 +15,7 @@ enum PortalPDFBuilder {
         let resolvedSnapshot = invoice.isBusinessInfoLocked ? (invoice.businessSnapshot ?? snapshot) : snapshot
         let templateKey = InvoicePDFService.effectiveInvoiceTemplateKey(invoice: invoice, business: nil)
         let data = InvoicePDFGenerator.makePDFData(
-            invoice: invoice,
+            invoice: InvoiceRenderModel(invoice: invoice),
             business: resolvedSnapshot,
             templateKey: templateKey
         )

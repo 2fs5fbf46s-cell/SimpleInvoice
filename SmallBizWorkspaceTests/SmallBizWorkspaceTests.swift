@@ -10,6 +10,7 @@ final class SmallBizWorkspaceTests: XCTestCase {
 }
 
 final class InvoicePDFRenderingTests: XCTestCase {
+    @MainActor
     func testLongLineItemsPaginateAndUsePreferredFileName() throws {
         let consultationScope = """
         Church Audio & Broadcast Consultation Services
@@ -42,7 +43,7 @@ final class InvoicePDFRenderingTests: XCTestCase {
         )
 
         let data = InvoicePDFGenerator.makePDFData(
-            invoice: invoice,
+            invoice: InvoiceRenderModel(invoice: invoice),
             business: BusinessSnapshot(name: "SmallBiz Audio", address: "100 Main Street", phone: "555-0100", email: "hello@example.com")
         )
 

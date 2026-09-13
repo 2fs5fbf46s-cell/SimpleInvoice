@@ -79,7 +79,7 @@ enum PortalAutoSyncService {
                 blobUrl = existingBlobUrl
             } else {
                 let businesses: [Business] = business.map { [$0] } ?? []
-                let pdfData = InvoicePDFService.makePDFData(
+                let pdfData = await InvoicePDFService.makePDFDataOffMainThread(
                     invoice: invoice,
                     profiles: profiles,
                     context: context,

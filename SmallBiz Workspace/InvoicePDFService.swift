@@ -149,9 +149,55 @@ enum InvoicePDFService {
         let business = resolvedBusiness(for: invoice, businesses: businesses)
         let templateKey = effectiveInvoiceTemplateKey(invoice: invoice, business: business)
         return InvoicePDFGenerator.makePDFData(
-            invoice: invoice,
+            invoice: InvoiceRenderModel(invoice: invoice),
             business: snapshot,
             templateKey: templateKey
         )
+    }
+
+    /// Render without blocking the interface.
+    ///
+    /// Reading the models and locking the business snapshot still happen on the
+    /// main actor — they have to — but the layout and rasterizing, which is where
+    /// a long invoice spends its time, run off it. Prefer this anywhere the user
+    /// is waiting: share, export, portal upload, mail attachment.
+    static func makePDFDataOffMainThread(
+        invoice: Invoice,
+        profiles: [BusinessProfile],
+        context: ModelContext?,
+        businesses: [Business] = [],
+        lockBusinessSnapshot: Bool = false,
+        lockReason: BusinessSnapshotLockReason = .finalized
+    ) async -> Data {
+        let (renderModel, snapshot, templateKey) = await MainActor.run {
+            () -> (InvoiceRenderModel, BusinessSnapshot, InvoiceTemplateKey) in
+            let snapshot = lockBusinessSnapshot
+                ? lockBusinessSnapshotIfNeeded(
+                    invoice: invoice,
+                    profiles: profiles,
+                    context: context,
+                    reason: lockReason,
+                    replaceExistingUnlockedSnapshot: true
+                )
+                : businessSnapshotForRendering(
+                    invoice: invoice,
+                    profiles: profiles,
+                    context: context
+                )
+            let business = resolvedBusiness(for: invoice, businesses: businesses)
+            return (
+                InvoiceRenderModel(invoice: invoice),
+                snapshot,
+                effectiveInvoiceTemplateKey(invoice: invoice, business: business)
+            )
+        }
+
+        return await Task.detached(priority: .userInitiated) {
+            InvoicePDFGenerator.makePDFData(
+                invoice: renderModel,
+                business: snapshot,
+                templateKey: templateKey
+            )
+        }.value
     }
 }

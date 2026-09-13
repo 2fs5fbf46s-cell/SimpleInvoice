@@ -1779,7 +1779,7 @@ struct InvoiceDetailView: View {
                         uploadingPortalPDF = true
                         portalPDFNotice = nil
                         do {
-                            let pdfData = InvoicePDFService.makePDFData(
+                            let pdfData = await InvoicePDFService.makePDFDataOffMainThread(
                                 invoice: invoice,
                                 profiles: profiles,
                                 context: modelContext,
@@ -2097,8 +2097,12 @@ struct InvoiceDetailView: View {
     }
 
     private func emailPDF() {
+        Task { @MainActor in await emailPDFAsync() }
+    }
+
+    private func emailPDFAsync() async {
         do {
-            let pdfData = InvoicePDFService.makePDFData(
+            let pdfData = await InvoicePDFService.makePDFDataOffMainThread(
                 invoice: invoice,
                 profiles: profiles,
                 context: modelContext,

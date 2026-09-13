@@ -54,8 +54,13 @@ enum InvoicePDFGenerator {
         return sanitized.isEmpty ? fallback : sanitized
     }
 
-    static func makePDFData(
-        invoice: Invoice,
+    /// Lay out and rasterize the document.
+    ///
+    /// Takes a plain snapshot rather than the SwiftData model, so it can run off
+    /// the main actor — see `InvoiceRenderModel`. The parameter keeps the name
+    /// `invoice` because every expression in the body reads the same either way.
+    nonisolated static func makePDFData(
+        invoice: InvoiceRenderModel,
         business: BusinessSnapshot,
         templateKey: InvoiceTemplateKey = .modern_clean
     ) -> Data {
@@ -782,7 +787,7 @@ enum InvoicePDFGenerator {
                 ctx.cgContext.restoreGState()
             }
 
-            func drawLineItemRow(_ item: LineItem,
+            func drawLineItemRow(_ item: InvoiceRenderModel.Line,
                                  description: String,
                                  rowHeight: CGFloat,
                                  rowIndex: Int,
@@ -840,7 +845,7 @@ enum InvoicePDFGenerator {
                 return trimLeadingWhitespace(source.substring(from: consumedLength))
             }
 
-            func drawSplitLineItemRow(_ item: LineItem, description: String, rowIndex: Int) {
+            func drawSplitLineItemRow(_ item: InvoiceRenderModel.Line, description: String, rowIndex: Int) {
                 var remaining = description
                 var isFirstSegment = true
 

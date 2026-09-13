@@ -190,3 +190,130 @@ final class InvoiceMoneyTests: XCTestCase {
         XCTAssertEqual(invoice.overpaidCents, 5000)
     }
 }
+
+/// The PDF render snapshot.
+///
+/// `InvoiceRenderModel` exists so rendering can run off the main actor. That only
+/// holds if the snapshot is a faithful copy — a field that silently fails to carry
+/// over becomes a blank or wrong value on a document a customer receives.
+final class InvoiceRenderModelTests: XCTestCase {
+
+    @MainActor
+    private func makeInvoice() -> (Invoice, Client) {
+        let client = Client(
+            businessID: UUID(),
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+            phone: "5551234567",
+            address: "12 Analytical Way"
+        )
+        let invoice = Invoice(
+            invoiceNumber: "INV-42",
+            paymentTerms: "Net 30",
+            notes: "Thanks for the work",
+            thankYou: "Much appreciated",
+            termsAndConditions: "Payment due on receipt",
+            taxRate: 0.0875,
+            discountAmount: 5,
+            documentType: "invoice",
+            client: client,
+            items: [
+                LineItem(itemDescription: "Design", quantity: 3, unitPrice: 19.995),
+                LineItem(itemDescription: "Revisions", quantity: 1.5, unitPrice: 80),
+            ]
+        )
+        return (invoice, client)
+    }
+
+    @MainActor
+    func testSnapshotCarriesEveryRenderedField() {
+        let (invoice, _) = makeInvoice()
+        let model = InvoiceRenderModel(invoice: invoice)
+
+        XCTAssertEqual(model.id, invoice.id)
+        XCTAssertEqual(model.documentType, invoice.documentType)
+        XCTAssertEqual(model.invoiceNumber, invoice.invoiceNumber)
+        XCTAssertEqual(model.issueDate, invoice.issueDate)
+        XCTAssertEqual(model.dueDate, invoice.dueDate)
+        XCTAssertEqual(model.paymentTerms, invoice.paymentTerms)
+        XCTAssertEqual(model.notes, invoice.notes)
+        XCTAssertEqual(model.thankYou, invoice.thankYou)
+        XCTAssertEqual(model.termsAndConditions, invoice.termsAndConditions)
+        XCTAssertEqual(model.taxRate, invoice.taxRate)
+        XCTAssertEqual(model.discountAmount, invoice.discountAmount)
+        XCTAssertEqual(model.isPaid, invoice.isPaid)
+    }
+
+    @MainActor
+    func testSnapshotTotalsMatchTheChargedAmount() {
+        let (invoice, _) = makeInvoice()
+        let model = InvoiceRenderModel(invoice: invoice)
+
+        XCTAssertEqual(model.subtotal, invoice.subtotal, accuracy: 0.000001)
+        XCTAssertEqual(model.taxAmount, invoice.taxAmount, accuracy: 0.000001)
+        XCTAssertEqual(model.total, invoice.total, accuracy: 0.000001)
+
+        // The rendered total must still round-trip to the cents actually charged.
+        XCTAssertEqual(Int((model.total * 100).rounded()), invoice.totalCents)
+    }
+
+    @MainActor
+    func testSnapshotCopiesLineItemsInOrder() {
+        let (invoice, _) = makeInvoice()
+        let model = InvoiceRenderModel(invoice: invoice)
+
+        let source = invoice.items ?? []
+        let copied = model.items ?? []
+        XCTAssertEqual(copied.count, source.count)
+
+        for (index, line) in copied.enumerated() {
+            XCTAssertEqual(line.itemDescription, source[index].itemDescription)
+            XCTAssertEqual(line.quantity, source[index].quantity)
+            XCTAssertEqual(line.unitPrice, source[index].unitPrice)
+            XCTAssertEqual(line.lineTotal, source[index].lineTotal, accuracy: 0.000001)
+        }
+    }
+
+    @MainActor
+    func testSnapshotCopiesTheClient() {
+        let (invoice, client) = makeInvoice()
+        let model = InvoiceRenderModel(invoice: invoice)
+
+        XCTAssertEqual(model.client?.name, client.name)
+        XCTAssertEqual(model.client?.email, client.email)
+        XCTAssertEqual(model.client?.phone, client.phone)
+        XCTAssertEqual(model.client?.address, client.address)
+    }
+
+    @MainActor
+    func testSnapshotHandlesAnInvoiceWithNoClient() {
+        let invoice = Invoice(invoiceNumber: "INV-NO-CLIENT")
+        let model = InvoiceRenderModel(invoice: invoice)
+
+        XCTAssertNil(model.client)
+        XCTAssertEqual(model.items?.count, 0)
+        XCTAssertEqual(model.total, 0)
+    }
+
+    /// The whole point: the snapshot must be usable away from the main actor.
+    func testRenderingFromASnapshotWorksOffTheMainActor() async {
+        let model = await MainActor.run { () -> InvoiceRenderModel in
+            let invoice = Invoice(
+                invoiceNumber: "INV-OFFTHREAD",
+                items: [LineItem(itemDescription: "Work", quantity: 2, unitPrice: 50)]
+            )
+            return InvoiceRenderModel(invoice: invoice)
+        }
+
+        let data = await Task.detached(priority: .userInitiated) {
+            InvoicePDFGenerator.makePDFData(
+                invoice: model,
+                business: BusinessSnapshot(name: "Test Co"),
+                templateKey: .modern_clean
+            )
+        }.value
+
+        XCTAssertFalse(data.isEmpty, "a PDF should be produced off the main actor")
+        XCTAssertEqual(data.prefix(4), Data("%PDF".utf8), "output should be a PDF")
+    }
+}
