@@ -438,7 +438,7 @@ struct OnboardingFlowView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(SBWTheme.brandGradient.opacity(0.18))
             Image(systemName: systemName)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                 .foregroundStyle(.primary)
         }
         .frame(width: 42, height: 42)

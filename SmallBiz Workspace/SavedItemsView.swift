@@ -215,7 +215,7 @@ struct SavedItemsView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(AnyShapeStyle(SBWTheme.brandGradient.opacity(0.18)))
                     Image(systemName: "tag")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 36, height: 36)
@@ -278,7 +278,7 @@ struct SavedItemsView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(AnyShapeStyle(SBWTheme.brandGradient.opacity(0.18)))
                 Image(systemName: "tray")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)

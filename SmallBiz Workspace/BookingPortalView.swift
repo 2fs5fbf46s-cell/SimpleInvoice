@@ -146,7 +146,7 @@ struct BookingPortalView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Client Booking Link")
-                            .font(.system(size: 28, weight: .heavy))
+                            .font(.scaledSystem(size: 28, weight: .heavy, relativeTo: .title))
                         Text("Share your public booking page")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -705,7 +705,7 @@ private struct SectionTitle: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.white.opacity(0.06))
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.secondary)
             }
             .frame(width: 28, height: 28)
@@ -729,7 +729,7 @@ private struct StatusChip: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
-                .font(.system(size: 8, weight: .bold))
+                .font(.scaledSystem(size: 8, weight: .bold, relativeTo: .caption2))
             Text(text)
                 .font(.caption.weight(.semibold))
         }

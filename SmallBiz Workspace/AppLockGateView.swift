@@ -18,7 +18,7 @@ struct AppLockGateView<Content: View>: View {
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 40))
+                        .font(.scaledSystem(size: 40, relativeTo: .largeTitle))
 
                     Text("App Locked")
                         .font(.title2).bold()

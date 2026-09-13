@@ -278,7 +278,7 @@ struct AttachmentsManagerView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: iconName(for: row.file))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                     .frame(width: 32, height: 32)
                     .background(Color(.secondarySystemFill))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))

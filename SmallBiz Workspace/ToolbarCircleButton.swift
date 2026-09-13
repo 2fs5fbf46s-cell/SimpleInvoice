@@ -2,12 +2,27 @@ import SwiftUI
 
 struct ToolbarCircleButton: View {
     let systemImage: String
+    /// What the control does, spoken by VoiceOver. Required: an icon-only button
+    /// with no label announces as just "Button".
+    let accessibilityLabel: String
     let action: () -> Void
+
+    init(
+        systemImage: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) {
+        self.systemImage = systemImage
+        self.accessibilityLabel = accessibilityLabel
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .semibold))
+                // Scales with Dynamic Type instead of staying at 18pt.
+                .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .background(Color(.secondarySystemBackground))

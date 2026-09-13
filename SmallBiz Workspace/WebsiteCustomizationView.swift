@@ -187,22 +187,22 @@ struct WebsiteCustomizationView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "at")
-                    .font(.system(size: 18, weight: .regular))
+                    .font(.scaledSystem(size: 18, weight: .regular, relativeTo: .body))
                     .foregroundStyle(.secondary)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("App Name")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(SBWTheme.brandBlue)
 
                     Text("Will be used as the unique app name to identify your website")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 11))
+                        .font(.scaledSystem(size: 11, relativeTo: .caption2))
 
                     Text("App Name")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 11))
+                        .font(.scaledSystem(size: 11, relativeTo: .caption2))
                         .padding(.top, 4)
 
                     TextField("App Name", text: Binding(
@@ -212,7 +212,7 @@ struct WebsiteCustomizationView: View {
                             saveDraft()
                         }
                     ))
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.scaledSystem(size: 16, weight: .regular, relativeTo: .body))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(.bottom, 4)
@@ -223,7 +223,7 @@ struct WebsiteCustomizationView: View {
 
                     Text("Custom Domain (optional)")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 11))
+                        .font(.scaledSystem(size: 11, relativeTo: .caption2))
                         .padding(.top, 8)
 
                     TextField("example.com", text: Binding(
@@ -235,7 +235,7 @@ struct WebsiteCustomizationView: View {
                             scheduleSiteDomainStatusCheck(force: false, debounced: true)
                         }
                     ))
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.scaledSystem(size: 16, weight: .regular, relativeTo: .body))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
@@ -259,12 +259,12 @@ struct WebsiteCustomizationView: View {
 
                     Text("Recommended if you want both domain.com and www.domain.com to work.")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 11))
+                        .font(.scaledSystem(size: 11, relativeTo: .caption2))
 
                     if !((draft?.publicSiteDomain ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                         HStack(spacing: 10) {
                             Text("Status: \(siteDomainStatusLabel)")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.scaledSystem(size: 12, weight: .semibold, relativeTo: .caption))
                                 .foregroundStyle(siteDomainStatusColor)
 
                             Spacer()
@@ -272,7 +272,7 @@ struct WebsiteCustomizationView: View {
                             Button(isCheckingSiteDomainStatus ? "Checking…" : "Check now") {
                                 scheduleSiteDomainStatusCheck(force: true, debounced: false)
                             }
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.scaledSystem(size: 12, weight: .semibold, relativeTo: .caption))
                             .disabled(isCheckingSiteDomainStatus)
                         }
                         .padding(.top, 4)
@@ -288,16 +288,16 @@ struct WebsiteCustomizationView: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .regular))
+                    .font(.scaledSystem(size: 18, weight: .regular, relativeTo: .body))
                     .foregroundStyle(.secondary)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(SBWTheme.brandBlue)
                     Text(description)
-                        .font(.system(size: 11))
+                        .font(.scaledSystem(size: 11, relativeTo: .caption2))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
                 }
@@ -305,7 +305,7 @@ struct WebsiteCustomizationView: View {
                 Spacer(minLength: 8)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(SBWTheme.brandBlue)
                     .padding(.top, 4)
             }
@@ -528,10 +528,10 @@ private struct WebsiteHeroImageView: View {
                         } else {
                             VStack(spacing: 8) {
                                 Image(systemName: "plus.square")
-                                    .font(.system(size: 28))
+                                    .font(.scaledSystem(size: 28, relativeTo: .title))
                                     .foregroundStyle(Color.secondary.opacity(0.55))
                                 Text("Add Image")
-                                    .font(.system(size: 20, weight: .semibold))
+                                    .font(.scaledSystem(size: 20, weight: .semibold, relativeTo: .title3))
                                     .foregroundStyle(Color.secondary.opacity(0.55))
                             }
                         }
@@ -598,9 +598,9 @@ private struct WebsiteServicesView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                             Text("Add Service")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                         }
                         .foregroundStyle(SBWTheme.brandBlue)
                         .frame(maxWidth: .infinity)
@@ -646,7 +646,7 @@ private struct WebsiteServicesView: View {
                         rows.remove(at: index)
                     } label: {
                         Image(systemName: "minus.circle")
-                            .font(.system(size: 18, weight: .regular))
+                            .font(.scaledSystem(size: 18, weight: .regular, relativeTo: .body))
                     }
                     .padding(.trailing, 12)
                     .padding(.top, 14)
@@ -658,17 +658,17 @@ private struct WebsiteServicesView: View {
                     get: { rows[index].name },
                     set: { rows[index].name = String($0.prefix(15)) }
                 ))
-                .font(.system(size: 16))
+                .font(.scaledSystem(size: 16, relativeTo: .body))
                 Underline()
-                HStack { Spacer(); Text("\(rows[index].name.count) / 15").foregroundStyle(.secondary).font(.system(size: 10)) }
+                HStack { Spacer(); Text("\(rows[index].name.count) / 15").foregroundStyle(.secondary).font(.scaledSystem(size: 10, relativeTo: .caption2)) }
 
                 TextField("Service Detail", text: Binding(
                     get: { rows[index].detail },
                     set: { rows[index].detail = String($0.prefix(120)) }
                 ))
-                .font(.system(size: 16))
+                .font(.scaledSystem(size: 16, relativeTo: .body))
                 Underline()
-                HStack { Spacer(); Text("\(rows[index].detail.count) / 120").foregroundStyle(.secondary).font(.system(size: 10)) }
+                HStack { Spacer(); Text("\(rows[index].detail.count) / 120").foregroundStyle(.secondary).font(.scaledSystem(size: 10, relativeTo: .caption2)) }
             }
             .padding(.leading, 32)
             .padding(.trailing, 12)
@@ -751,14 +751,14 @@ private struct WebsiteAboutView: View {
                         get: { aboutText },
                         set: { aboutText = String($0.prefix(600)) }
                     ))
-                    .font(.system(size: 16))
+                    .font(.scaledSystem(size: 16, relativeTo: .body))
                     Underline()
 
                     HStack {
                         Spacer()
                         Text("\(aboutText.count) / 600")
                             .foregroundStyle(.secondary)
-                            .font(.system(size: 10))
+                            .font(.scaledSystem(size: 10, relativeTo: .caption2))
                     }
                 }
                 .padding(.leading, 32)
@@ -847,7 +847,7 @@ private struct WebsiteTeamView: View {
 
                         if draftMembers.isEmpty {
                             Text("No Team Member Added")
-                                .font(.system(size: 18))
+                                .font(.scaledSystem(size: 18, relativeTo: .body))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 40)
@@ -871,9 +871,9 @@ private struct WebsiteTeamView: View {
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "plus")
-                                    .font(.system(size: 20, weight: .regular))
+                                    .font(.scaledSystem(size: 20, weight: .regular, relativeTo: .title3))
                                 Text("Add Team Member")
-                                    .font(.system(size: 18, weight: .semibold))
+                                    .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                             }
                             .foregroundStyle(SBWTheme.brandBlue)
                             .frame(maxWidth: .infinity)
@@ -955,7 +955,7 @@ private struct WebsiteTeamView: View {
                         }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                             .foregroundStyle(Color.secondary)
                             .padding(8)
                             .background(Color(.tertiarySystemFill))
@@ -983,10 +983,10 @@ private struct WebsiteTeamView: View {
                         } else {
                             VStack(spacing: 8) {
                                 Image(systemName: "plus.square")
-                                    .font(.system(size: 26))
+                                    .font(.scaledSystem(size: 26, relativeTo: .title))
                                     .foregroundStyle(Color.secondary.opacity(0.55))
                                 Text("Add Photo")
-                                    .font(.system(size: 18, weight: .semibold))
+                                    .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                                     .foregroundStyle(Color.secondary.opacity(0.55))
                             }
                         }
@@ -1017,7 +1017,7 @@ private struct WebsiteTeamView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Name")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.scaledSystem(size: 12, weight: .semibold, relativeTo: .caption))
                         .foregroundStyle(.secondary)
 
                     TextField("Your full name", text: Binding(
@@ -1027,17 +1027,17 @@ private struct WebsiteTeamView: View {
                             persistToModel()
                         }
                     ))
-                    .font(.system(size: 16))
+                    .font(.scaledSystem(size: 16, relativeTo: .body))
                     Underline()
                     HStack {
                         Spacer()
                         Text("\(draftMembers[index].name.count) / 35")
                             .foregroundStyle(.secondary)
-                            .font(.system(size: 10))
+                            .font(.scaledSystem(size: 10, relativeTo: .caption2))
                     }
 
                     Text("Work Title")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.scaledSystem(size: 12, weight: .semibold, relativeTo: .caption))
                         .foregroundStyle(.secondary)
 
                     TextField("Work title", text: Binding(
@@ -1047,13 +1047,13 @@ private struct WebsiteTeamView: View {
                             persistToModel()
                         }
                     ))
-                    .font(.system(size: 16))
+                    .font(.scaledSystem(size: 16, relativeTo: .body))
                     Underline()
                     HStack {
                         Spacer()
                         Text("\(draftMembers[index].title.count) / 35")
                             .foregroundStyle(.secondary)
-                            .font(.system(size: 10))
+                            .font(.scaledSystem(size: 10, relativeTo: .caption2))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -1105,7 +1105,7 @@ private struct WebsiteGalleryView: View {
 
                 if draft.galleryLocalPaths.isEmpty {
                     Text("No Image Added")
-                        .font(.system(size: 18))
+                        .font(.scaledSystem(size: 18, relativeTo: .body))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 40)
@@ -1146,9 +1146,9 @@ private struct WebsiteGalleryView: View {
                 PhotosPicker(selection: $selectedGalleryItems, matching: .images, photoLibrary: .shared()) {
                     HStack(spacing: 10) {
                         Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .regular))
+                            .font(.scaledSystem(size: 20, weight: .regular, relativeTo: .title3))
                         Text("Add Image")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                     }
                     .foregroundStyle(SBWTheme.brandBlue)
                     .frame(maxWidth: .infinity)
@@ -1190,7 +1190,7 @@ private struct WebsiteGalleryView: View {
 
 private func pageDescription(_ text: String) -> some View {
     Text(text)
-        .font(.system(size: 11))
+        .font(.scaledSystem(size: 11, relativeTo: .caption2))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.top, 12)
@@ -1203,11 +1203,11 @@ private struct SectionTitle: View {
     var body: some View {
     HStack(spacing: 8) {
         Image(systemName: icon)
-            .font(.system(size: 18, weight: .regular))
+            .font(.scaledSystem(size: 18, weight: .regular, relativeTo: .body))
             .foregroundStyle(.secondary)
             .frame(width: 24)
         Text(text)
-            .font(.system(size: 17, weight: .semibold))
+            .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
             .foregroundStyle(SBWTheme.brandBlue)
     }
     .padding(.horizontal, 12)
@@ -1236,10 +1236,10 @@ private struct ImageDropTile: View {
         } else {
             VStack(spacing: 6) {
                 Image(systemName: "plus.square")
-                    .font(.system(size: 24))
+                    .font(.scaledSystem(size: 24, relativeTo: .title2))
                     .foregroundStyle(Color.secondary.opacity(0.55))
                 Text("Add Image")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                     .foregroundStyle(Color.secondary.opacity(0.55))
             }
         }

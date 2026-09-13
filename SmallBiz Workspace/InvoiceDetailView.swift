@@ -1767,11 +1767,11 @@ struct InvoiceDetailView: View {
             .accessibilityLabel("Done")
 
             // ✅ Open Job workspace folder
-            Button { openJobWorkspaceFolder() } label: { Image(systemName: "folder") }
+            Button { openJobWorkspaceFolder() } label: { Image(systemName: "folder") }.accessibilityLabel("Open job files")
 
-            Button { previewPDF() } label: { Image(systemName: "doc.richtext") }
+            Button { previewPDF() } label: { Image(systemName: "doc.richtext") }.accessibilityLabel("Preview PDF")
             Button { showTemplatePicker = true } label: { Image(systemName: "paintpalette") }
-                .accessibilityLabel("Template")
+                .accessibilityLabel("Change template")
 
             Menu {
                 Button {
@@ -1818,7 +1818,7 @@ struct InvoiceDetailView: View {
                 Image(systemName: "square.and.arrow.up")
             }
 
-            Button { emailPDF() } label: { Image(systemName: "envelope") }
+            Button { emailPDF() } label: { Image(systemName: "envelope") }.accessibilityLabel("Email invoice")
             Button { duplicateInvoice() } label: { Image(systemName: "doc.on.doc") }
                 .accessibilityLabel(duplicateActionTitle)
         }

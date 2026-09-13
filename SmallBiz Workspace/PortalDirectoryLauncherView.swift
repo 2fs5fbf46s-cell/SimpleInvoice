@@ -132,7 +132,7 @@ struct PortalDirectoryLauncherView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(SBWTheme.chipFill(for: "Client Portal"))
                 Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)
@@ -173,7 +173,7 @@ struct PortalDirectoryLauncherView: View {
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                 .foregroundStyle(.tertiary)
                 .padding(.top, 2)
         }

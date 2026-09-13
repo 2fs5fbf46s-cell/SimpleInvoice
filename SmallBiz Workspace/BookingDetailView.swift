@@ -731,7 +731,7 @@ struct BookingDetailView: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(enabled ? .secondary : .tertiary)
                     .frame(width: 18)
                 Text(title)

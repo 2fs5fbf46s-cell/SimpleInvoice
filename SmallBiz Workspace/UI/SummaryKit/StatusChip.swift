@@ -46,6 +46,12 @@ struct StatusChip: View {
             }
         }
 
+        /// Sentence case, so VoiceOver reads "Overdue" rather than "O-V-E-R-D-U-E".
+        var spokenLabel: String {
+            let text = label.lowercased()
+            return text.prefix(1).uppercased() + text.dropFirst()
+        }
+
         var colors: (fg: Color, bg: Color) {
             switch self {
             case .disabled:
@@ -78,6 +84,10 @@ struct StatusChip: View {
             .padding(.vertical, 4)
             .background(Capsule().fill(colors.bg))
             .foregroundStyle(colors.fg)
+            // The visible text is all-caps, which VoiceOver may spell out. Speak
+            // the status as a word, and say it is a status rather than a control.
+            .accessibilityLabel(kind.spokenLabel)
+            .accessibilityAddTraits(.isStaticText)
     }
 }
 }

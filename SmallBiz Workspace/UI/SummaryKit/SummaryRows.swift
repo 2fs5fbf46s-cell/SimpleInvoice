@@ -26,7 +26,7 @@ struct SummaryListRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
 

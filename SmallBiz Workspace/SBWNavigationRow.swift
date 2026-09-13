@@ -21,7 +21,7 @@ struct SBWNavigationRow: View {
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                 .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
@@ -41,7 +41,7 @@ struct SBWNavigationRowNoSubtitle: View {
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                 .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())

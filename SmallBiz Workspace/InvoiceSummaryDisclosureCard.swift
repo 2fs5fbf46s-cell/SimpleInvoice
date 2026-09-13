@@ -13,7 +13,7 @@ struct InvoiceSummaryDisclosureCard<Content: View>: View {
             Button(action: onToggle) {
                 HStack(spacing: 10) {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                         .foregroundStyle(.secondary)
                         .frame(width: 20)
 

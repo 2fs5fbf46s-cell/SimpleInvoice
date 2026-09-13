@@ -303,7 +303,7 @@ struct CreateMenuSheet: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("What are we creating?")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.scaledSystem(size: 22, weight: .bold, relativeTo: .title2))
                 Text("Pick a starting point — you can refine details after.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -541,25 +541,25 @@ private struct CreateActionRow: View {
                         .fill(chipFill)
 
                     Image(systemName: systemImage)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(.primary)
 
                     Text(subtitle)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.tertiary)
             }
             .contentShape(Rectangle())

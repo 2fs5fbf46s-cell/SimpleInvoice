@@ -110,10 +110,10 @@ struct DashboardView: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(profileName)
-                                .font(.system(size: 28, weight: .bold))
+                                .font(.scaledSystem(size: 28, weight: .bold, relativeTo: .title))
 
                             Text("Dashboard")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                                 .foregroundStyle(.secondary)
                         }
 
@@ -501,7 +501,7 @@ private struct TileCard: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(iconChip)
                     Image(systemName: systemImage)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 34, height: 34)
@@ -510,11 +510,11 @@ private struct TileCard: View {
             }
 
             Text(title)
-                .font(.system(size: 16, weight: .bold))
+                .font(.scaledSystem(size: 16, weight: .bold, relativeTo: .body))
                 .foregroundStyle(.primary)
 
             Text(subtitle)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                 .foregroundStyle(.secondary)
 
             Spacer(minLength: 0)
@@ -557,18 +557,18 @@ private struct StatCard: View {
                 .padding(.top, 2)
 
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.scaledSystem(size: 12, weight: .semibold, relativeTo: .caption))
                 .foregroundStyle(.secondary)
 
             Text(value)
-                .font(.system(size: 16, weight: .bold))
+                .font(.scaledSystem(size: 16, weight: .bold, relativeTo: .body))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
                 .contentTransition(.numericText())
 
             Text(subtitle)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.scaledSystem(size: 12, weight: .semibold, relativeTo: .caption))
                 .foregroundStyle(.secondary)
         }
         .padding(12)

@@ -112,7 +112,7 @@ struct CatalogItemListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { add() } label: { Image(systemName: "plus") }
+                Button { add() } label: { Image(systemName: "plus") }.accessibilityLabel("Add item")
             }
         }
     }
@@ -131,7 +131,7 @@ struct CatalogItemListView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(SBWTheme.chipFill(for: "Saved Items"))
                 Image(systemName: "tray")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)

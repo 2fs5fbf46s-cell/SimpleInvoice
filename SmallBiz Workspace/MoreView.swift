@@ -216,7 +216,7 @@ struct MoreView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(SBWTheme.chipFill(for: item.keyword))
                     Image(systemName: item.systemImage)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 38, height: 38)

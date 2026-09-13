@@ -262,7 +262,7 @@ struct ClientContractsView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(SBWTheme.chipFill(for: "Contracts"))
                 Image(systemName: "doc.text")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)

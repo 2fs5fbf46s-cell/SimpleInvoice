@@ -50,7 +50,7 @@ struct AppStartupShellView: View {
                 .stroke(.white.opacity(0.20), lineWidth: 1)
 
             Image(systemName: "square.grid.2x2.fill")
-                .font(.system(size: 38, weight: .semibold))
+                .font(.scaledSystem(size: 38, weight: .semibold, relativeTo: .largeTitle))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.white)
         }
@@ -66,7 +66,7 @@ struct AppStartupShellView: View {
             VStack(spacing: 14) {
                 VStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 24, weight: .semibold))
+                        .font(.scaledSystem(size: 24, weight: .semibold, relativeTo: .title2))
                         .foregroundStyle(.yellow)
 
                     Text(phase.message)
