@@ -119,6 +119,11 @@ struct SmallBizWorkspaceApp: App {
             }
         }
 
+        // Claim this business (or reuse its stored token) before any portal call.
+        if let businessID = activeBiz.activeBusinessID {
+            await BusinessRegistrationService.ensureRegistered(businessID: businessID)
+        }
+
         await EstimatePortalSyncService.sync(context: context)
         BusinessSitePublishService.shared.startMonitoring(context: context)
         await BusinessSitePublishService.shared.syncQueuedSites(context: context)
@@ -128,9 +133,18 @@ struct SmallBizWorkspaceApp: App {
 
     @MainActor
     private func refreshBusinessScopedServices(for businessID: UUID?) {
+        // Point the backend client at this business before anything talks to it.
+        // Every business-scoped call is authorized by this token, so it has to be
+        // in place before the services below run.
+        BusinessRegistrationService.activate(businessID: businessID)
+
         guard let context = readyModelContext else { return }
 
         Task {
+            if let businessID {
+                await BusinessRegistrationService.ensureRegistered(businessID: businessID)
+            }
+
             await LocalReminderScheduler.shared.refreshReminders(
                 modelContext: context,
                 activeBusinessID: businessID

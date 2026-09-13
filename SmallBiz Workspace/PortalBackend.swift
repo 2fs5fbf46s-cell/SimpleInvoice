@@ -641,7 +641,7 @@ final class PortalBackend {
 
         // Represent discount as its own negative line item so the subtotal matches the visible list.
         if invoice.discountAmount > 0 {
-            let discountCents = toCents(invoice.discountAmount)
+            let discountCents = invoice.discountCents
             out.append([
                 "id": "discount",
                 "name": "Discount",
@@ -668,14 +668,34 @@ final class PortalBackend {
     }
 
     private func portalTaxCents(invoice: Invoice) -> Int {
-        toCents(invoice.taxAmount)
+        invoice.taxCents
     }
 
     private func portalTotalCents(invoice: Invoice) -> Int {
-        toCents(invoice.total)
+        invoice.totalCents
     }
 
     // MARK: - Shared
+
+    // MARK: - Per-business auth
+
+    /// The device token for the business the app is currently acting as.
+    ///
+    /// Set when the active business changes. The backend derives the businessId
+    /// from this token, so a request without it can no longer name a business.
+    nonisolated(unsafe) static var activeBusinessToken: String?
+
+    /// Attach the caller's identity to a request.
+    ///
+    /// The business token is what authorizes business-scoped routes. The admin key
+    /// is still sent because a few genuinely platform-level routes accept it, but
+    /// it no longer grants access to anyone else's data.
+    fileprivate func applyAuthHeaders(_ req: inout URLRequest, adminKey: String) {
+        applyAuthHeaders(&req, adminKey: adminKey)
+        if let token = PortalBackend.activeBusinessToken, !token.isEmpty {
+            req.setValue(token, forHTTPHeaderField: "x-sbw-business-token")
+        }
+    }
 
     fileprivate func requireAdminKey() throws -> String {
         guard let k = PortalSecrets.portalAdminKey(), !k.isEmpty else {
@@ -700,7 +720,7 @@ final class PortalBackend {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -917,7 +937,7 @@ final class PortalBackend {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = body
 
         let (bodyData, resp) = try await URLSession.shared.data(for: req)
@@ -967,7 +987,7 @@ final class PortalBackend {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         let normalizedHandle = PublishedBusinessSite.normalizeHandle(handle)
         let body: [String: Any] = [
@@ -1028,7 +1048,7 @@ final class PortalBackend {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         let body = PublicSiteDomainUpsertBody(
             domain: normalizedDomain,
@@ -1225,7 +1245,7 @@ final class PortalBackend {
             .lowercased()
         guard ["sent", "accepted", "declined"].contains(normalizedStatus) else { return }
 
-        let amountCents = Int((estimate.total * 100).rounded())
+        let amountCents = estimate.totalCents
         let lineItems = buildPortalLineItems(invoice: estimate)
         let subtotalCents = portalSubtotalCents(from: lineItems)
         let taxCents = portalTaxCents(invoice: estimate)
@@ -1395,7 +1415,7 @@ final class PortalBackend {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/pdf", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = pdfData
 
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -1429,7 +1449,7 @@ final class PortalBackend {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -1487,7 +1507,7 @@ final class PortalBackend {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         var payload: [String: Any] = [
             "businessId": businessId,
@@ -1577,7 +1597,7 @@ final class PortalBackend {
 
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
@@ -2051,7 +2071,7 @@ final class PortalBackend {
 
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
@@ -2074,7 +2094,7 @@ final class PortalBackend {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(
             withJSONObject: [
                 "businessId": businessId.uuidString,
@@ -2096,7 +2116,7 @@ final class PortalBackend {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
         req.httpBody = try JSONSerialization.data(
             withJSONObject: [
                 "businessId": businessId.uuidString
@@ -2123,7 +2143,7 @@ final class PortalBackend {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         let payload: [String: Any] = [
             "businessId": businessId,
@@ -2172,7 +2192,7 @@ final class PortalBackend {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        applyAuthHeaders(&req, adminKey: adminKey)
 
         var payload: [String: Any] = [
             "businessId": businessId,
