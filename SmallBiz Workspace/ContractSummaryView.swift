@@ -24,6 +24,11 @@ private struct ContractSummaryPDFItem: Identifiable {
     let url: URL
 }
 
+private struct MusicSplitSheetEditorPresentation: Identifiable {
+    let id = UUID()
+    let draft: MusicSplitSheetDraft
+}
+
 struct ContractSummaryView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var contract: Contract
@@ -39,8 +44,7 @@ struct ContractSummaryView: View {
     @State private var smartTemplateError: String? = nil
     @State private var portalNotice: String? = nil
     @State private var previewItem: ContractSummaryPDFItem? = nil
-    @State private var showingMusicSplitSheetEditor = false
-    @State private var musicSplitSheetDraftToEdit: MusicSplitSheetDraft? = nil
+    @State private var musicSplitSheetEditor: MusicSplitSheetEditorPresentation? = nil
 
     init(contract: Contract) {
         self.contract = contract
@@ -367,15 +371,10 @@ struct ContractSummaryView: View {
         )) {
             ShareSheet(items: shareItems ?? [])
         }
-        .sheet(isPresented: $showingMusicSplitSheetEditor) {
+        .sheet(item: $musicSplitSheetEditor) { editor in
             NavigationStack {
-                if let draft = musicSplitSheetDraftToEdit {
-                    MusicSplitSheetFormView(contract: contract, draft: draft) { _ in
-                        showingMusicSplitSheetEditor = false
-                        musicSplitSheetDraftToEdit = nil
-                    }
-                } else {
-                    EmptyView()
+                MusicSplitSheetFormView(contract: contract, draft: editor.draft) { _ in
+                    musicSplitSheetEditor = nil
                 }
             }
             .presentationDetents([.large])
@@ -432,8 +431,7 @@ struct ContractSummaryView: View {
             return
         }
 
-        musicSplitSheetDraftToEdit = draft
-        showingMusicSplitSheetEditor = true
+        musicSplitSheetEditor = MusicSplitSheetEditorPresentation(draft: draft)
     }
 
     private var activityEntries: [(title: String, detail: String)] {
