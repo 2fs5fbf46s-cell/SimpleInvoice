@@ -72,6 +72,12 @@ struct ContractDetailView: View {
     // Status transition tracking (index once when it transitions TO "sent")
     @State private var lastStatusRaw: String = ""
 
+    // Create/open an invoice directly from this contract — no path existed
+    // before Phase 5; unlike "Convert to Invoice" on an estimate (gated on
+    // acceptance), this is always available, since some jobs need funds
+    // before the estimate is even approved.
+    @State private var navigateToInvoice: Invoice? = nil
+
     init(contract: Contract) {
         self.contract = contract
 
@@ -102,6 +108,9 @@ struct ContractDetailView: View {
         .toolbar { toolbarContent }
         .navigationDestination(item: $navigateToClientSettings) { client in
             ClientEditView(client: client)
+        }
+        .navigationDestination(item: $navigateToInvoice) { invoice in
+            InvoiceDetailView(invoice: invoice)
         }
 
         .sheet(item: $folderSheetItem) { item in
@@ -346,6 +355,13 @@ private extension ContractDetailView {
                 } label: {
                     Label("Open Files", systemImage: "folder")
                 }
+
+                Button {
+                    openOrCreateInvoiceFromContract()
+                } label: {
+                    Label(linkedInvoiceForContract == nil ? "Create Invoice" : "Open Invoice", systemImage: "doc.plaintext")
+                }
+                .disabled(contract.job == nil)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -680,6 +696,51 @@ private extension ContractDetailView {
             return [primary]
         }
         return selected.sorted { $0.startDate > $1.startDate }
+    }
+
+    /// Same "prefer a real invoice over an estimate" rule
+    /// JobSummaryView.linkedInvoiceForPrimaryAction uses, sourced from the
+    /// contract's primary Job.
+    var linkedInvoiceForContract: Invoice? {
+        guard let linked = contract.job?.invoices else { return nil }
+        if let match = linked.first(where: { $0.documentType != "estimate" }) {
+            return match
+        }
+        return linked.first
+    }
+
+    func openOrCreateInvoiceFromContract() {
+        guard let job = contract.job else { return }
+
+        if let existing = linkedInvoiceForContract {
+            navigateToInvoice = existing
+            return
+        }
+
+        let profile = profiles.first(where: { $0.businessID == job.businessID })
+        let number = profile.map { InvoiceNumberGenerator.generateNextNumber(profile: $0) }
+            ?? "INV-\(Int(Date().timeIntervalSince1970))"
+
+        let invoice = Invoice(
+            businessID: job.businessID,
+            invoiceNumber: number,
+            issueDate: Date(),
+            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date(),
+            isPaid: false,
+            documentType: "invoice",
+            client: contract.resolvedClient,
+            job: job,
+            items: []
+        )
+
+        modelContext.insert(invoice)
+        do {
+            try modelContext.save()
+            navigateToInvoice = invoice
+        } catch {
+            modelContext.delete(invoice)
+            exportError = error.localizedDescription
+        }
     }
 
     var secondaryHeaderText: String {
