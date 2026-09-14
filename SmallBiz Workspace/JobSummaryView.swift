@@ -144,6 +144,10 @@ struct JobSummaryView: View {
         return linkedInvoices.first
     }
 
+    private var linkedEstimate: Invoice? {
+        linkedInvoices.first(where: { $0.documentType == "estimate" })
+    }
+
     private var jobAttachments: [JobAttachment] {
         attachments.filter { $0.jobKey == job.id.uuidString }
     }
@@ -181,6 +185,9 @@ struct JobSummaryView: View {
                 SummaryKit.PrimaryActionRow(actions: [
                     .init(title: linkedInvoiceForPrimaryAction == nil ? "Create Invoice" : "Open Invoice", systemImage: "doc.plaintext", prominence: .primary) {
                         openOrCreateInvoice()
+                    },
+                    .init(title: linkedEstimate == nil ? "Create Estimate" : "Open Estimate", systemImage: "doc.text.magnifyingglass", prominence: .secondary) {
+                        openOrCreateEstimate()
                     },
                     .init(title: "Edit", systemImage: "square.and.pencil", prominence: .secondary) {
                         showEditor = true
@@ -443,6 +450,43 @@ struct JobSummaryView: View {
             modelContext.delete(invoice)
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func openOrCreateEstimate() {
+        if let linked = linkedEstimate {
+            selectedInvoice = linked
+            return
+        }
+
+        let estimate = Invoice(
+            businessID: job.businessID,
+            invoiceNumber: generateEstimateNumber(),
+            issueDate: Date(),
+            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date(),
+            isPaid: false,
+            documentType: "estimate",
+            client: client,
+            job: job,
+            items: []
+        )
+
+        modelContext.insert(estimate)
+        do {
+            try modelContext.save()
+            selectedInvoice = estimate
+        } catch {
+            modelContext.delete(estimate)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Matches EstimateListView/CreateMenuSheet's own estimate-number format —
+    /// invoices get sequential numbers from InvoiceNumberGenerator, but
+    /// estimates elsewhere in the app use a timestamp instead.
+    private func generateEstimateNumber() -> String {
+        let df = DateFormatter()
+        df.dateFormat = "yyyyMMdd-HHmmss"
+        return "EST-\(df.string(from: Date()))"
     }
 
     private func shareJob() {

@@ -3,6 +3,7 @@ import EventKit
 import EventKitUI
 import SwiftUI
 import UIKit
+import CoreLocation
 
 enum CalendarEventServiceError: LocalizedError {
     case accessDenied
@@ -127,6 +128,17 @@ final class CalendarEventService {
         event.endDate = end
         event.notes = notes
         event.location = location
+
+        // Plain-text `location` is always set above; a geo-pin is layered on
+        // top when the job has one (captured via LocationCaptureService), so
+        // Calendar/Maps can route to the job site, not just display its name.
+        if let latitude = job.latitude, let longitude = job.longitude {
+            let structured = EKStructuredLocation(title: location ?? "Job Site")
+            structured.geoLocation = CLLocation(latitude: latitude, longitude: longitude)
+            event.structuredLocation = structured
+        } else {
+            event.structuredLocation = nil
+        }
 
         do {
             try eventStore.save(event, span: .thisEvent, commit: true)
