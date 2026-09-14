@@ -1335,6 +1335,15 @@ final class PortalBackend {
         _ = try await seedToken(payload: body)
     }
 
+    /// A contract only belongs in the client-facing directory once it's been
+    /// activated (sent/signed/cancelled) — a bundled contract sitting in
+    /// .draft alongside an unsent estimate must never appear there. Pulled
+    /// out as a pure predicate (rather than left inline) so it's directly
+    /// testable without a network call.
+    static func isContractReadyForDirectory(_ contract: Contract) -> Bool {
+        contract.statusRaw != ContractStatus.draft.rawValue
+    }
+
     /// IMPORTANT: scope=directory so directory tokens pass and it shows in the directory list.
     @MainActor
     func indexContractForPortalDirectory(contract: Contract) async throws {
@@ -1342,6 +1351,14 @@ final class PortalBackend {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Contract is not linked to a client."])
         }
         guard client.portalEnabled else { return }
+        // A contract bundled/drafted alongside an estimate stays in .draft
+        // until the estimate is accepted (PortalService.markContractSentAndIndex
+        // flips it to .sent as part of activation) — mirrors
+        // indexEstimateForDirectory's own status gate below. Without this, a
+        // draft contract could reach the client the moment any of the
+        // existing eager upload triggers (e.g. tapping "Done" while
+        // reviewing it) fires, before the owner ever sent the estimate.
+        guard PortalBackend.isContractReadyForDirectory(contract) else { return }
 
         let updatedAtMs = Int(Date().timeIntervalSince1970 * 1000)
 

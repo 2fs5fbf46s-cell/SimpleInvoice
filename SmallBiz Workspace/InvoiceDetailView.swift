@@ -95,7 +95,14 @@ struct InvoiceDetailView: View {
     @State private var showInvoicePDFConflictDialog = false
     
     @State private var createdContract: Contract? = nil
-    
+
+    // Bundled contract (drafted alongside the estimate, before the client
+    // ever sees either — see ContractCreation.create). Kept separate from
+    // showTemplatePicker above, which is the unrelated invoice-PDF style
+    // picker.
+    @Query(sort: \ContractTemplate.name) private var contractTemplates: [ContractTemplate]
+    @State private var selectedContractTemplate: ContractTemplate?
+
     @State private var showPortal = false
     @State private var showTemplatePicker = false
 
@@ -1568,19 +1575,27 @@ struct InvoiceDetailView: View {
         .sbwCardRow()
     }
 
+    /// Contracts already linked to this estimate — old data may point via
+    /// `Contract.estimate` (the legacy `createContractFromEstimate()` path),
+    /// new data via `Contract.invoice` (the bundled-drafting path below,
+    /// `ContractCreation.create`). Union both so neither install generation
+    /// silently disappears from this card.
+    private var linkedEstimateContracts: [Contract] {
+        var seen = Set<UUID>()
+        var result: [Contract] = []
+        for c in (invoice.estimateContracts ?? []) + (invoice.contracts ?? []) {
+            guard seen.insert(c.id).inserted else { continue }
+            result.append(c)
+        }
+        return result.sorted { $0.createdAt > $1.createdAt }
+    }
+
     private var advancedContractCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Contract")
                 .font(.headline)
 
-            let existing = (invoice.estimateContracts ?? [])
-            let first = existing.first
-
-            if invoice.job == nil {
-                Text("Link or create a Job first to generate a contract.")
-                    .foregroundStyle(.secondary)
-
-            } else if let first {
+            if let first = linkedEstimateContracts.first {
                 Button {
                     createdContract = first
                 } label: {
@@ -1588,17 +1603,37 @@ struct InvoiceDetailView: View {
                 }
                 .buttonStyle(.bordered)
 
-                Text("A contract already exists for this estimate.")
+                Text("A contract is already attached to this estimate.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
             } else {
-                Button {
-                    createContractFromEstimate()
-                } label: {
-                    Label("Create Contract for this Job", systemImage: "doc.badge.plus")
+                Text("Draft the contract now, alongside the estimate — it stays private until the estimate is approved, then it's automatically sent for signature. Optional; skip if this job doesn't need one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if contractTemplates.isEmpty {
+                    Text("No contract templates found.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Template", selection: $selectedContractTemplate) {
+                        Text("Select a template…").tag(Optional<ContractTemplate>.none)
+                        ForEach(contractTemplates) { t in
+                            Text("\(t.name) (\(t.category))").tag(Optional(t))
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+
+                    Button {
+                        draftBundledContract()
+                    } label: {
+                        Label("Draft Contract for this Estimate", systemImage: "doc.badge.plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedContractTemplate == nil)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
         .sbwCardRow()
@@ -1609,7 +1644,7 @@ struct InvoiceDetailView: View {
             Text("Linked Contracts")
                 .font(.headline)
 
-            let contracts = (invoice.estimateContracts ?? [])
+            let contracts = linkedEstimateContracts
 
             if contracts.isEmpty {
                 Text("No contracts linked to this estimate yet.")
@@ -2075,29 +2110,32 @@ struct InvoiceDetailView: View {
         try? modelContext.save()
     }
     
-    private func createContractFromEstimate() {
+    /// Drafts a contract bundled with this estimate, rendered from a real
+    /// template (client name, line items, total — via ContractCreation.create)
+    /// rather than the old bare, unrendered Contract(). Doesn't require a Job
+    /// to exist yet — a job gets linked automatically once the estimate is
+    /// accepted (EstimateAcceptancePullService). Stays in .draft, invisible
+    /// to the client, until PortalService.markContractSentAndIndex activates
+    /// it on acceptance.
+    private func draftBundledContract() {
         exportError = nil
-        guard let job = invoice.job else { return }
+        guard let template = selectedContractTemplate else { return }
 
-        let c = Contract() // ✅ default init
-        c.businessID = invoice.businessID
-
-        // Safe fields that we *know* exist from your app:
-        c.title = "Contract - \(invoice.client?.name ?? "Client")"
-        c.client = invoice.client
-
-        // ✅ Enum, not String:
-        c.status = .draft
-
-        // ✅ Required links:
-        c.job = job
-        c.estimate = invoice
-
-        modelContext.insert(c)
+        let bizID = invoice.businessID
+        let business = profiles.first(where: { $0.businessID == bizID })
 
         do {
-            try modelContext.save()
-            createdContract = c
+            let contract = try ContractCreation.create(
+                context: modelContext,
+                template: template,
+                businessID: bizID,
+                business: business,
+                client: invoice.client,
+                invoice: invoice
+            )
+            contract.job = invoice.job
+            try? modelContext.save()
+            createdContract = contract
         } catch {
             exportError = error.localizedDescription
         }
@@ -2105,7 +2143,7 @@ struct InvoiceDetailView: View {
     
     private var isEstimateLocked: Bool {
         guard invoice.documentType == "estimate" else { return false }
-        return (invoice.estimateContracts ?? []).contains(where: { $0.status == .signed })
+        return linkedEstimateContracts.contains(where: { $0.status == .signed })
     }
 
     private var isEstimateAcceptedLocked: Bool {
