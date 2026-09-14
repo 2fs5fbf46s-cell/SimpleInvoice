@@ -232,7 +232,9 @@ final class PortalService {
             throw Self.err("Contract not found.")
         }
 
-        contract.statusRaw = "signed"
+        // markSigned, not a raw status write: it records the hash of the text that
+        // was actually agreed to, which is what makes a later edit detectable.
+        contract.markSigned(byName: signerName)
         try? modelContext.save()
 
         log(

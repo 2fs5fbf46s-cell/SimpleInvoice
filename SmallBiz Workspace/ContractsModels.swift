@@ -51,6 +51,11 @@ final class Contract {
     var signedAt: Date? = nil
     var signedByName: String = ""
 
+    /// SHA-256 of the body at the moment it was signed. See `ContractSignLock`:
+    /// without this, a signature says a document was agreed to but nothing says
+    /// which document, so a later edit is undetectable.
+    var signedBodyHash: String? = nil
+
 
     /// Relationships (must be optional for CloudKit)
     // Relationships (optional for CloudKit)
@@ -122,5 +127,42 @@ final class Contract {
     var status: ContractStatus {
         get { ContractStatus(rawValue: statusRaw) ?? .draft }
         set { statusRaw = newValue.rawValue }
+    }
+
+    /// Mark this contract signed and record what was signed, in one place so the
+    /// hash can never be forgotten at one of the call sites.
+    func markSigned(byName: String = "", at date: Date = Date()) {
+        statusRaw = ContractStatus.signed.rawValue
+        signedBodyHash = ContractSignLock.bodyHash(renderedBody)
+        if signedAt == nil { signedAt = date }
+        let trimmed = byName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { signedByName = trimmed }
+    }
+
+    var signatureIntegrity: ContractSignLock.Integrity {
+        ContractSignLock.verify(
+            status: status,
+            signedBodyHash: signedBodyHash,
+            currentBody: renderedBody
+        )
+    }
+
+    /// The line shown under a locked contract body.
+    var signedLockDescription: String {
+        switch signatureIntegrity {
+        case .changedSinceSigning:
+            return "This text no longer matches what was signed."
+        case .intact, .unverifiable, .notSigned:
+            let who = signedByName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let signedAt {
+                let when = signedAt.formatted(date: .abbreviated, time: .shortened)
+                return who.isEmpty
+                    ? "Signed \(when). This text can no longer be changed."
+                    : "Signed by \(who) on \(when). This text can no longer be changed."
+            }
+            return who.isEmpty
+                ? "Signed. This text can no longer be changed."
+                : "Signed by \(who). This text can no longer be changed."
+        }
     }
 }

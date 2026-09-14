@@ -88,6 +88,7 @@ Three things snapshot themselves so history stays readable, and they share one r
 
 - **Business identity** — `businessSnapshotData` / `businessSnapshotLockedAt`, locked via `InvoicePDFService`. Editing your profile doesn't change a past invoice's letterhead.
 - **The client** — `clientSnapshotData`, decided by `ClientSnapshotPolicy`, resolved for display via `invoice.clientForRendering` / `displayClientName`. `Invoice.client` is a plain relationship with **no delete rule** — exactly one of the schema's 29 relationships has one (`Invoice.items`) — so deleting a client leaves its invoices alive with `client == nil`. Never read `invoice.client` when rendering or displaying who an invoice is for.
+- **A signed contract** — `ContractSignLock` records `signedBodyHash` at signing; `Contract.markSigned` is the only way to set signed status, so the hash can't be forgotten. The backend enforces the same rules in `src/lib/contractSignLock.ts` and the two must agree on the hash (normalize CRLF, trim, SHA-256, hex).
 
 `isBusinessInfoLocked` is the shared "is this finalized" predicate: snapshot lock record, or paid, or uploaded to the portal, or a sent/accepted/declined estimate.
 

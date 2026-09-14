@@ -512,7 +512,7 @@ private extension ContractDetailView {
             Text("Contract Body")
                 .font(.headline)
 
-            if MusicSplitSheetDraft.isSmartMusicSplitSheet(contract) {
+            if MusicSplitSheetDraft.isSmartMusicSplitSheet(contract), !contract.isSigned {
                 Button {
                     openMusicSplitSheetEditor()
                 } label: {
@@ -522,9 +522,27 @@ private extension ContractDetailView {
                 .tint(SBWTheme.brandBlue)
             }
 
-            TextEditor(text: $contract.renderedBody)
-                .frame(minHeight: 260)
-                .font(.body)
+            // A signed contract is a record of what someone agreed to. Editing the
+            // text here used to be possible, and the portal would then serve the new
+            // words under the old signature. The backend refuses the change too
+            // (`contractSignLock`); this is the half the user actually sees.
+            if contract.isSigned {
+                Text(contract.renderedBody)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+
+                Label(
+                    contract.signedLockDescription,
+                    systemImage: "lock.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else {
+                TextEditor(text: $contract.renderedBody)
+                    .frame(minHeight: 260)
+                    .font(.body)
+            }
         }
         .sbwContractCardRow()
     }
@@ -534,9 +552,16 @@ private extension ContractDetailView {
             Text("Status")
                 .font(.headline)
 
-            Picker("Status", selection: $contract.statusRaw) {
-                ForEach(ContractStatus.allCases, id: \.self) { s in
-                    Text(s.rawValue.capitalized).tag(s.rawValue)
+            if contract.isSigned {
+                // Signed is terminal. Offering "Draft" in this picker meant a
+                // signature could be walked back with one tap.
+                Label("Signed", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(SBWTheme.brandBlue)
+            } else {
+                Picker("Status", selection: $contract.statusRaw) {
+                    ForEach(ContractStatus.selectableBeforeSigning, id: \.self) { s in
+                        Text(s.rawValue.capitalized).tag(s.rawValue)
+                    }
                 }
             }
         }
