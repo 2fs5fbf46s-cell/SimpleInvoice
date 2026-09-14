@@ -40,8 +40,11 @@ final class BusinessProfile {
     var bookingOwnerEmail: String? = nil
 
     var logoData: Data? = nil
-   
 
+    // Overdue payment reminders (client-facing email, opt-in). Cadence is
+    // "days overdue before the first — and only — nudge fires."
+    var overdueReminderEnabled: Bool = false
+    var overdueReminderCadenceDays: Int = 7
 
     var invoicePrefix: String = "SI"
     var nextInvoiceNumber: Int = 1
@@ -85,6 +88,8 @@ Other
         bookingBrandName: String? = nil,
         bookingOwnerEmail: String? = nil,
         logoData: Data? = nil,
+        overdueReminderEnabled: Bool = false,
+        overdueReminderCadenceDays: Int = 7,
         invoicePrefix: String = "SI",
         nextInvoiceNumber: Int = 1,
         lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date()),
@@ -124,6 +129,8 @@ Other
         self.bookingBrandName = bookingBrandName
         self.bookingOwnerEmail = bookingOwnerEmail
         self.logoData = logoData
+        self.overdueReminderEnabled = overdueReminderEnabled
+        self.overdueReminderCadenceDays = overdueReminderCadenceDays
         self.invoicePrefix = invoicePrefix
         self.nextInvoiceNumber = nextInvoiceNumber
         self.lastInvoiceYear = lastInvoiceYear

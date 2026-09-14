@@ -1285,7 +1285,14 @@ final class PortalBackend {
             "invoiceNumber": invoice.invoiceNumber,
             "issueDateMs": Int((invoice.issueDate.timeIntervalSince1970 * 1000).rounded()),
             "dueDateMs": Int((invoice.dueDate.timeIntervalSince1970 * 1000).rounded()),
+            // The backend's overdue-reminder job reads "dueAtMs" specifically
+            // (matching its own cron naming) — "dueDateMs" above was never
+            // actually read server-side under that name. Sent alongside it
+            // rather than renamed, in case anything else already depends on
+            // the old key.
+            "dueAtMs": Int((invoice.dueDate.timeIntervalSince1970 * 1000).rounded()),
             "clientName": client.name,
+            "clientEmail": client.email.trimmingCharacters(in: .whitespacesAndNewlines),
             "amountCents": totalCents,
             "subtotalCents": subtotalCents,
             "taxCents": taxCents,
@@ -1650,6 +1657,40 @@ final class PortalBackend {
         }
 
         return link
+    }
+
+    // MARK: - Notification settings
+
+    /// Pushes the business's overdue-reminder preference up so the backend
+    /// cron job (which has no other way to read on-device settings) can act
+    /// on it. Best-effort: a sync failure here just means the backend keeps
+    /// using whatever it last had — it never blocks the local save.
+    func syncOverdueReminderSettings(enabled: Bool, cadenceDays: Int) async throws {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/notifications/settings")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let payload: [String: Any] = [
+            "settings": [
+                "overdueReminders": [
+                    "enabled": enabled,
+                    "cadenceDays": cadenceDays
+                ]
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
     }
 
     // MARK: - Payment status

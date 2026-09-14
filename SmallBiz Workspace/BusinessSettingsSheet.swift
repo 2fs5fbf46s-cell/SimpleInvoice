@@ -87,6 +87,13 @@ struct BusinessSettingsSheet: View {
                     systemImage: "creditcard.fill",
                     keyword: "Payments",
                     destination: AnyView(SetupPaymentsView())
+                ),
+                SettingsItem(
+                    title: "Payment Reminders",
+                    subtitle: "Automatic emails for overdue invoices",
+                    systemImage: "bell.badge.fill",
+                    keyword: "Reminders",
+                    destination: AnyView(OverdueReminderSettingsView())
                 )
             ]),
             SettingsGroup(title: "Customers", items: [
