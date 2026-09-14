@@ -207,6 +207,7 @@ enum AppModelContainerFactory {
             LineItem.self,
             CatalogItem.self,
             Contract.self,
+            ContractSignature.self,
             ClientAttachment.self,
             JobAttachment.self,
 
@@ -243,9 +244,14 @@ enum AppModelContainerFactory {
     }
 
     /// An isolated in-memory container over the same models. For tests.
+    ///
+    /// `cloudKitDatabase` defaults to `.automatic`, which stands up a real
+    /// `NSCloudKitMirroringDelegate` even for an in-memory store, visible in
+    /// test logs as mirroring setup/teardown noise on every container. Tests
+    /// never need CloudKit sync, so disable it here.
     static func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema(models)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 }

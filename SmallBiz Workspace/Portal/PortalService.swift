@@ -14,6 +14,15 @@ final class PortalService {
         self.modelContext = modelContext
     }
 
+    // The compiler synthesizes an isolated deinit for @MainActor classes
+    // under this target's deployment target, which back-deploys through a
+    // thunk with a known heap-corruption bug (swiftlang/swift#87316) when an
+    // instance is deallocated synchronously outside a Task — exactly what
+    // happens when a local `let portal = PortalService(...)` goes out of
+    // scope at the end of a plain (non-async) function. Nothing here needs
+    // actor isolation to tear down, so opt out of the synthesized path.
+    nonisolated deinit {}
+
     // MARK: - Helpers
 
     private func businessID(for clientID: UUID) throws -> UUID {
