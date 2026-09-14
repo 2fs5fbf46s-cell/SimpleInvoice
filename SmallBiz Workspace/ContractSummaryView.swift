@@ -490,6 +490,7 @@ struct ContractSummaryView: View {
             do {
                 if contract.client == nil, let resolved = contract.resolvedClient {
                     contract.client = resolved
+                    contract.captureClientSnapshotIfNeeded()
                     try? modelContext.save()
                 }
                 let token = try await PortalBackend.shared.createContractPortalToken(contract: contract)

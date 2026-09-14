@@ -163,6 +163,105 @@ final class ClientDeletionTests: XCTestCase {
         XCTAssertTrue(impact.hasHistory)
     }
 
+    // MARK: - Orphans
+
+    /// A join row exists only to link an owner to a file. Left to nullify it
+    /// survives its owner as invisible garbage that accumulates forever and
+    /// syncs to CloudKit. Exactly one of the schema's 29 relationships had a
+    /// delete rule before this.
+    func testDeletingAClientTakesItsAttachmentJoinRowsWithIt() throws {
+        let client = try makeClient()
+        let file = FileItem(
+            displayName: "contract.pdf",
+            originalFileName: "contract.pdf",
+            relativePath: "files/contract.pdf",
+            fileExtension: "pdf",
+            uti: "com.adobe.pdf",
+            byteCount: 1024,
+            folderKey: ""
+        )
+        context.insert(file)
+        let link = ClientAttachment(client: client, file: file)
+        context.insert(link)
+        try context.save()
+
+        context.delete(client)
+        try context.save()
+
+        let orphans = try context.fetch(FetchDescriptor<ClientAttachment>())
+        XCTAssertTrue(orphans.isEmpty, "the join row must not outlive its client")
+
+        let files = try context.fetch(FetchDescriptor<FileItem>())
+        XCTAssertEqual(
+            files.count, 1,
+            "the file itself lives in the folder workspace and must survive"
+        )
+    }
+
+    func testDeletingAContractTakesItsSignaturesWithIt() throws {
+        let contract = Contract(businessID: UUID(), title: "Service Agreement")
+        context.insert(contract)
+
+        let signature = ContractSignature(
+            businessID: contract.businessID,
+            clientID: UUID(),
+            contract: contract,
+            sessionID: nil,
+            signerRole: "client",
+            signerName: "Ada Lovelace",
+            signatureType: "typed",
+            signatureImageData: nil,
+            signatureText: "Ada Lovelace",
+            consentVersion: "1",
+            contractBodyHash: ContractSignLock.bodyHash(contract.renderedBody),
+            deviceLabel: nil
+        )
+        context.insert(signature)
+        try context.save()
+
+        context.delete(contract)
+        try context.save()
+
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<ContractSignature>()).isEmpty,
+            "a signature nobody can trace back to a document is worse than none"
+        )
+    }
+
+    // MARK: - Contracts keep their client too
+
+    func testAContractStillNamesItsClientAfterTheClientIsDeleted() throws {
+        let client = try makeClient()
+        let contract = Contract(businessID: client.businessID, title: "Service Agreement", client: client)
+        context.insert(contract)
+        contract.captureClientSnapshotIfNeeded()
+        try context.save()
+
+        context.delete(client)
+        try context.save()
+
+        XCTAssertNil(contract.client)
+        XCTAssertEqual(contract.displayClientName, "Ada Lovelace")
+    }
+
+    func testASignedContractKeepsThePartyItWasSignedWith() throws {
+        let client = try makeClient()
+        let contract = Contract(businessID: client.businessID, title: "Service Agreement", client: client)
+        context.insert(contract)
+        contract.markSigned(byName: "Ada Lovelace")
+        try context.save()
+
+        client.name = "Ada Byron"
+        contract.captureClientSnapshotIfNeeded()
+        try context.save()
+
+        XCTAssertEqual(
+            contract.displayClientName,
+            "Ada Lovelace",
+            "a signed contract does not get its counterparty renamed"
+        )
+    }
+
     func testAClientWithNothingAttachedHasNoImpact() throws {
         let client = try makeClient()
 

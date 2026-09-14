@@ -207,6 +207,12 @@ struct ContractsHomeView: View {
         if let name = contract.invoice?.client?.name, !name.isEmpty { return name }
         if let name = contract.estimate?.client?.name, !name.isEmpty { return name }
 
+        // Every hop above nullifies when the client is deleted. The snapshot is
+        // what keeps this row identifiable afterwards.
+        if let name = contract.clientSnapshot?.name, !name.isEmpty { return name }
+        if let name = contract.invoice?.clientSnapshot?.name, !name.isEmpty { return name }
+        if let name = contract.estimate?.clientSnapshot?.name, !name.isEmpty { return name }
+
         if let job = contract.job {
             if let id = job.clientID, let name = clientNameByID[id], !name.isEmpty {
                 return name

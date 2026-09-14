@@ -56,14 +56,27 @@ final class Contract {
     /// which document, so a later edit is undetectable.
     var signedBodyHash: String? = nil
 
+    /// Who this contract is with, copied onto the contract. Same reason invoices
+    /// carry one: `client` nullifies on delete, and a contract that cannot say
+    /// whose it is stops being a record. See `ClientSnapshotPolicy`.
+    var clientSnapshotData: Data? = nil
+
 
     /// Relationships (must be optional for CloudKit)
     // Relationships (optional for CloudKit)
     var client: Client? = nil
     var invoice: Invoice? = nil
-    @Relationship(inverse: \ContractAttachment.contract) var attachments: [ContractAttachment]? = nil
+    // Cascade: a join row exists only to link this record to a file. Left to
+    // nullify (the default) it survives its owner as an invisible orphan that
+    // accumulates forever and syncs to CloudKit. The FileItem itself is not
+    // cascaded — it lives in the folder workspace and other records may use it.
+    @Relationship(deleteRule: .cascade, inverse: \ContractAttachment.contract)
+    var attachments: [ContractAttachment]? = nil
     
-    @Relationship(inverse: \ContractSignature.contract) var signatures: [ContractSignature]? = nil
+    // Cascade: a signature is meaningless without the contract it signs, and an
+    // orphaned one is a record of consent nobody can trace back to a document.
+    @Relationship(deleteRule: .cascade, inverse: \ContractSignature.contract)
+    var signatures: [ContractSignature]? = nil
 
     
     var job: Job? = nil
@@ -78,6 +91,60 @@ final class Contract {
         if let c = invoice?.client { return c }
         if let c = estimate?.client { return c }
         return nil
+    }
+
+    var clientSnapshot: ClientSnapshot? {
+        get {
+            guard let data = clientSnapshotData else { return nil }
+            return try? JSONDecoder().decode(ClientSnapshot.self, from: data)
+        }
+        set {
+            guard let newValue else {
+                clientSnapshotData = nil
+                return
+            }
+            clientSnapshotData = try? JSONEncoder().encode(newValue)
+        }
+    }
+
+    var liveClientSnapshot: ClientSnapshot? {
+        guard let client = resolvedClient else { return nil }
+        return ClientSnapshot(
+            name: client.name,
+            email: client.email,
+            phone: client.phone,
+            address: client.address
+        )
+    }
+
+    /// Refresh the stored copy if policy says to. A signed contract is locked, so
+    /// it keeps the party it was signed with.
+    @discardableResult
+    func captureClientSnapshotIfNeeded() -> Bool {
+        guard let next = ClientSnapshotPolicy.snapshotToStore(
+            live: liveClientSnapshot,
+            stored: clientSnapshot,
+            isLocked: isSigned
+        ) else { return false }
+
+        clientSnapshot = next
+        return true
+    }
+
+    var clientForRendering: ClientSnapshot? {
+        ClientSnapshotPolicy.partyToRender(
+            live: liveClientSnapshot,
+            stored: clientSnapshot,
+            isLocked: isSigned
+        )
+    }
+
+    /// The name shown in contract lists. Falls back to the snapshot, so a deleted
+    /// client leaves a named contract rather than an unidentifiable row.
+    var displayClientName: String {
+        let name = (clientForRendering?.name ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "No Client" : name
     }
     
     
@@ -132,6 +199,9 @@ final class Contract {
     /// Mark this contract signed and record what was signed, in one place so the
     /// hash can never be forgotten at one of the call sites.
     func markSigned(byName: String = "", at date: Date = Date()) {
+        // Capture before the status flips, while the contract still counts as a
+        // draft, so it records the party it is actually with.
+        captureClientSnapshotIfNeeded()
         statusRaw = ContractStatus.signed.rawValue
         signedBodyHash = ContractSignLock.bodyHash(renderedBody)
         if signedAt == nil { signedAt = date }

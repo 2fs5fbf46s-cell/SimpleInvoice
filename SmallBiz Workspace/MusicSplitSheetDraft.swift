@@ -138,6 +138,13 @@ struct MusicSplitSheetDraft: Equatable, Codable {
         return contract
     }
 
+    /// Rewrite a split sheet contract from this draft.
+    ///
+    /// Returns false, changing nothing, when the contract has been signed. The
+    /// guard lives here rather than only on the button that opens the editor,
+    /// because this rewrites both the body and the title — the two fields the
+    /// portal now refuses to change on a signed contract.
+    @discardableResult
     func update(
         contract: Contract,
         business: BusinessProfile?,
@@ -145,7 +152,9 @@ struct MusicSplitSheetDraft: Equatable, Codable {
         linkedJob: Job? = nil,
         linkedInvoice: Invoice? = nil,
         updatedAt: Date = .now
-    ) {
+    ) -> Bool {
+        guard ContractSignLock.canEditBody(status: contract.status) else { return false }
+
         let resolvedJob = linkedJob ?? linkedInvoice?.job ?? contract.job
 
         contract.title = contractTitle
@@ -154,6 +163,7 @@ struct MusicSplitSheetDraft: Equatable, Codable {
         contract.templateCategory = Self.templateCategory
         contract.renderedBody = contractBody(preparedBy: business, generatedAt: updatedAt)
         contract.client = selectedClient
+        contract.captureClientSnapshotIfNeeded()
 
         if let linkedInvoice {
             contract.invoice = linkedInvoice
@@ -168,6 +178,7 @@ struct MusicSplitSheetDraft: Equatable, Codable {
 
         contract.portalNeedsUpload = true
         applySmartTemplateMetadata(to: contract)
+        return true
     }
 
     func applySmartTemplateMetadata(to contract: Contract) {

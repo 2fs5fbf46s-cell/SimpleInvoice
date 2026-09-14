@@ -418,6 +418,9 @@ struct ClientListView: View {
             for invoice in client.invoices ?? [] {
                 invoice.captureClientSnapshotIfNeeded()
             }
+            for contract in client.contracts ?? [] {
+                contract.captureClientSnapshotIfNeeded()
+            }
             modelContext.delete(client)
         }
 

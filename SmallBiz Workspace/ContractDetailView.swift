@@ -704,6 +704,15 @@ private extension ContractDetailView {
 private extension ContractDetailView {
     @MainActor
     func rerenderBodyFromTemplate(force: Bool = false) {
+        // Guarded here rather than at the four call sites that reach it — linking
+        // a job, clearing linked jobs, or changing the primary job all land here,
+        // and any of them would otherwise rewrite the text of a signed contract
+        // with no prompt at all.
+        guard ContractSignLock.canEditBody(status: contract.status) else {
+            pendingTemplateRerender = false
+            return
+        }
+
         guard let template = templates.first(where: { $0.name == contract.templateName }) else { return }
 
         let ctx = ContractContext(
@@ -746,6 +755,7 @@ private extension ContractDetailView {
 
         if contract.client == nil, let resolved = contract.resolvedClient {
             contract.client = resolved
+            contract.captureClientSnapshotIfNeeded()
             try? modelContext.save()
         }
 
@@ -827,6 +837,9 @@ private extension ContractDetailView {
         let work = DispatchWorkItem {
             do {
                 contract.updatedAt = .now
+                // Every edit funnels through here, so this is the one place that
+                // has to remember who the contract is with.
+                contract.captureClientSnapshotIfNeeded()
                 try modelContext.save()
             } catch {
                 SBWLog.ui.problem("Auto-save failed: \(error)")

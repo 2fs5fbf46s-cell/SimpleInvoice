@@ -180,7 +180,12 @@ final class Client {
     // ✅ ARRAY-side inverses for CloudKit (avoid circular macro issues)
     @Relationship(inverse: \Invoice.client)
     var invoices: [Invoice]? = []
-    @Relationship(inverse: \ClientAttachment.client) var attachments: [ClientAttachment]? = nil
+    // Cascade: a join row exists only to link this record to a file. Left to
+    // nullify (the default) it survives its owner as an invisible orphan that
+    // accumulates forever and syncs to CloudKit. The FileItem itself is not
+    // cascaded — it lives in the folder workspace and other records may use it.
+    @Relationship(deleteRule: .cascade, inverse: \ClientAttachment.client)
+    var attachments: [ClientAttachment]? = nil
     @Relationship(inverse: \Booking.client) var bookings: [Booking]? = nil
     
 
@@ -272,7 +277,12 @@ final class Invoice {
     @Relationship(deleteRule: .cascade)
     var items: [LineItem]? = []
 
-    @Relationship(inverse: \InvoiceAttachment.invoice) var attachments: [InvoiceAttachment]? = nil
+    // Cascade: a join row exists only to link this record to a file. Left to
+    // nullify (the default) it survives its owner as an invisible orphan that
+    // accumulates forever and syncs to CloudKit. The FileItem itself is not
+    // cascaded — it lives in the folder workspace and other records may use it.
+    @Relationship(deleteRule: .cascade, inverse: \InvoiceAttachment.invoice)
+    var attachments: [InvoiceAttachment]? = nil
     
     
     // MARK: - Estimate workflow

@@ -181,6 +181,53 @@ final class ContractSignLockTests: XCTestCase {
         XCTAssertTrue(description.contains("can no longer be changed"))
     }
 
+    // MARK: - Every path that rewrites the body
+
+    /// The split sheet editor rewrites both the body and the title. Guarding only
+    /// the button that opens it left the rewrite itself reachable — and the title
+    /// is one of the two fields the portal now refuses to change once signed.
+    func testTheSplitSheetEditorRefusesToRewriteASignedContract() throws {
+        let client = Client(businessID: UUID(), name: "Ada Lovelace")
+        context.insert(client)
+
+        let contract = try makeContract()
+        contract.markSigned(byName: "Ada Lovelace")
+        try context.save()
+
+        var draft = MusicSplitSheetDraft()
+        draft.songTitle = "Something Else Entirely"
+
+        let updated = draft.update(
+            contract: contract,
+            business: nil,
+            selectedClient: client
+        )
+
+        XCTAssertFalse(updated, "the rewrite has to refuse, not just be hard to reach")
+        XCTAssertEqual(contract.renderedBody, body, "and it must change nothing")
+        XCTAssertEqual(contract.title, "Service Agreement")
+    }
+
+    func testTheSplitSheetEditorStillWorksOnAnUnsignedContract() throws {
+        let client = Client(businessID: UUID(), name: "Ada Lovelace")
+        context.insert(client)
+
+        let contract = try makeContract()
+        try context.save()
+
+        var draft = MusicSplitSheetDraft()
+        draft.songTitle = "A New Song"
+
+        let updated = draft.update(
+            contract: contract,
+            business: nil,
+            selectedClient: client
+        )
+
+        XCTAssertTrue(updated)
+        XCTAssertNotEqual(contract.renderedBody, body, "an unsigned contract is still editable")
+    }
+
     func testAnUnnamedSignerStillReadsSensibly() throws {
         let contract = try makeContract()
         contract.markSigned()

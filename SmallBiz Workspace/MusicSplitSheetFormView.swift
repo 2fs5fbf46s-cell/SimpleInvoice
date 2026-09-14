@@ -389,13 +389,17 @@ struct MusicSplitSheetFormView: View {
         let savedContract: Contract
 
         if let existingContract {
-            draft.update(
+            let updated = draft.update(
                 contract: existingContract,
                 business: businessProfile,
                 selectedClient: selectedClient,
                 linkedJob: linkedJob,
                 linkedInvoice: linkedInvoice
             )
+            guard updated else {
+                createError = "This split sheet has been signed, so its contents can no longer be changed."
+                return
+            }
             savedContract = existingContract
         } else {
             let contract = draft.makeContract(

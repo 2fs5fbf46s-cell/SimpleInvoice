@@ -161,6 +161,7 @@ enum PortalAutoSyncService {
         }
         if contract.client == nil {
             contract.client = client
+            contract.captureClientSnapshotIfNeeded()
         }
 
         contract.portalUploadInFlight = true

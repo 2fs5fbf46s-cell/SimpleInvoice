@@ -41,7 +41,12 @@ final class Job {
     @Relationship(inverse: \Invoice.job)
     var invoices: [Invoice]? = []
 
-    @Relationship(inverse: \JobAttachment.job) var attachments: [JobAttachment]? = nil
+    // Cascade: a join row exists only to link this record to a file. Left to
+    // nullify (the default) it survives its owner as an invisible orphan that
+    // accumulates forever and syncs to CloudKit. The FileItem itself is not
+    // cascaded — it lives in the folder workspace and other records may use it.
+    @Relationship(deleteRule: .cascade, inverse: \JobAttachment.job)
+    var attachments: [JobAttachment]? = nil
     
     @Relationship(inverse: \Contract.job)
     var contracts: [Contract]? = []

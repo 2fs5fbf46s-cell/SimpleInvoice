@@ -87,10 +87,17 @@ There is no `Estimate` model. An estimate is an `Invoice` with `documentType == 
 Three things snapshot themselves so history stays readable, and they share one rule: while a document is a draft it follows the live record; once it is locked it keeps what it recorded.
 
 - **Business identity** — `businessSnapshotData` / `businessSnapshotLockedAt`, locked via `InvoicePDFService`. Editing your profile doesn't change a past invoice's letterhead.
-- **The client** — `clientSnapshotData`, decided by `ClientSnapshotPolicy`, resolved for display via `invoice.clientForRendering` / `displayClientName`. `Invoice.client` is a plain relationship with **no delete rule** — exactly one of the schema's 29 relationships has one (`Invoice.items`) — so deleting a client leaves its invoices alive with `client == nil`. Never read `invoice.client` when rendering or displaying who an invoice is for.
+- **The client** — `clientSnapshotData` on both `Invoice` and `Contract`, decided by `ClientSnapshotPolicy`, resolved for display via `clientForRendering` / `displayClientName`. `Invoice.client` and `Contract.client` nullify on delete, so deleting a client leaves its documents alive with `client == nil`. Never read `.client` directly when rendering or displaying who a document is for.
 - **A signed contract** — `ContractSignLock` records `signedBodyHash` at signing; `Contract.markSigned` is the only way to set signed status, so the hash can't be forgotten. The backend enforces the same rules in `src/lib/contractSignLock.ts` and the two must agree on the hash (normalize CRLF, trim, SHA-256, hex).
 
 `isBusinessInfoLocked` is the shared "is this finalized" predicate: snapshot lock record, or paid, or uploaded to the portal, or a sent/accepted/declined estimate.
+
+**Delete rules.** Of the schema's 29 relationships, 6 carry one, and the split is deliberate:
+
+- **Cascade** on join rows that exist only to connect two records — `Invoice.items`, the four `*Attachment` collections, and `Contract.signatures`. Left to nullify (the SwiftData default) these outlive their owner as invisible orphans that accumulate forever and sync to CloudKit. The `FileItem` behind an attachment is *not* cascaded: it lives in the folder workspace and other records may reference it.
+- **Nullify** everywhere a record should survive its parent — invoices and contracts outliving a client, invoices outliving a job. That survival is what the snapshots above pay for. Adding a cascade there would destroy financial history.
+
+When you add a relationship, decide which of the two it is. The default is nullify and it is silent either way.
 
 
 ### Money: integer cents are authoritative
