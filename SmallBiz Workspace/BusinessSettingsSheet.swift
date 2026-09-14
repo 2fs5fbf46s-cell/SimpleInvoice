@@ -9,7 +9,15 @@ import SwiftData
 struct BusinessSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
-    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
+    /// Passed in directly rather than resolved via `@EnvironmentObject`: this
+    /// sheet's `.onAppear` is the only place that reads it, and an
+    /// environment object read solely inside a closure — never in `body`
+    /// itself — crashed `BusinessAvatarButton` with the same "No
+    /// ObservableObject" error for the same reason (see that type's doc
+    /// comment). A sheet's root view is especially exposed to this, since its
+    /// `.onAppear` can fire before the presentation's environment is fully
+    /// attached.
+    let presenter: BusinessSettingsPresenter
     @Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]) private var profiles: [BusinessProfile]
 
     @State private var searchText = ""
@@ -194,8 +202,8 @@ struct BusinessSettingsSheet: View {
                 }
             }
             .onAppear {
-                if businessSettingsPresenter.pendingDestination == .setupPayments {
-                    businessSettingsPresenter.pendingDestination = nil
+                if presenter.pendingDestination == .setupPayments {
+                    presenter.pendingDestination = nil
                     pushSetupPaymentsNow = true
                 }
             }

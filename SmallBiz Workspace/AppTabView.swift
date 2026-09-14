@@ -154,7 +154,7 @@ struct AppTabView: View {
             CreateMenuSheet()
         }
         .sheet(isPresented: $businessSettingsPresenter.isPresented) {
-            BusinessSettingsSheet()
+            BusinessSettingsSheet(presenter: businessSettingsPresenter)
         }
         .sheet(item: $deepLinkedEstimate, onDismiss: {
             portalReturn.consumeEstimateRequest()

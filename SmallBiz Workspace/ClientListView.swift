@@ -11,6 +11,7 @@ import SwiftData
 
 struct ClientListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
     private let businessID: UUID?
 
     @Query private var allClients: [Client]
@@ -231,7 +232,7 @@ struct ClientListView: View {
         .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                BusinessAvatarButton()
+                BusinessAvatarButton { businessSettingsPresenter.open() }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { addClientAndOpenSheet() } label: {

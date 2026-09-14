@@ -4,6 +4,7 @@ import SwiftData
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
     @StateObject private var metricsVM = DashboardMetricsVM()
     @State private var metricState = DashboardMetricState()
     @State private var showHelpCenter = false
@@ -299,7 +300,7 @@ struct DashboardView: View {
         .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                BusinessAvatarButton()
+                BusinessAvatarButton { businessSettingsPresenter.open() }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

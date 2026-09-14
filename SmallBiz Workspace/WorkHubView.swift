@@ -4,6 +4,7 @@ import SwiftUI
 /// idea as Money: one segmented control instead of three separate homes.
 struct WorkHubView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
 
     enum Segment: String, CaseIterable, Identifiable {
         case jobs = "Jobs"
@@ -35,7 +36,7 @@ struct WorkHubView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                BusinessAvatarButton()
+                BusinessAvatarButton { businessSettingsPresenter.open() }
             }
         }
     }

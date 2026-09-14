@@ -24,10 +24,21 @@ final class BusinessSettingsPresenter: ObservableObject {
 
 /// The business-avatar button that opens Business settings, placed the same
 /// way on every tab's root screen instead of a fifth "More" tab.
+///
+/// Takes the open action as a plain closure rather than resolving
+/// `BusinessSettingsPresenter` via its own `@EnvironmentObject`: this view is
+/// only ever instantiated inside a `.toolbar { }` closure, and an environment
+/// object read solely inside a button's tap action (never inside `body`
+/// itself, the way `activeBiz` is read here via `initials`) can end up bound
+/// to whatever environment existed when the toolbar content was first built
+/// for layout, not the environment active at tap time — a known SwiftUI
+/// toolbar gotcha that crashed this button with "No ObservableObject of type
+/// BusinessSettingsPresenter found" on every tap. Forwarding the action in
+/// from the caller's own body sidesteps it entirely.
 struct BusinessAvatarButton: View {
-    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]) private var profiles: [BusinessProfile]
+    var onTap: () -> Void
 
     private var initials: String {
         let name = profiles.first(where: { $0.businessID == activeBiz.activeBusinessID })?.name
@@ -43,7 +54,7 @@ struct BusinessAvatarButton: View {
     var body: some View {
         Button {
             Haptics.lightTap()
-            businessSettingsPresenter.open()
+            onTap()
         } label: {
             Text(initials)
                 .font(.scaledSystem(size: 12, weight: .bold, relativeTo: .caption))

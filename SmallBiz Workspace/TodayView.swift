@@ -10,6 +10,7 @@ import SwiftData
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
     @StateObject private var metricsVM = DashboardMetricsVM()
 
     @Query private var invoices: [Invoice]
@@ -103,7 +104,7 @@ struct TodayView: View {
         .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                BusinessAvatarButton()
+                BusinessAvatarButton { businessSettingsPresenter.open() }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

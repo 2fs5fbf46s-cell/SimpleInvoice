@@ -6,6 +6,7 @@ import SwiftUI
 /// screens underneath changes.
 struct MoneyHubView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
 
     enum Segment: String, CaseIterable, Identifiable {
         case invoices = "Invoices"
@@ -37,7 +38,7 @@ struct MoneyHubView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                BusinessAvatarButton()
+                BusinessAvatarButton { businessSettingsPresenter.open() }
             }
         }
     }
