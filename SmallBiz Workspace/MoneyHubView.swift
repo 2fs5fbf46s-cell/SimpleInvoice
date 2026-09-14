@@ -11,6 +11,7 @@ struct MoneyHubView: View {
     enum Segment: String, CaseIterable, Identifiable {
         case invoices = "Invoices"
         case estimates = "Estimates"
+        case expenses = "Expenses"
         case insights = "Insights"
         var id: String { rawValue }
     }
@@ -32,6 +33,8 @@ struct MoneyHubView: View {
                 InvoiceListView(businessID: activeBiz.activeBusinessID)
             case .estimates:
                 EstimateListView(businessID: activeBiz.activeBusinessID)
+            case .expenses:
+                ExpenseListView(businessID: activeBiz.activeBusinessID)
             case .insights:
                 BusinessInsightsView(businessID: activeBiz.activeBusinessID)
             }

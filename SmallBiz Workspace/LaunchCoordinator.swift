@@ -228,7 +228,10 @@ enum AppModelContainerFactory {
 
             Job.self,
             Blockout.self,
-            AppNotification.self
+            AppNotification.self,
+
+            Expense.self,
+            ExpenseAttachment.self
     ]
 
     static func makeContainer() throws -> ModelContainer {

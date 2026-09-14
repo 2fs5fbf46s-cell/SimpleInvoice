@@ -29,6 +29,7 @@
 		B7A000000000000000000036 /* PaymentErrorPresenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000037 /* PaymentErrorPresenterTests.swift */; };
 		B7A000000000000000000038 /* InvoiceSendGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000039 /* InvoiceSendGuardTests.swift */; };
 		B7A00000000000000000003A /* AttentionFeedServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000003B /* AttentionFeedServiceTests.swift */; };
+		B7A00000000000000000003C /* ExpenseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000003D /* ExpenseTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +66,7 @@
 		B7A000000000000000000037 /* PaymentErrorPresenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentErrorPresenterTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000039 /* InvoiceSendGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceSendGuardTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000003B /* AttentionFeedServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionFeedServiceTests.swift; sourceTree = "<group>"; };
+		B7A00000000000000000003D /* ExpenseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -130,6 +132,7 @@
 				B7A000000000000000000039 /* InvoiceSendGuardTests.swift */,
 				B7A000000000000000000037 /* PaymentErrorPresenterTests.swift */,
 				B7A00000000000000000003B /* AttentionFeedServiceTests.swift */,
+				B7A00000000000000000003D /* ExpenseTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -280,6 +283,7 @@
 				B7A000000000000000000038 /* InvoiceSendGuardTests.swift in Sources */,
 				B7A000000000000000000036 /* PaymentErrorPresenterTests.swift in Sources */,
 				B7A00000000000000000003A /* AttentionFeedServiceTests.swift in Sources */,
+				B7A00000000000000000003C /* ExpenseTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

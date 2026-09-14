@@ -35,6 +35,7 @@ extension Invoice: BusinessOwned {}
 extension Job: BusinessOwned {}
 extension Contract: BusinessOwned {}
 extension BusinessProfile: BusinessOwned {}
+extension Expense: BusinessOwned {}
 
 extension Array where Element: BusinessOwned {
     func scoped(to businessID: UUID?) -> [Element] {

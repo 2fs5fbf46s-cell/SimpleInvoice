@@ -80,6 +80,10 @@ enum SBWTheme {
         case "Inventory", "Saved Items":
             // Light neutral
             return AnyShapeStyle(Color.primary.opacity(0.06))
+
+        case "Expenses":
+            // Amber lane (money going out, distinct from paid-in green/blue)
+            return AnyShapeStyle(Color.orange.opacity(0.12))
             
 
         case "Client Portal":

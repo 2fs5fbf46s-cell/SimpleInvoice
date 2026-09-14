@@ -7,6 +7,15 @@ struct WeeklyPaidPoint: Identifiable {
     let id = UUID()
     let weekStart: Date
     let paidCents: Int
+    let expenseCents: Int
+
+    var profitCents: Int { paidCents - expenseCents }
+}
+
+struct ExpenseCategoryTotal: Identifiable {
+    let category: ExpenseCategory
+    let cents: Int
+    var id: String { category.rawValue }
 }
 
 struct BusinessInsightsView: View {
@@ -23,6 +32,8 @@ struct BusinessInsightsView: View {
     @State private var sentUnpaidCount: Int = 0
     @State private var estimateCount: Int = 0
     @State private var weeklyPaidTrend: [WeeklyPaidPoint] = []
+    @State private var expenseMonthCents: Int = 0
+    @State private var categoryBreakdown: [ExpenseCategoryTotal] = []
     @State private var isLoadingInsights = false
     @State private var hasAnyRecords = false
     @State private var loadGeneration = UUID()
@@ -74,6 +85,7 @@ struct BusinessInsightsView: View {
                         } else {
                             trendCard
                             cashInCard
+                            expensesCard
                             outstandingCard(businessID: bizID)
                             pipelineCard
                         }
@@ -113,7 +125,7 @@ struct BusinessInsightsView: View {
             ContentUnavailableView(
                 "No insights yet",
                 systemImage: "chart.bar.xaxis",
-                description: Text("Create your first invoice to start tracking revenue and outstanding balances.")
+                description: Text("Create your first invoice or expense to start tracking revenue, spending, and balances.")
             )
         }
     }
@@ -124,8 +136,8 @@ struct BusinessInsightsView: View {
                 Text("Paid Per Week")
                     .font(.headline)
 
-                if weeklyPaidTrend.allSatisfy({ $0.paidCents == 0 }) {
-                    Text("Nothing paid in the last \(weeklyPaidTrend.count) weeks.")
+                if weeklyPaidTrend.allSatisfy({ $0.paidCents == 0 && $0.expenseCents == 0 }) {
+                    Text("Nothing paid or spent in the last \(weeklyPaidTrend.count) weeks.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(height: 120, alignment: .center)
@@ -136,7 +148,7 @@ struct BusinessInsightsView: View {
                             x: .value("Week", point.weekStart),
                             y: .value("Paid", Double(point.paidCents) / 100.0)
                         )
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(by: .value("Series", "Paid"))
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
                         .interpolationMethod(.catmullRom)
 
@@ -153,7 +165,20 @@ struct BusinessInsightsView: View {
                         )
                         .foregroundStyle(SBWTheme.brandBlue)
                         .symbolSize(point.weekStart == weeklyPaidTrend.last?.weekStart ? 60 : 0)
+
+                        LineMark(
+                            x: .value("Week", point.weekStart),
+                            y: .value("Profit", Double(point.profitCents) / 100.0)
+                        )
+                        .foregroundStyle(by: .value("Series", "Profit"))
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 3]))
+                        .interpolationMethod(.catmullRom)
                     }
+                    .chartForegroundStyleScale([
+                        "Paid": SBWTheme.brandBlue,
+                        "Profit": Color.orange
+                    ])
+                    .chartLegend(position: .top, alignment: .trailing)
                     .frame(height: 120)
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .weekOfYear, count: 2)) { _ in
@@ -163,14 +188,21 @@ struct BusinessInsightsView: View {
                     .chartYAxis {
                         AxisMarks(position: .leading) { value in
                             AxisGridLine()
-                            if let cents = value.as(Double.self) {
-                                AxisValueLabel(InsightsCurrency.string(cents: Int(cents * 100), code: currencyCode))
+                            if let dollars = value.as(Double.self) {
+                                // Profit can go negative in a loss week — unlike the rest
+                                // of Insights, this axis can't clamp to zero via
+                                // InsightsCurrency.string or a real loss reads as "$0.00".
+                                AxisValueLabel(signedCurrencyString(dollars: dollars))
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    private func signedCurrencyString(dollars: Double) -> String {
+        dollars.formatted(.currency(code: currencyCode))
     }
 
     private var cashInCard: some View {
@@ -190,6 +222,40 @@ struct BusinessInsightsView: View {
                     label: "Paid this month",
                     value: currencyString(from: cashInMonthCents)
                 )
+            }
+        }
+    }
+
+    private var expensesCard: some View {
+        SBWCardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Expenses")
+                    .font(.headline)
+
+                if expenseMonthCents == 0 && categoryBreakdown.isEmpty {
+                    Text("No expenses logged this month.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    valueRow(
+                        label: "This month",
+                        value: currencyString(from: expenseMonthCents)
+                    )
+
+                    if !categoryBreakdown.isEmpty {
+                        Divider().opacity(0.35)
+
+                        ForEach(Array(categoryBreakdown.enumerated()), id: \.element.id) { index, entry in
+                            if index > 0 {
+                                Divider().opacity(0.35)
+                            }
+                            valueRow(
+                                label: entry.category.displayName,
+                                value: currencyString(from: entry.cents)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -296,6 +362,8 @@ struct BusinessInsightsView: View {
         sentUnpaidCount = 0
         estimateCount = 0
         weeklyPaidTrend = []
+        expenseMonthCents = 0
+        categoryBreakdown = []
         hasAnyRecords = false
         isLoadingInsights = false
         loadGeneration = UUID()
@@ -326,10 +394,21 @@ struct BusinessInsightsView: View {
             let invoices = try modelContext.fetch(fd)
             guard loadGeneration == token else { return }
 
-            let snapshot = computeSnapshot(from: invoices, now: now)
+            var expenseFd = FetchDescriptor<Expense>(
+                predicate: #Predicate<Expense> { expense in
+                    expense.businessID == businessID
+                },
+                sortBy: [SortDescriptor(\Expense.date, order: .reverse)]
+            )
+            expenseFd.fetchLimit = 3000
+
+            let expenses = try modelContext.fetch(expenseFd)
             guard loadGeneration == token else { return }
 
-            hasAnyRecords = !snapshot.records.isEmpty
+            let snapshot = computeSnapshot(from: invoices, expenses: expenses, now: now)
+            guard loadGeneration == token else { return }
+
+            hasAnyRecords = !snapshot.records.isEmpty || !expenses.isEmpty
             cashInWeekCents = snapshot.paidWeekCents
             cashInMonthCents = snapshot.paidMonthCents
             outstandingTotalCents = snapshot.outstandingCents
@@ -338,6 +417,8 @@ struct BusinessInsightsView: View {
             sentUnpaidCount = snapshot.sentUnpaidCount
             estimateCount = snapshot.estimateCount
             weeklyPaidTrend = snapshot.weeklyPaidTrend
+            expenseMonthCents = snapshot.expenseMonthCents
+            categoryBreakdown = snapshot.categoryBreakdown
             isLoadingInsights = false
 
             #if DEBUG
@@ -356,7 +437,7 @@ struct BusinessInsightsView: View {
         }
     }
 
-    private func computeSnapshot(from invoices: [Invoice], now: Date) -> InsightsSnapshot {
+    private func computeSnapshot(from invoices: [Invoice], expenses: [Expense], now: Date) -> InsightsSnapshot {
         let nonEstimates = invoices.filter { inv in
             inv.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "estimate"
         }
@@ -394,7 +475,22 @@ struct BusinessInsightsView: View {
         let outstandingCents = sentUnpaid.reduce(0) { $0 + max(0, $1.remainingDueCents) }
         let overdueCents = overdue.reduce(0) { $0 + max(0, $1.remainingDueCents) }
 
-        let weeklyTrend = weeklyPaidTrend(from: nonEstimates, now: now, weekCount: 8)
+        var expenseMonthCents = 0
+        var categoryTotals: [ExpenseCategory: Int] = [:]
+        for expense in expenses {
+            let amount = max(0, expense.amountCents)
+            if let monthInterval, monthInterval.contains(expense.date) {
+                expenseMonthCents += amount
+                categoryTotals[expense.category, default: 0] += amount
+            }
+        }
+        let categoryBreakdown = ExpenseCategory.allCases.compactMap { category -> ExpenseCategoryTotal? in
+            guard let cents = categoryTotals[category], cents > 0 else { return nil }
+            return ExpenseCategoryTotal(category: category, cents: cents)
+        }
+        .sorted { $0.cents > $1.cents }
+
+        let weeklyTrend = weeklyPaidTrend(from: nonEstimates, expenses: expenses, now: now, weekCount: 8)
 
         return InsightsSnapshot(
             paidWeekCents: paidWeekCents,
@@ -405,11 +501,13 @@ struct BusinessInsightsView: View {
             sentUnpaidCount: sentUnpaid.count,
             estimateCount: estimates.count,
             weeklyPaidTrend: weeklyTrend,
+            expenseMonthCents: expenseMonthCents,
+            categoryBreakdown: categoryBreakdown,
             records: invoices
         )
     }
 
-    private func weeklyPaidTrend(from invoices: [Invoice], now: Date, weekCount: Int) -> [WeeklyPaidPoint] {
+    private func weeklyPaidTrend(from invoices: [Invoice], expenses: [Expense], now: Date, weekCount: Int) -> [WeeklyPaidPoint] {
         let calendar = InsightsDateSupport.calendar
         guard let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else {
             return []
@@ -417,6 +515,14 @@ struct BusinessInsightsView: View {
 
         let weekStarts: [Date] = (0..<weekCount).reversed().compactMap { offset in
             calendar.date(byAdding: .weekOfYear, value: -offset, to: currentWeekStart)
+        }
+
+        var expenseTotalsByWeekStart: [Date: Int] = [:]
+        for expense in expenses {
+            guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: expense.date)?.start else {
+                continue
+            }
+            expenseTotalsByWeekStart[weekStart, default: 0] += max(0, expense.amountCents)
         }
 
         var totalsByWeekStart: [Date: Int] = [:]
@@ -429,7 +535,11 @@ struct BusinessInsightsView: View {
         }
 
         return weekStarts.map { weekStart in
-            WeeklyPaidPoint(weekStart: weekStart, paidCents: totalsByWeekStart[weekStart] ?? 0)
+            WeeklyPaidPoint(
+                weekStart: weekStart,
+                paidCents: totalsByWeekStart[weekStart] ?? 0,
+                expenseCents: expenseTotalsByWeekStart[weekStart] ?? 0
+            )
         }
     }
 }
@@ -443,6 +553,8 @@ private struct InsightsSnapshot {
     let sentUnpaidCount: Int
     let estimateCount: Int
     let weeklyPaidTrend: [WeeklyPaidPoint]
+    let expenseMonthCents: Int
+    let categoryBreakdown: [ExpenseCategoryTotal]
     let records: [Invoice]
 }
 
