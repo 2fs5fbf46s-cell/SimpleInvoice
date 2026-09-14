@@ -147,7 +147,7 @@ struct ContractSummaryView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .tint(SBWTheme.brandBlue)
 
                     Button {
@@ -157,7 +157,7 @@ struct ContractSummaryView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .tint(SBWTheme.brandBlue)
 
                     Button {
@@ -167,7 +167,7 @@ struct ContractSummaryView: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .tint(SBWTheme.brandBlue)
 
                     if MusicSplitSheetDraft.isSmartMusicSplitSheet(contract) {
@@ -178,7 +178,7 @@ struct ContractSummaryView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .frame(maxWidth: .infinity, minHeight: 48)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                         .tint(SBWTheme.brandBlue)
                     }
                 }
