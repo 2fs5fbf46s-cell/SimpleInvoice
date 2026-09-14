@@ -191,9 +191,13 @@ enum AppModelContainerFactory {
     /// The authoritative model list.
     ///
     /// Tests build their own in-memory containers from this rather than keeping
-    /// parallel lists — a partial schema traps at `save()` when the app's real
-    /// container is already open in the same process, and drifting copies mean a
-    /// newly added `@Model` silently isn't covered.
+    /// parallel lists, which drift: a newly added `@Model` silently isn't covered
+    /// by a test schema nobody remembered to update.
+    ///
+    /// If a test traps inside `save()`, the usual cause is not the schema — it is
+    /// a `ModelContainer` that was not retained. `try makeInMemoryContainer().mainContext`
+    /// releases the container at the end of the expression and leaves the context
+    /// pointing at nothing. Hold the container for the life of the test.
     static let models: [any PersistentModel.Type] = [
             Business.self,
             BusinessProfile.self,
