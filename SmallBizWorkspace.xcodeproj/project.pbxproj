@@ -18,6 +18,7 @@
 		B7A000000000000000000024 /* AccessibilityConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000025 /* AccessibilityConformanceTests.swift */; };
 		B7A000000000000000000026 /* EstimatePollScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000027 /* EstimatePollScheduleTests.swift */; };
 		B7A000000000000000000028 /* PortalSyncHealthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000029 /* PortalSyncHealthTests.swift */; };
+		B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000033 /* BackendAuthConformanceTests.swift */; };
 		B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000002D /* ClientSnapshotTests.swift */; };
 		B7A00000000000000000002E /* ClientDeletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000002F /* ClientDeletionTests.swift */; };
 		B7A000000000000000000030 /* ContractSignLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000031 /* ContractSignLockTests.swift */; };
@@ -49,6 +50,7 @@
 		B7A000000000000000000025 /* AccessibilityConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityConformanceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000027 /* EstimatePollScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimatePollScheduleTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000029 /* PortalSyncHealthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalSyncHealthTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000033 /* BackendAuthConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAuthConformanceTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000002D /* ClientSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientSnapshotTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000002F /* ClientDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientDeletionTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000031 /* ContractSignLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSignLockTests.swift; sourceTree = "<group>"; };
@@ -117,6 +119,7 @@
 				B7A000000000000000000025 /* AccessibilityConformanceTests.swift */,
 				B7A000000000000000000027 /* EstimatePollScheduleTests.swift */,
 				B7A000000000000000000029 /* PortalSyncHealthTests.swift */,
+				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
 				B7A00000000000000000002F /* ClientDeletionTests.swift */,
 				B7A000000000000000000031 /* ContractSignLockTests.swift */,
@@ -262,6 +265,7 @@
 				B7A000000000000000000024 /* AccessibilityConformanceTests.swift in Sources */,
 				B7A000000000000000000026 /* EstimatePollScheduleTests.swift in Sources */,
 				B7A000000000000000000028 /* PortalSyncHealthTests.swift in Sources */,
+				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,
 				B7A00000000000000000002E /* ClientDeletionTests.swift in Sources */,
 				B7A000000000000000000030 /* ContractSignLockTests.swift in Sources */,
