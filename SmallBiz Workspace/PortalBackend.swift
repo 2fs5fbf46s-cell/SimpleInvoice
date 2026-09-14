@@ -51,6 +51,45 @@ enum PortalBackendError: Error {
     case decode(body: String)
 }
 
+extension PortalBackendError {
+
+    /// Errors the server can explain better than a status code can.
+    ///
+    /// Most failures are transient and the generic copy is right: try again. These
+    /// are not. A deposit above the booking total, or an edit to a contract
+    /// somebody signed, will fail identically forever — and the status-code copy
+    /// ("try again shortly", "someone else changed this first") sends the user to
+    /// wait for something that is never going to happen.
+    ///
+    /// Deliberately an allowlist rather than "show whatever `message` arrives".
+    /// These strings are written for the person reading them; a server message
+    /// from anywhere else has made no such promise.
+    static let actionableServerErrors: Set<String> = [
+        "DEPOSIT_EXCEEDS_TOTAL",
+        "TOTAL_BELOW_PAID_DEPOSIT",
+        "CONTRACT_SIGNED_BODY_LOCKED",
+        "CONTRACT_SIGNED_TITLE_LOCKED",
+    ]
+
+    /// The server's own explanation, when it sent one worth showing.
+    static func actionableMessage(fromBody body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        guard let code = json["error"] as? String,
+              actionableServerErrors.contains(code)
+        else { return nil }
+
+        guard let message = (json["message"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !message.isEmpty
+        else { return nil }
+
+        return message
+    }
+}
+
 extension PortalBackendError: LocalizedError {
     /// What the customer reads.
     ///
@@ -64,7 +103,13 @@ extension PortalBackendError: LocalizedError {
             return "This device isn't set up to sync yet. Reopen the app, and contact support if it keeps happening."
         case .badURL:
             return "Couldn't reach the sync service. Check your connection and try again."
-        case .http(let code, _, _):
+        case .http(let code, let body, _):
+            // A specific, actionable explanation beats the status-code copy, which
+            // would otherwise tell the user to retry something that cannot succeed.
+            if let message = Self.actionableMessage(fromBody: body) {
+                return message
+            }
+
             switch code {
             case 401, 403:
                 return "This device is no longer signed in for this business. Reopen the app to sign in again."
