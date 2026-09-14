@@ -8,6 +8,17 @@ enum JobStage: String, Codable {
     case canceled
 }
 
+/// A single structured measurement taken at the job site (e.g. "Fence
+/// length" / 200 / "ft"). Free-text unit rather than a fixed enum — this
+/// app spans many trades (linear feet, square feet, gallons, ...) and a
+/// closed list would fight half of them.
+struct JobMeasurement: Codable, Identifiable, Equatable {
+    var id: UUID = UUID()
+    var label: String = ""
+    var value: Double = 0
+    var unit: String = ""
+}
+
 @Model
 final class Job {
     var id: UUID = Foundation.UUID()
@@ -45,6 +56,23 @@ final class Job {
     var depositAmountCents: Int? = nil
     var depositInvoiceId: String? = nil
     var depositPaidAtMs: Int64? = nil
+
+    /// JSON-encoded `[JobMeasurement]` — a snapshot, not a live relationship,
+    /// same reasoning and same idiom as
+    /// `RecurringInvoiceSchedule.lineItemsData`/`Expense.categoryRaw`:
+    /// measurements are always edited as a whole alongside the job, never
+    /// queried independently, so no separate `@Model` + relationship is
+    /// warranted.
+    var measurementsData: Data = Data()
+
+    var measurements: [JobMeasurement] {
+        get {
+            (try? JSONDecoder().decode([JobMeasurement].self, from: measurementsData)) ?? []
+        }
+        set {
+            measurementsData = (try? JSONEncoder().encode(newValue)) ?? Data()
+        }
+    }
 
     var stage: JobStage {
         get { JobStage(rawValue: stageRaw) ?? .booked }

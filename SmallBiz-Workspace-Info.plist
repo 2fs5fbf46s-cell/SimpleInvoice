@@ -15,6 +15,10 @@
 	</array>
 	<key>NSCalendarsUsageDescription</key>
 	<string>SmallBiz Workspace uses your calendar to add and update job appointments you create.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SmallBiz Workspace uses your camera to capture job photos on site.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SmallBiz Workspace uses your location to pin the job site on the map.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

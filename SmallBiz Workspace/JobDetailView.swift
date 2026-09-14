@@ -9,6 +9,8 @@ import UniformTypeIdentifiers
 import PhotosUI
 import EventKit
 import UIKit
+import CoreLocation
+import MapKit
 
 private struct JobFolderSheetItem: Identifiable {
     let id = UUID()
@@ -35,6 +37,11 @@ struct JobDetailView: View {
     @State private var showExistingFilePicker = false
     @State private var showJobFileImporter = false
     @State private var showJobPhotosSheet = false
+    @State private var showJobCamera = false
+
+    @State private var locationService = LocationCaptureService()
+    @State private var isCapturingLocation = false
+    @State private var locationCaptureError: String? = nil
     @State private var showingNewClient = false
     @State private var editingClient: Client? = nil
     @State private var draftClientName: String = ""
@@ -85,6 +92,7 @@ struct JobDetailView: View {
             jobEssentialsCard
             scheduleCard
             locationCard
+            measurementsCard
             calendarCard
             linkedContractsCard
             filesCard
@@ -135,6 +143,18 @@ struct JobDetailView: View {
                     }
                 }
             }
+        }
+        // Take Photo (full-screen camera UI — UIImagePickerController expects this,
+        // not a sheet)
+        .fullScreenCover(isPresented: $showJobCamera) {
+            CameraCaptureView(
+                onCapture: { data, suggestedName in
+                    showJobCamera = false
+                    importAndAttachFromPhotos(data: data, suggestedFileName: suggestedName)
+                },
+                onCancel: { showJobCamera = false }
+            )
+            .ignoresSafeArea()
         }
 
         // Attach existing file picker
@@ -236,6 +256,14 @@ struct JobDetailView: View {
             Button("OK", role: .cancel) { workspaceError = nil }
         } message: {
             Text(workspaceError ?? "")
+        }
+        .alert("Location", isPresented: Binding(
+            get: { locationCaptureError != nil },
+            set: { if !$0 { locationCaptureError = nil } }
+        )) {
+            Button("OK", role: .cancel) { locationCaptureError = nil }
+        } message: {
+            Text(locationCaptureError ?? "")
         }
         .task {
             if !isDraft {
@@ -402,8 +430,101 @@ struct JobDetailView: View {
 
             TextField("Location Name", text: $job.locationName)
                 .onChange(of: job.locationName) { _, _ in scheduleSave() }
+
+            if let latitude = job.latitude, let longitude = job.longitude {
+                let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                Map(initialPosition: .region(
+                    MKCoordinateRegion(center: coordinate, latitudinalMeters: 400, longitudinalMeters: 400)
+                )) {
+                    Marker(job.locationName.isEmpty ? "Job Site" : job.locationName, coordinate: coordinate)
+                }
+                .frame(height: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .allowsHitTesting(false)
+            }
+
+            Button {
+                captureCurrentLocation()
+            } label: {
+                if isCapturingLocation {
+                    ProgressView()
+                } else {
+                    Label(job.latitude == nil ? "Use Current Location" : "Update Current Location", systemImage: "location.fill")
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isCapturingLocation)
         }
         .sbwJobCardRow()
+    }
+
+    private var measurementsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Measurements")
+                .font(.headline)
+
+            if job.measurements.isEmpty {
+                Text("No measurements yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach($job.measurements) { $measurement in
+                HStack(spacing: 8) {
+                    TextField("e.g. Fence length", text: $measurement.label)
+                    TextField("0", value: $measurement.value, format: .number)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 64)
+                    TextField("unit", text: $measurement.unit)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 50)
+                    Button {
+                        job.measurements.removeAll { $0.id == measurement.id }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .onChange(of: job.measurements) { _, _ in scheduleSave() }
+
+            Button {
+                job.measurements.append(JobMeasurement())
+                scheduleSave()
+            } label: {
+                Label("Add Measurement", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
+        }
+        .sbwJobCardRow()
+    }
+
+    private func captureCurrentLocation() {
+        isCapturingLocation = true
+        Task {
+            defer { isCapturingLocation = false }
+            do {
+                let location = try await locationService.captureCurrentLocation()
+                job.latitude = location.coordinate.latitude
+                job.longitude = location.coordinate.longitude
+
+                // Best-effort — never overwrites an address the owner already typed,
+                // and a failed/slow geocode still leaves the pin/coordinates in place.
+                if job.locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first {
+                        job.locationName = [placemark.name, placemark.locality, placemark.administrativeArea]
+                            .compactMap { $0 }
+                            .joined(separator: ", ")
+                    }
+                }
+
+                scheduleSave()
+            } catch {
+                locationCaptureError = error.localizedDescription
+            }
+        }
     }
 
     private var calendarCard: some View {
@@ -499,6 +620,9 @@ struct JobDetailView: View {
                 Menu {
                     Button("Import from Files") { showJobFileImporter = true }
                     Button("Import from Photos") { showJobPhotosSheet = true }
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button("Take Photo") { showJobCamera = true }
+                    }
                 } label: {
                     Label("Import", systemImage: "plus")
                 }
