@@ -16,6 +16,12 @@ final class JobAttachment {
     var jobKey: String = ""      // job.id.uuidString
     var fileKey: String = ""     // file.id.uuidString
 
+    /// Free-text caption for this specific attachment — e.g. "Cracked pipe,
+    /// north wall" on a job photo. Lives on the join record, not FileItem,
+    /// since the same file could theoretically be attached elsewhere with a
+    /// different caption in mind.
+    var notes: String = ""
+
     @Relationship var job: Job? = nil
     @Relationship var file: FileItem? = nil
 

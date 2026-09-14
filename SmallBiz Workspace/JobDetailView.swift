@@ -58,7 +58,7 @@ struct JobDetailView: View {
 
     // Contracts navigation (avoid SwiftData NavigationLink freeze)
     @State private var selectedContract: Contract? = nil
-    @State private var showAdvancedOptions = false
+    @State private var selectedPhotoAttachment: JobAttachment? = nil
     @State private var folderSheetItem: JobFolderSheetItem? = nil
     @State private var jobFolder: Folder? = nil
     @State private var jobSubfolders: [JobWorkspaceSubfolder: Folder] = [:]
@@ -93,10 +93,11 @@ struct JobDetailView: View {
             scheduleCard
             locationCard
             measurementsCard
+            notesCard
             calendarCard
             linkedContractsCard
+            attachmentsCard
             filesCard
-            advancedOptionsCard
         }
         .listStyle(.plain)
         .listRowSeparator(.hidden)
@@ -210,6 +211,9 @@ struct JobDetailView: View {
         // QuickLook
         .sheet(item: $previewItem) { item in
             QuickLookPreview(url: item.url)
+        }
+        .sheet(item: $selectedPhotoAttachment) { attachment in
+            PhotoAttachmentDetailView(attachment: attachment)
         }
         .sheet(isPresented: Binding(
             get: { calendarSheetEvent != nil },
@@ -527,6 +531,25 @@ struct JobDetailView: View {
         }
     }
 
+    private var notesCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Notes")
+                .font(.headline)
+
+            TextEditor(text: $job.notes)
+                .frame(minHeight: 110)
+                .scrollContentBackground(.hidden)
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .onChange(of: job.notes) { _, _ in scheduleSave() }
+
+            Text("Included in the job's calendar event.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .sbwJobCardRow()
+    }
+
     private var calendarCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Calendar")
@@ -575,7 +598,7 @@ struct JobDetailView: View {
     private var attachmentsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Attachments")
-                .font(.subheadline.weight(.semibold))
+                .font(.headline)
 
             if attachments.isEmpty {
                 Text("No attachments yet")
@@ -583,7 +606,11 @@ struct JobDetailView: View {
             } else {
                 ForEach(attachments) { a in
                     Button {
-                        openPreview(a)
+                        if isImageFile(a.file) {
+                            selectedPhotoAttachment = a
+                        } else {
+                            openPreview(a)
+                        }
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -591,6 +618,13 @@ struct JobDetailView: View {
                                 Text(a.file?.originalFileName ?? "")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                if !a.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text(a.notes)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .italic()
+                                }
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
@@ -642,11 +676,14 @@ struct JobDetailView: View {
                 }
             }
         }
-        .padding(10)
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .sbwJobCardRow()
     }
-    
+
+    private func isImageFile(_ file: FileItem?) -> Bool {
+        guard let ext = file?.fileExtension.lowercased() else { return false }
+        return ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext)
+    }
+
     private var linkedContractsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Contracts")
@@ -716,38 +753,6 @@ struct JobDetailView: View {
         }
         .buttonStyle(.bordered)
         .tint(.gray)
-    }
-
-    private var advancedOptionsCard: some View {
-        DisclosureGroup(isExpanded: $showAdvancedOptions) {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Notes")
-                        .font(.subheadline.weight(.semibold))
-
-                    TextField("Notes", text: $job.notes, axis: .vertical)
-                        .lineLimit(2...8)
-                        .onChange(of: job.notes) { _, _ in scheduleSave() }
-                }
-                .padding(10)
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                attachmentsCard
-
-                Text("Changes auto-save.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 8)
-        } label: {
-            HStack {
-                Text("Advanced Options")
-                    .font(.headline)
-                Spacer()
-            }
-        }
-        .sbwJobCardRow()
     }
 
     private func saveNewClientAndLink() {
@@ -1054,6 +1059,10 @@ struct JobDetailView: View {
             modelContext.insert(link)
 
             try modelContext.save()
+
+            // Straight into the caption sheet — "take a photo, note what it
+            // shows" is one motion, not two separate trips into Attachments.
+            selectedPhotoAttachment = link
         } catch {
             attachError = error.localizedDescription
         }
