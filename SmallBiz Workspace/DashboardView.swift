@@ -298,6 +298,9 @@ struct DashboardView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BusinessAvatarButton()
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showHelpCenter = true
@@ -522,7 +525,7 @@ private struct TileCard: View {
 
         case .neutral:
             return LinearGradient(
-                colors: [Color.black.opacity(0.05), Color.black.opacity(0.02)],
+                colors: [Color.primary.opacity(0.05), Color.primary.opacity(0.02)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -540,7 +543,7 @@ private struct TileCard: View {
         case .purple:   return AnyShapeStyle(Color.purple.opacity(0.18))
         case .mint:     return AnyShapeStyle(Color.mint.opacity(0.18))
 
-        case .neutral:  return AnyShapeStyle(Color.black.opacity(0.06))
+        case .neutral:  return AnyShapeStyle(Color.primary.opacity(0.06))
         }
     }
 

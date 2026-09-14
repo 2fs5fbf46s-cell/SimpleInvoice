@@ -366,7 +366,7 @@ struct BusinessProfileView: View {
                     HStack(spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white.opacity(0.04))
+                                .fill(Color.primary.opacity(0.05))
                             if let logoData = profile.logoData,
                                let uiImage = UIImage(data: logoData) {
                                 Image(uiImage: uiImage)
@@ -382,7 +382,7 @@ struct BusinessProfileView: View {
                         .frame(width: 72, height: 72)
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
                         )
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -1161,7 +1161,7 @@ private struct HeaderView: View {
                 StatusPill(text: statusText, color: statusColor, systemImage: "circle.fill")
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
+                        .fill(Color.primary.opacity(0.05))
                     if let logoData, let image = UIImage(data: logoData) {
                         Image(uiImage: image)
                             .resizable()
@@ -1176,7 +1176,7 @@ private struct HeaderView: View {
                 .frame(width: 72, height: 72)
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        .stroke(Color.primary.opacity(0.16), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 6)
             }
@@ -1194,7 +1194,7 @@ private struct HeaderView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.16), lineWidth: 1)
         )
     }
 }
@@ -1212,7 +1212,7 @@ private struct PremiumCard<Content: View>: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.14), lineWidth: 1)
             )
     }
 }
@@ -1226,7 +1226,7 @@ private struct SectionHeaderRow: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.primary.opacity(0.06))
                 Image(systemName: systemImage)
                     .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.secondary)

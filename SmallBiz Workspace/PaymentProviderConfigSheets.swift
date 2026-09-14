@@ -53,7 +53,7 @@ private struct PaymentPreviewBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.primary.opacity(0.08))
         )
     }
 }
@@ -236,7 +236,7 @@ struct ACHConfigSheet: View {
                     .padding(8)
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
+                            .fill(Color.primary.opacity(0.08))
                     )
 
                 TextField("Account Last 4 (optional)", text: $last4)

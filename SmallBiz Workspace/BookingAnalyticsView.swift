@@ -561,7 +561,7 @@ private struct AnalyticsCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
+                    .fill(Color.primary.opacity(0.05))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(SBWTheme.cardStroke, lineWidth: 1)

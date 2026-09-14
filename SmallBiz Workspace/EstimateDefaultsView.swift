@@ -108,7 +108,7 @@ private struct EstimateDefaultsCard: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(10)
-                    .background(Color.white.opacity(0.04))
+                    .background(Color.primary.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .onChange(of: taxRatePercentText) { _, newValue in
                         let cleaned = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -129,7 +129,7 @@ private struct EstimateDefaultsCard: View {
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .padding(10)
-                    .background(Color.white.opacity(0.04))
+                    .background(Color.primary.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
@@ -142,7 +142,7 @@ private struct EstimateDefaultsCard: View {
             TextField(placeholder, text: text, axis: .vertical)
                 .lineLimit(lines)
                 .padding(10)
-                .background(Color.white.opacity(0.04))
+                .background(Color.primary.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }

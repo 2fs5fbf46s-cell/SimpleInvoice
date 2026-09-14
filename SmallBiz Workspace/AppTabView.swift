@@ -12,11 +12,7 @@ import Combine
 import UIKit
 
 enum AppTab: Hashable {
-    case dashboard, invoices, create, clients, more
-}
-
-private enum AppTabRouteDestination: Hashable {
-    case setupPayments
+    case today, clients, create, money, work
 }
 
 struct AppTabView: View {
@@ -38,8 +34,8 @@ struct AppTabView: View {
         )
     }
 
-    @State private var tab: AppTab = .dashboard
-    @State private var lastSelectedTab: AppTab = .dashboard
+    @State private var tab: AppTab = .today
+    @State private var lastSelectedTab: AppTab = .today
     @State private var showCreateSheet = false
     @State private var deepLinkedEstimate: Invoice? = nil
     @State private var deepLinkedInvoice: Invoice? = nil
@@ -51,40 +47,29 @@ struct AppTabView: View {
     @State private var isWalkthroughPresented = false
     @State private var walkthroughStepIndex = 0
     @State private var walkthroughValidationTask: Task<Void, Never>? = nil
+    @StateObject private var businessSettingsPresenter = BusinessSettingsPresenter()
 
     // MUST be @State so NavigationStack(path:) can push.
-    @State private var dashboardPath = NavigationPath()
-    @State private var invoicesPath = NavigationPath()
+    @State private var todayPath = NavigationPath()
     @State private var clientsPath = NavigationPath()
-    @State private var morePath = NavigationPath()
-    @State private var dashboardResetID = UUID()
-    @State private var invoicesResetID = UUID()
+    @State private var moneyPath = NavigationPath()
+    @State private var workPath = NavigationPath()
+    @State private var todayResetID = UUID()
     @State private var clientsResetID = UUID()
-    @State private var moreResetID = UUID()
+    @State private var moneyResetID = UUID()
+    @State private var workResetID = UUID()
     @ObservedObject private var portalReturn = PortalReturnRouter.shared
     @ObservedObject private var notificationRouter = NotificationRouter.shared
 
     var body: some View {
         TabView(selection: $tab) {
 
-            NavigationStack(path: $dashboardPath) {
+            NavigationStack(path: $todayPath) {
                 DashboardView(businessID: activeBiz.activeBusinessID)
             }
-            .id(dashboardResetID)
-            .tag(AppTab.dashboard)
-            .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
-
-            NavigationStack(path: $invoicesPath) {
-                InvoiceListView(businessID: activeBiz.activeBusinessID)
-            }
-            .id(invoicesResetID)
-            .tag(AppTab.invoices)
-            .tabItem { Label("Invoices", systemImage: "doc.plaintext") }
-
-            // Center "+"
-            Color.clear
-                .tag(AppTab.create)
-                .tabItem { Label("Create", systemImage: "plus.circle.fill") }
+            .id(todayResetID)
+            .tag(AppTab.today)
+            .tabItem { Label("Today", systemImage: "square.grid.2x2") }
 
             NavigationStack(path: $clientsPath) {
                 ClientListView(businessID: activeBiz.activeBusinessID)
@@ -93,19 +78,26 @@ struct AppTabView: View {
             .tag(AppTab.clients)
             .tabItem { Label("Clients", systemImage: "person.2") }
 
-            NavigationStack(path: $morePath) {
-                MoreView()
-                    .navigationDestination(for: AppTabRouteDestination.self) { destination in
-                        switch destination {
-                        case .setupPayments:
-                            SetupPaymentsView()
-                        }
-                    }
+            // Center "+"
+            Color.clear
+                .tag(AppTab.create)
+                .tabItem { Label("Create", systemImage: "plus.circle.fill") }
+
+            NavigationStack(path: $moneyPath) {
+                MoneyHubView()
             }
-            .id(moreResetID)
-            .tag(AppTab.more)
-            .tabItem { Label("More", systemImage: "ellipsis") }
+            .id(moneyResetID)
+            .tag(AppTab.money)
+            .tabItem { Label("Money", systemImage: "doc.plaintext") }
+
+            NavigationStack(path: $workPath) {
+                WorkHubView()
+            }
+            .id(workResetID)
+            .tag(AppTab.work)
+            .tabItem { Label("Work", systemImage: "rectangle.stack") }
         }
+        .environmentObject(businessSettingsPresenter)
         .coordinateSpace(name: CoachMarksOverlay.coordinateSpaceName)
         .overlay(alignment: .bottom) {
             if let message = notificationRouter.toastMessage {
@@ -160,6 +152,9 @@ struct AppTabView: View {
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateMenuSheet()
+        }
+        .sheet(isPresented: $businessSettingsPresenter.isPresented) {
+            BusinessSettingsSheet()
         }
         .sheet(item: $deepLinkedEstimate, onDismiss: {
             portalReturn.consumeEstimateRequest()
@@ -247,29 +242,29 @@ struct AppTabView: View {
 
     private func tabForIndex(_ index: Int) -> AppTab? {
         switch index {
-        case 0: return .dashboard
-        case 1: return .invoices
+        case 0: return .today
+        case 1: return .clients
         case 2: return .create
-        case 3: return .clients
-        case 4: return .more
+        case 3: return .money
+        case 4: return .work
         default: return nil
         }
     }
 
     private func resetPath(for tab: AppTab) {
         switch tab {
-        case .dashboard:
-            dashboardPath = NavigationPath()
-            dashboardResetID = UUID()
-        case .invoices:
-            invoicesPath = NavigationPath()
-            invoicesResetID = UUID()
+        case .today:
+            todayPath = NavigationPath()
+            todayResetID = UUID()
         case .clients:
             clientsPath = NavigationPath()
             clientsResetID = UUID()
-        case .more:
-            morePath = NavigationPath()
-            moreResetID = UUID()
+        case .money:
+            moneyPath = NavigationPath()
+            moneyResetID = UUID()
+        case .work:
+            workPath = NavigationPath()
+            workResetID = UUID()
         case .create:
             break
         }
@@ -281,19 +276,19 @@ struct AppTabView: View {
             HStack(spacing: 0) {
                 Color.clear
                     .frame(width: width, height: 56)
-                    .coachMark(id: "walkthrough.tab.dashboard")
-                Color.clear
-                    .frame(width: width, height: 56)
-                    .coachMark(id: "walkthrough.tab.invoices")
-                Color.clear
-                    .frame(width: width, height: 56)
-                    .coachMark(id: "walkthrough.tab.create")
+                    .coachMark(id: "walkthrough.tab.today")
                 Color.clear
                     .frame(width: width, height: 56)
                     .coachMark(id: "walkthrough.tab.clients")
                 Color.clear
                     .frame(width: width, height: 56)
-                    .coachMark(id: "walkthrough.tab.more")
+                    .coachMark(id: "walkthrough.tab.create")
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.money")
+                Color.clear
+                    .frame(width: width, height: 56)
+                    .coachMark(id: "walkthrough.tab.work")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
@@ -307,7 +302,7 @@ struct AppTabView: View {
         isWalkthroughPresented = true
         walkthroughStepIndex = 0
         showCreateSheet = false
-        selectTabForWalkthrough(.dashboard)
+        selectTabForWalkthrough(.today)
     }
 
     @MainActor
@@ -390,19 +385,11 @@ struct AppTabView: View {
         case .clientsRoot:
             routeToTabRoot(.clients)
         case .invoicesRoot:
-            routeToTabRoot(.invoices)
+            routeToTabRoot(.money)
         case .moreRoot:
-            routeToTabRoot(.more)
+            businessSettingsPresenter.open()
         case .paymentsSetup:
-            routeToTabRoot(.more)
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 120_000_000)
-                guard tab == .more else { return }
-                if !morePath.isEmpty {
-                    morePath = NavigationPath()
-                }
-                morePath.append(AppTabRouteDestination.setupPayments)
-            }
+            businessSettingsPresenter.open(.setupPayments)
         case .openAppSettings:
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
@@ -441,7 +428,7 @@ struct AppTabView: View {
     private func routeToEstimate(id: UUID?) {
         guard let id else { return }
         guard let invoice = invoice(withID: id) else { return }
-        tab = .invoices
+        tab = .money
         deepLinkedEstimate = invoice
     }
 
@@ -457,7 +444,7 @@ struct AppTabView: View {
         if let invoiceID = effectivePayload.invoiceId,
            let id = UUID(uuidString: invoiceID),
            let invoice = invoice(withID: id) {
-            tab = .invoices
+            tab = .money
             deepLinkedInvoice = invoice
             notificationRouter.consumePendingPayload()
             return
@@ -466,7 +453,7 @@ struct AppTabView: View {
         if let contractID = effectivePayload.contractId,
            let id = UUID(uuidString: contractID),
            let contract = contract(withID: id) {
-            tab = .more
+            tab = .work
             deepLinkedContract = contract
             notificationRouter.consumePendingPayload()
             return
@@ -479,7 +466,7 @@ struct AppTabView: View {
 
         let eventKey = effectivePayload.event.lowercased()
         if eventKey.contains("booking") {
-            tab = .more
+            tab = .work
             showBookingAdminSheet = true
             notificationRouter.consumePendingPayload()
             return
@@ -548,7 +535,7 @@ struct AppTabView: View {
             guard let dto = results.first(where: { $0.requestId == requestId }) else {
                 if notificationRouter.openFallbackIfPossible(payload) == false {
                     showBookingAdminSheet = true
-                    tab = .more
+                    tab = .work
                     notificationRouter.showToast("Opened bookings admin. Request \(requestId) was not found.")
                 }
                 notificationRouter.consumePendingPayload()
@@ -575,13 +562,13 @@ struct AppTabView: View {
                 finalInvoiceId: dto.finalInvoiceId
             )
 
-            tab = .more
+            tab = .work
             deepLinkedBookingRequest = item
             notificationRouter.consumePendingPayload()
         } catch {
             if notificationRouter.openFallbackIfPossible(payload) == false {
                 showBookingAdminSheet = true
-                tab = .more
+                tab = .work
                 notificationRouter.showToast("Opened bookings admin. Push route failed: \(error.localizedDescription)")
             }
             notificationRouter.consumePendingPayload()

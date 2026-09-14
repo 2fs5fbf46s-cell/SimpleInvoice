@@ -1278,13 +1278,13 @@ private enum ProviderStatusStyle {
 
     var background: Color {
         switch self {
-        case .disabled: return Color.white.opacity(0.1)
+        case .disabled: return Color.primary.opacity(0.1)
         case .active: return Color.green.opacity(0.2)
         case .enabled: return Color.blue.opacity(0.2)
         case .pending: return Color.orange.opacity(0.2)
-        case .notConnected: return Color.white.opacity(0.12)
+        case .notConnected: return Color.primary.opacity(0.12)
         case .error: return Color.red.opacity(0.2)
-        case .info: return Color.white.opacity(0.12)
+        case .info: return Color.primary.opacity(0.12)
         }
     }
 
@@ -1397,7 +1397,7 @@ private struct PaymentProviderCard<Content: View>: View {
                                 .font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.white.opacity(0.12))
+                                .background(Color.primary.opacity(0.12))
                                 .clipShape(Capsule())
                         }
                     }

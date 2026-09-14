@@ -19,7 +19,6 @@ struct SmallBizWorkspaceApp: App {
             appContent
                 .environmentObject(lock)
                 .environmentObject(activeBiz)
-                .preferredColorScheme(.dark)
 
                 // Close Safari when portal redirects back to app via scheme.
                 .onOpenURL { url in

@@ -40,7 +40,7 @@ struct InvoiceSettingsView: View {
                         TextField("Default Thank You", text: Bindable(profile).defaultThankYou, axis: .vertical)
                             .lineLimit(2...6)
                             .padding(10)
-                            .background(Color.white.opacity(0.04))
+                            .background(Color.primary.opacity(0.05))
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
 
@@ -50,7 +50,7 @@ struct InvoiceSettingsView: View {
                         TextField("Default Terms & Conditions", text: Bindable(profile).defaultTerms, axis: .vertical)
                             .lineLimit(4...10)
                             .padding(10)
-                            .background(Color.white.opacity(0.04))
+                            .background(Color.primary.opacity(0.05))
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                 }

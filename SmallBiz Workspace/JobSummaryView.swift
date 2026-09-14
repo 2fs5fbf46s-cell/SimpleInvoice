@@ -185,7 +185,7 @@ struct JobSummaryView: View {
                     TextEditor(text: $notesDraft)
                         .frame(minHeight: 110)
                         .scrollContentBackground(.hidden)
-                        .background(Color.white.opacity(0.03))
+                        .background(Color.primary.opacity(0.03))
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .onChange(of: notesDraft) { _, newValue in
                             let normalized = newValue.trimmingCharacters(in: .newlines)

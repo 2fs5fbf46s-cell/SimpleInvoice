@@ -393,7 +393,7 @@ struct BookingPortalCustomizeView: View {
                         .frame(minHeight: 140)
                         .font(.body)
                         .padding(8)
-                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                     Text("Example: Mon: 9am-5pm\nTue: 9am-5pm")
                         .font(.footnote)
@@ -414,7 +414,7 @@ struct BookingPortalCustomizeView: View {
                     .frame(minHeight: 120)
                     .font(.body)
                     .padding(8)
-                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.top, 8)
             } label: {
                 SectionTitle(title: "Booking Instructions", subtitle: "Client-facing guidance", icon: "text.bubble")
@@ -765,7 +765,7 @@ private struct PremiumPanel<Content: View>: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.14), lineWidth: 1)
             )
     }
 }
@@ -779,7 +779,7 @@ private struct SectionTitle: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.primary.opacity(0.06))
                 Image(systemName: icon)
                     .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.secondary)

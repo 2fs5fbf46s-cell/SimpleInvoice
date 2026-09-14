@@ -621,7 +621,7 @@ private struct WebsiteServicesView: View {
                         .foregroundStyle(SBWTheme.brandBlue)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(Color(red: 0.86, green: 0.90, blue: 0.98))
+                        .background(SBWTheme.blueTint)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -896,7 +896,7 @@ private struct WebsiteTeamView: View {
                             .foregroundStyle(SBWTheme.brandBlue)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color(red: 0.86, green: 0.90, blue: 0.98))
+                            .background(SBWTheme.blueTint)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -1172,7 +1172,7 @@ private struct WebsiteGalleryView: View {
                     .foregroundStyle(SBWTheme.brandBlue)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color(red: 0.86, green: 0.90, blue: 0.98))
+                    .background(SBWTheme.blueTint)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 12)

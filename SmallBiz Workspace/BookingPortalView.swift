@@ -691,7 +691,7 @@ private struct PremiumPanel<Content: View>: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.14), lineWidth: 1)
             )
     }
 }
@@ -705,7 +705,7 @@ private struct SectionTitle: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.primary.opacity(0.06))
                 Image(systemName: icon)
                     .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
                     .foregroundStyle(.secondary)

@@ -230,6 +230,9 @@ struct ClientListView: View {
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BusinessAvatarButton()
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { addClientAndOpenSheet() } label: {
                     Image(systemName: "plus")

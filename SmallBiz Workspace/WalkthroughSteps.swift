@@ -9,27 +9,34 @@ struct WalkthroughStep: Identifiable, Equatable {
 }
 
 enum WalkthroughSteps {
+    // Target ids updated for the Today/Clients/Create/Money/Work tab bar. The
+    // old "More" tab's coach mark (setup-payments) lives inside the Business
+    // settings sheet now rather than a tab, so that step's target frame won't
+    // register during a normal walkthrough — the coordinator already treats a
+    // frame that never appears as "skip this step," so it degrades gracefully
+    // rather than getting stuck. A proper fix (walkthrough opens the sheet for
+    // that one step) is scoped separately, not part of this navigation pass.
     static let core: [WalkthroughStep] = [
         WalkthroughStep(
-            id: "dashboard-overview",
+            id: "today-overview",
             targetCoachMarkId: "walkthrough.dashboard.metrics",
             title: "Your Command Center",
-            message: "Track cash flow and upcoming work from the dashboard.",
-            routeTab: .dashboard
+            message: "Track cash flow and upcoming work from Today.",
+            routeTab: .today
         ),
         WalkthroughStep(
-            id: "invoices-tab",
-            targetCoachMarkId: "walkthrough.tab.invoices",
-            title: "Invoices",
-            message: "Send invoices and collect payments quickly.",
-            routeTab: .invoices
+            id: "money-tab",
+            targetCoachMarkId: "walkthrough.tab.money",
+            title: "Money",
+            message: "Invoices, estimates and insights, all in one place.",
+            routeTab: .money
         ),
         WalkthroughStep(
             id: "create-tab",
             targetCoachMarkId: "walkthrough.tab.create",
             title: "Create Fast",
             message: "Use Create to add invoices, clients, bookings, and more.",
-            routeTab: .dashboard
+            routeTab: .today
         ),
         WalkthroughStep(
             id: "clients-tab",
@@ -39,18 +46,18 @@ enum WalkthroughSteps {
             routeTab: .clients
         ),
         WalkthroughStep(
-            id: "more-tab",
-            targetCoachMarkId: "walkthrough.tab.more",
-            title: "More Tools",
-            message: "Open settings, portals, and advanced workspace tools.",
-            routeTab: .more
+            id: "work-tab",
+            targetCoachMarkId: "walkthrough.tab.work",
+            title: "Work",
+            message: "Jobs, bookings and contracts — everything you've committed to.",
+            routeTab: .work
         ),
         WalkthroughStep(
             id: "payments-tile",
             targetCoachMarkId: "walkthrough.more.setup-payments",
             title: "Setup Payments",
-            message: "Connect Stripe/PayPal or add manual payment methods.",
-            routeTab: .more
+            message: "Tap your business avatar, then Setup Payments, to connect Stripe/PayPal or add manual payment methods.",
+            routeTab: .today
         )
     ]
 }

@@ -1135,7 +1135,7 @@ struct InvoiceDetailView: View {
                                     .font(.caption2.weight(.semibold))
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(Color.white.opacity(0.12))
+                                    .background(Color.primary.opacity(0.12))
                                     .clipShape(Capsule())
                                 Spacer()
                                 Text(currencyString(fromCents: report.amountCents))

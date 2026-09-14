@@ -119,7 +119,7 @@ struct OnboardingFlowView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(Color.primary.opacity(0.08))
 
             labeledField("Business Name") {
                 TextField("My Business", text: $businessName)
@@ -148,7 +148,7 @@ struct OnboardingFlowView: View {
                 }
             }
 
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(Color.primary.opacity(0.08))
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Logo (optional)")
@@ -156,7 +156,7 @@ struct OnboardingFlowView: View {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.05))
+                            .fill(Color.primary.opacity(0.05))
                         if let logoData,
                            let image = UIImage(data: logoData) {
                             Image(uiImage: image)
@@ -471,7 +471,7 @@ struct OnboardingFlowView: View {
                 .padding(.vertical, 9)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
+                        .fill(Color.primary.opacity(0.04))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
