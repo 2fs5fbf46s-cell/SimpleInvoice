@@ -98,6 +98,7 @@ struct NewInvoiceView: View {
             }
             .navigationTitle("New Invoice")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

@@ -98,6 +98,7 @@ struct NewEstimateSheet: View {
             }
             .navigationTitle("New Estimate")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { onCancel() }

@@ -142,3 +142,21 @@ extension SBWTheme {
     }
     
 }
+
+// MARK: - Navigation chrome
+
+extension View {
+    /// Give the navigation bar something to sit on.
+    ///
+    /// Every screen layers its own background — a grouped-background fill plus a
+    /// brand gradient wash, both with `.ignoresSafeArea()` — under a `ScrollView`.
+    /// With no toolbar background of its own, the bar was fully transparent, so
+    /// scrolled content rendered straight through it: on the Dashboard, the Quick
+    /// Start copy slid up and overlapped the word "Dashboard" at full opacity.
+    ///
+    /// Visibility stays automatic, so the bar is still clear at the top of a
+    /// scroll and gains its backdrop only once content passes underneath.
+    func sbwNavigationBarBackdrop() -> some View {
+        toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+    }
+}

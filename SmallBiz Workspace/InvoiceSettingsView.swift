@@ -72,6 +72,7 @@ struct InvoiceSettingsView: View {
         }
         .navigationTitle("Invoice Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .onAppear(perform: loadActiveBusinessData)
         .onChange(of: activeBiz.activeBusinessID) { _, _ in
             loadActiveBusinessData()

@@ -59,6 +59,7 @@ struct MusicSplitSheetClientPickerView: View {
         }
         .navigationTitle("Select Client")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }

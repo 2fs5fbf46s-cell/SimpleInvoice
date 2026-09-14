@@ -226,6 +226,7 @@ struct InvoiceListView: View {
         }
         .navigationTitle("Invoices")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         
 
         // MARK: - Toolbar
@@ -275,6 +276,7 @@ struct InvoiceListView: View {
                 )
                 .navigationTitle("Templates")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") { showingTemplates = false }
@@ -382,7 +384,9 @@ struct InvoiceListView: View {
     private func makeRowModel(for invoice: Invoice) -> InvoiceListRowModel {
         let statusText = invoice.isPaid ? "PAID" : "UNPAID"
         let isFinal = isFinalDraft(invoice)
-        let clientName = invoice.client?.name ?? "No Client"
+        // Not the live relationship: the delete confirmation promises these rows
+        // keep the name they were sent with, and the snapshot is what delivers it.
+        let clientName = invoice.displayClientName
         let date = invoice.issueDate.formatted(date: .abbreviated, time: .omitted)
         let total = invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
         let finalBadge = isFinal ? "FINAL • " : ""

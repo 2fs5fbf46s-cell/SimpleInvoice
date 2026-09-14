@@ -239,6 +239,7 @@ struct CalendarEventViewer: View {
             }
             .navigationTitle("Calendar Event")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {

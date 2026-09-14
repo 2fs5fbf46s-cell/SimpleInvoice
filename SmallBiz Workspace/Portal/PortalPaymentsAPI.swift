@@ -4,7 +4,20 @@ struct PaymentServiceResponseError: LocalizedError {
     let message: String
     let details: String
 
-    var errorDescription: String? { message }
+    /// Which provider failed, so the copy can name it. Defaults to Stripe only
+    /// because that is the majority of these call sites; pass it explicitly.
+    var provider: PaymentErrorPresenter.Provider = .stripe
+
+    /// `message` is whatever the server put in its `error` field, which is often
+    /// a machine code like `INVALID_TOKEN`. That used to reach the user verbatim.
+    var errorDescription: String? {
+        PaymentErrorPresenter.message(forServerText: message, provider: provider)
+    }
+
+    /// The unmapped text, for logs and bug reports. Never shown in the UI.
+    var diagnosticDescription: String {
+        "PaymentServiceResponseError(\(provider.name)): \(message) — \(details)"
+    }
 }
 
 struct AdminBackendDiagnosticResult: Equatable {

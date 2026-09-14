@@ -76,10 +76,9 @@ struct ContractSummaryView: View {
     }
 
     private var clientText: String {
-        if let name = contract.resolvedClient?.name.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-            return name
-        }
-        return "No Client"
+        // displayClientName already walks resolvedClient and falls back to the
+        // snapshot, so a signed contract keeps naming its counterparty.
+        contract.displayClientName
     }
 
     private var lastUpdated: Date {
@@ -325,6 +324,7 @@ struct ContractSummaryView: View {
         }
         .navigationTitle("Contract Summary")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .sheet(item: $activeSheet) { sheet in
             NavigationStack {
                 switch sheet {
@@ -351,6 +351,7 @@ struct ContractSummaryView: View {
                         PDFPreviewView(url: previewItem.url)
                             .navigationTitle("Contract PDF")
                             .navigationBarTitleDisplayMode(.inline)
+                            .sbwNavigationBarBackdrop()
                             .toolbar {
                                 ToolbarItem(placement: .topBarLeading) {
                                     Button("Done") { activeSheet = nil }

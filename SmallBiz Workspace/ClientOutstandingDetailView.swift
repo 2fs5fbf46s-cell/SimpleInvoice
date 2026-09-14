@@ -66,6 +66,7 @@ struct ClientOutstandingDetailView: View {
         }
         .navigationTitle("Client Outstanding")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .task(id: loadKey) {
             await loadInvoices()
         }

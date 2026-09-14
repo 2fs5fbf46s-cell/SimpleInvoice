@@ -98,6 +98,7 @@ struct ContractDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) { pinnedHeader }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar { toolbarContent }
         .navigationDestination(item: $navigateToClientSettings) { client in
             ClientEditView(client: client)
@@ -107,6 +108,7 @@ struct ContractDetailView: View {
             NavigationStack {
                 FolderBrowserView(business: item.business, folder: item.folder)
                     .navigationBarTitleDisplayMode(.inline)
+                    .sbwNavigationBarBackdrop()
             }
         }
 
@@ -131,6 +133,7 @@ struct ContractDetailView: View {
                 )
                 .navigationTitle("Select Jobs")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") { showJobPicker = false }
@@ -144,6 +147,7 @@ struct ContractDetailView: View {
                 PDFPreviewView(url: item.url)
                     .navigationTitle("Contract PDF")
                     .navigationBarTitleDisplayMode(.inline)
+                    .sbwNavigationBarBackdrop()
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Share") {

@@ -13,19 +13,20 @@
 		B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */; };
 		B7A00000000000000000000E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000000F /* XCTest.framework */; };
 		B7A000000000000000000012 /* RoutingAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000013 /* RoutingAcceptanceTests.swift */; };
+		B7A000000000000000000014 /* ContractsNavigationSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */; };
+		B7A000000000000000000017 /* MusicSplitSheetSmartEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */; };
 		B7A000000000000000000020 /* InvoiceMoneyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000021 /* InvoiceMoneyTests.swift */; };
 		B7A000000000000000000022 /* QuickStartChecklistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000023 /* QuickStartChecklistTests.swift */; };
 		B7A000000000000000000024 /* AccessibilityConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000025 /* AccessibilityConformanceTests.swift */; };
 		B7A000000000000000000026 /* EstimatePollScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000027 /* EstimatePollScheduleTests.swift */; };
 		B7A000000000000000000028 /* PortalSyncHealthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000029 /* PortalSyncHealthTests.swift */; };
-		B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000035 /* PortalBackendErrorTests.swift */; };
-		B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000033 /* BackendAuthConformanceTests.swift */; };
+		B7A000000000000000000036 /* PaymentErrorPresenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000037 /* PaymentErrorPresenterTests.swift */; };
+		B7A00000000000000000002A /* QuickStartQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000002B /* QuickStartQueryTests.swift */; };
 		B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000002D /* ClientSnapshotTests.swift */; };
 		B7A00000000000000000002E /* ClientDeletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000002F /* ClientDeletionTests.swift */; };
 		B7A000000000000000000030 /* ContractSignLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000031 /* ContractSignLockTests.swift */; };
-		B7A00000000000000000002A /* QuickStartQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000002B /* QuickStartQueryTests.swift */; };
-		B7A000000000000000000014 /* ContractsNavigationSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */; };
-		B7A000000000000000000017 /* MusicSplitSheetSmartEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */; };
+		B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000033 /* BackendAuthConformanceTests.swift */; };
+		B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000035 /* PortalBackendErrorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,19 +47,20 @@
 		B7A000000000000000000004 /* SmallBizWorkspaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmallBizWorkspaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7A00000000000000000000F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		B7A000000000000000000013 /* RoutingAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingAcceptanceTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractsNavigationSmokeTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSplitSheetSmartEditingTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000021 /* InvoiceMoneyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceMoneyTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000023 /* QuickStartChecklistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStartChecklistTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000025 /* AccessibilityConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityConformanceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000027 /* EstimatePollScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimatePollScheduleTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000029 /* PortalSyncHealthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalSyncHealthTests.swift; sourceTree = "<group>"; };
-		B7A000000000000000000035 /* PortalBackendErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalBackendErrorTests.swift; sourceTree = "<group>"; };
-		B7A000000000000000000033 /* BackendAuthConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAuthConformanceTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000037 /* PaymentErrorPresenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentErrorPresenterTests.swift; sourceTree = "<group>"; };
+		B7A00000000000000000002B /* QuickStartQueryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStartQueryTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000002D /* ClientSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientSnapshotTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000002F /* ClientDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientDeletionTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000031 /* ContractSignLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSignLockTests.swift; sourceTree = "<group>"; };
-		B7A00000000000000000002B /* QuickStartQueryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStartQueryTests.swift; sourceTree = "<group>"; };
-		B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractsNavigationSmokeTests.swift; sourceTree = "<group>"; };
-		B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSplitSheetSmartEditingTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000033 /* BackendAuthConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAuthConformanceTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000035 /* PortalBackendErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalBackendErrorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -121,6 +123,7 @@
 				B7A000000000000000000025 /* AccessibilityConformanceTests.swift */,
 				B7A000000000000000000027 /* EstimatePollScheduleTests.swift */,
 				B7A000000000000000000029 /* PortalSyncHealthTests.swift */,
+				B7A000000000000000000037 /* PaymentErrorPresenterTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -268,6 +271,7 @@
 				B7A000000000000000000024 /* AccessibilityConformanceTests.swift in Sources */,
 				B7A000000000000000000026 /* EstimatePollScheduleTests.swift in Sources */,
 				B7A000000000000000000028 /* PortalSyncHealthTests.swift in Sources */,
+				B7A000000000000000000036 /* PaymentErrorPresenterTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

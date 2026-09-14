@@ -42,6 +42,7 @@ struct OnboardingFlowView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Getting Started")

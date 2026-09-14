@@ -174,6 +174,7 @@ struct MoreView: View {
         }
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -288,6 +289,7 @@ private struct OnboardingDebugToolsView: View {
         }
         .navigationTitle("Developer Tools")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
     }
 }
 #endif

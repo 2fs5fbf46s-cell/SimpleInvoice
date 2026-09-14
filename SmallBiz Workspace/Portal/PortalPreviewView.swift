@@ -71,6 +71,7 @@ struct PortalPreviewView: View {
         .safeAreaInset(edge: .top) { pinnedHeader }
         .navigationTitle("Portal Preview")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
     }
 
     // MARK: - Sections

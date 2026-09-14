@@ -9,6 +9,7 @@ struct PDFPreviewView: View {
         PDFKitRepresentedView(url: url)
             .navigationTitle("PDF Preview")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
     }
 }
 

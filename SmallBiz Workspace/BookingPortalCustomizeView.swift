@@ -44,6 +44,7 @@ struct BookingPortalCustomizeView: View {
         contentView
             .navigationTitle("Customize Info")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar { toolbarContent }
             .modifier(changeHandlers)
             .modifier(loadAndRefreshHandler)

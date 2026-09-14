@@ -72,6 +72,7 @@ struct BookingAnalyticsView: View {
         }
         .navigationTitle("Booking Analytics")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

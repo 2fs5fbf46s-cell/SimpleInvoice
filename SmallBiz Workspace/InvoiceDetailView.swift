@@ -154,6 +154,7 @@ struct InvoiceDetailView: View {
         }
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar { toolbarContent }
         
         .navigationDestination(item: $createdContract) { c in
@@ -244,6 +245,7 @@ struct InvoiceDetailView: View {
             NavigationStack {
                 FolderBrowserView(business: dest.business, folder: dest.folder)
                     .navigationBarTitleDisplayMode(.inline)
+                    .sbwNavigationBarBackdrop()
             }
         }
 
@@ -262,6 +264,7 @@ struct InvoiceDetailView: View {
                 )
                 .navigationTitle("Select Job")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") { showJobPicker = false }

@@ -166,6 +166,7 @@ struct ClientContractsView: View {
         }
         .navigationTitle("All Contracts")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedContract) { selection in
             ClientContractRouteView(
                 contractID: selection.id,

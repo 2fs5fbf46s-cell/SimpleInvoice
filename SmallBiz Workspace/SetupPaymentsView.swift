@@ -33,6 +33,12 @@ struct SetupPaymentsView: View {
     @State private var payPalAlertMessage: String?
     @State private var payPalAlertDetails: String?
     @State private var showPayPalError = false
+
+    /// Inline copies of the two status-read failures. These used to be modal
+    /// alerts that fired on appear — four of them across two screens, none of
+    /// them prompted by anything the user did.
+    @State private var stripeStatusNotice: String? = nil
+    @State private var payPalStatusNotice: String? = nil
     @State private var payPalStatusNote: String?
 
     @State private var showingACHSheet = false
@@ -110,6 +116,7 @@ struct SetupPaymentsView: View {
         }
         .navigationTitle("Setup Payments")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .onAppear {
             reloadForActiveBusiness()
         }
@@ -228,11 +235,45 @@ struct SetupPaymentsView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Choose how customers can pay you. Enable only what you want to offer.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            if let notice = stripeStatusNotice {
+                statusNotice(notice)
+            }
+            if let notice = payPalStatusNotice {
+                statusNotice(notice)
+            }
         }
+    }
+
+    /// What a failed status read looks like now: a row you can read past, with a
+    /// way to try again, instead of a dialog you have to dismiss.
+    private func statusNotice(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 8)
+
+            Button("Retry") { reloadForActiveBusiness() }
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(SBWTheme.brandBlue)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
     }
 
     private var loadingCard: some View {
@@ -726,6 +767,8 @@ struct SetupPaymentsView: View {
         stripeAlertMessage = nil
         stripeAlertDetails = nil
         showStripeError = false
+        stripeStatusNotice = nil
+        payPalStatusNotice = nil
         stripeURL = nil
         showStripeSafari = false
         awaitingStripeReturn = false
@@ -821,11 +864,11 @@ struct SetupPaymentsView: View {
             save()
         } catch {
             guard self.business?.id == businessID else { return }
+            // A status read the user didn't ask for must not block the screen.
+            // It reports inline instead; see `statusNotice`.
             stripeStatusError = true
-            let details = errorDebugDetails(error)
-            stripeAlertDetails = details
-            stripeAlertMessage = stripeUserMessage(error: error, details: details)
-            showStripeError = true
+            stripeStatusNotice = stripeUserMessage(error: error, details: errorDebugDetails(error))
+            SBWLog.payments.problem("Stripe status refresh failed: \(errorDebugDetails(error))")
         }
     }
 
@@ -878,8 +921,8 @@ struct SetupPaymentsView: View {
                 save()
                 return
             }
-            if case PortalBackendError.http(let code, _, _) = error, code == 401 {
-                payPalStatusNote = "Backend authorization failed. Check admin key."
+            if case PortalBackendError.http(let code, _, _) = error, code == 401 || code == 403 {
+                payPalStatusNote = PaymentErrorPresenter.humanize("INVALID_TOKEN", provider: .payPal)
             } else {
                 payPalStatusNote = nil
             }
@@ -894,9 +937,9 @@ struct SetupPaymentsView: View {
                 paypalLinkedAtMs: nil,
                 paypalLastCheckedAtMs: nil
             )
-            payPalAlertDetails = errorDebugDetails(error)
-            payPalAlertMessage = message
-            showPayPalError = true
+            // Inline, not modal: nobody asked for this read. See `statusNotice`.
+            payPalStatusNotice = PaymentErrorPresenter.message(forServerText: message, provider: .payPal)
+            SBWLog.payments.problem("PayPal status refresh failed: \(errorDebugDetails(error))")
             payPalLastCheckedAt = Date()
         }
     }
@@ -1054,17 +1097,21 @@ struct SetupPaymentsView: View {
     }
 
     private func stripeUserMessage(error: Error, details: String) -> String {
+        // These used to read "Backend authorization failed. Check admin key." — a
+        // note to a developer, shown to a business owner.
         if case PortalBackendError.missingAdminKey = error {
-            return "Backend authorization failed. Check admin key."
+            return PaymentErrorPresenter.humanize("INVALID_TOKEN", provider: .stripe)
+        }
+        if case PortalBackendError.http(let code, _, _) = error, code == 401 || code == 403 {
+            return PaymentErrorPresenter.humanize("INVALID_TOKEN", provider: .stripe)
         }
         if case PortalBackendError.badURL = error {
-            return "Backend returned an invalid link. Verify backend deployment and route."
-        }
-        if case PortalBackendError.http(let code, _, _) = error, code == 401 {
-            return "Backend authorization failed. Check admin key."
+            return PaymentErrorPresenter.generic(.stripe)
         }
         if let serviceError = error as? PaymentServiceResponseError {
-            return serviceError.message
+            // errorDescription, not message: `message` is the server's raw field
+            // and is frequently a machine code.
+            return serviceError.errorDescription ?? PaymentErrorPresenter.generic(.stripe)
         }
         return mapStripeErrorMessage(details)
     }

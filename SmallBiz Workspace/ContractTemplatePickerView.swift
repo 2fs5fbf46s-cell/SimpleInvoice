@@ -353,6 +353,7 @@ private struct ContractDraftSetupView: View {
         }
         .navigationTitle("Create Draft")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
     }
 }
 

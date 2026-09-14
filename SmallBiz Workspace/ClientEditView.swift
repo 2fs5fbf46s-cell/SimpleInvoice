@@ -132,6 +132,7 @@ struct ClientEditView: View {
         .safeAreaInset(edge: .top) { pinnedHeader }
         .navigationTitle("Client")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar { toolbarContent }
         .erased()
     }

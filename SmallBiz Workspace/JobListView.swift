@@ -185,6 +185,7 @@ struct JobsListView: View {
         }
         .navigationTitle("Jobs")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedJob) { job in
             JobSummaryView(job: job)
         }
@@ -200,6 +201,7 @@ struct JobsListView: View {
                     JobDetailView(job: newJobDraft)
                         .navigationTitle("New Job")
                         .navigationBarTitleDisplayMode(.inline)
+                        .sbwNavigationBarBackdrop()
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button("Cancel") { deleteIfEmptyAndClose() }

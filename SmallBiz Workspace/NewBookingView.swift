@@ -74,6 +74,7 @@ struct NewBookingView: View {
         }
         .navigationTitle("New Booking")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }

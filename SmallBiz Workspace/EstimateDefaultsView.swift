@@ -34,6 +34,7 @@ struct EstimateDefaultsView: View {
         }
         .navigationTitle("Estimate Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {

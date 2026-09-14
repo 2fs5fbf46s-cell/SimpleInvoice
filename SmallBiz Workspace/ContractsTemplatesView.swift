@@ -151,6 +151,7 @@ struct ContractTemplatesView: View {
                 ContractTemplatePickerView(businessID: businessID)
                     .navigationTitle("Use Template")
                     .navigationBarTitleDisplayMode(.inline)
+                    .sbwNavigationBarBackdrop()
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { showingUseTemplates = false }

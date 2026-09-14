@@ -143,6 +143,7 @@ struct ClientInvoicesSummaryView: View {
         }
         .navigationTitle("All Invoices")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedInvoice) { selection in
             ClientInvoiceSummaryInvoiceRouteView(invoiceID: selection.id)
         }

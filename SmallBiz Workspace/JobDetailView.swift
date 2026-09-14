@@ -95,6 +95,7 @@ struct JobDetailView: View {
         .safeAreaInset(edge: .top) { pinnedHeader }
         .navigationTitle("Job")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedContract) { c in
             ContractDetailView(contract: c)
         }
@@ -161,6 +162,7 @@ struct JobDetailView: View {
                 }
                 .navigationTitle("New Client")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { showingNewClient = false }

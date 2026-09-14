@@ -174,6 +174,7 @@ struct ClientPickerManualFetchView: View {
                 }
                 .navigationTitle("New Client")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { showingNewClient = false }

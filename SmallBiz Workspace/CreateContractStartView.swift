@@ -133,7 +133,7 @@ struct CreateContractStartView: View {
                                         Picker("Select Invoice", selection: $selectedInvoice) {
                                             Text("Select…").tag(Optional<Invoice>.none)
                                             ForEach(scopedInvoices) { inv in
-                                                Text("Invoice \(inv.invoiceNumber) — \(inv.client?.name ?? "No Client")")
+                                                Text("Invoice \(inv.invoiceNumber) — \(inv.displayClientName)")
                                                     .tag(Optional(inv))
                                             }
                                         }
@@ -142,7 +142,7 @@ struct CreateContractStartView: View {
                                     }
 
                                     if let inv = selectedInvoice {
-                                        Text("Client: \(inv.client?.name ?? "No Client")")
+                                        Text("Client: \(inv.displayClientName)")
                                             .font(.footnote)
                                             .foregroundStyle(.secondary)
                                     }
@@ -224,6 +224,7 @@ struct CreateContractStartView: View {
         }
         .navigationTitle("New Contract")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") {
@@ -241,6 +242,7 @@ struct CreateContractStartView: View {
                 }
                 .navigationTitle("Preview")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Close") { showingPreview = false }
@@ -257,6 +259,7 @@ struct CreateContractStartView: View {
                 )
                 .navigationTitle("Select Jobs")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
             }
         }
         .sheet(isPresented: $showingMusicSplitSheetForm) {

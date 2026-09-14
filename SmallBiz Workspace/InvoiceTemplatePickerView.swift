@@ -37,5 +37,6 @@ struct InvoiceTemplatePickerView: View {
         }
         .navigationTitle("Templates")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
     }
 }

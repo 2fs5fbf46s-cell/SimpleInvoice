@@ -140,6 +140,7 @@ struct PortalContractSignView: View {
             }
             .navigationTitle("Sign Contract")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }

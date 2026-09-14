@@ -90,6 +90,7 @@ struct DestinationFolderPicker: View {
             }
             .navigationTitle("Move To…")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .searchable(text: $searchText, prompt: "Search folders")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -198,6 +199,7 @@ private struct FolderLevelView: View {
         }
         .navigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Move Here") { onChoose(folder) }

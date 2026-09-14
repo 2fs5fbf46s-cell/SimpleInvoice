@@ -68,7 +68,7 @@ struct CreateContractFromInvoiceView: View {
                                 .font(.headline)
 
                             Text("Invoice \(invoice.invoiceNumber)")
-                            Text(invoice.client?.name ?? "No Client")
+                            Text(invoice.displayClientName)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -131,6 +131,7 @@ struct CreateContractFromInvoiceView: View {
         }
         .navigationTitle("Create Contract")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
@@ -145,6 +146,7 @@ struct CreateContractFromInvoiceView: View {
                 }
                 .navigationTitle("Preview")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Close") { showPreview = false }
@@ -161,6 +163,7 @@ struct CreateContractFromInvoiceView: View {
                 )
                 .navigationTitle("Select Jobs")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
             }
         }
         .sheet(isPresented: $showingMusicSplitSheetForm) {

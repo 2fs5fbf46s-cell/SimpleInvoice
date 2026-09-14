@@ -152,6 +152,7 @@ struct ContractsHomeView: View {
         }
         .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedContract) { contract in
             ContractSummaryView(contract: contract)
         }

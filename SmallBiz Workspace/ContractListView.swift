@@ -202,6 +202,7 @@ struct ContractsListView: View {
         }
         .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
         }

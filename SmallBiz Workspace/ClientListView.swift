@@ -67,7 +67,10 @@ struct ClientListView: View {
     private enum Filter: String, CaseIterable, Identifiable {
         case all = "All"
         case recent = "Recent"
-        case favorites = "Favorites"
+        /// Was labelled "Favorites", but it filters on `portalEnabled` — which
+        /// defaults to true for every client — and nothing in the app can
+        /// favorite anyone. The control now says what it actually does.
+        case portalOn = "Portal On"
 
         var id: String { rawValue }
     }
@@ -117,15 +120,22 @@ struct ClientListView: View {
             computedStats[clientID] = current
         }
 
+        // The new-client sheet inserts its draft up front, so without this the
+        // half-typed record shows as a live row in the list behind the sheet.
+        let draftID = newClientDraft?.id
+        let listable = draftID == nil
+            ? scopedClients
+            : scopedClients.filter { $0.id != draftID }
+
         let cutoff = Calendar.current.date(byAdding: .day, value: -45, to: .now) ?? .distantPast
         let base: [Client]
         switch filter {
         case .all:
-            base = scopedClients
+            base = listable
         case .recent:
-            base = scopedClients.filter { (computedStats[$0.id]?.lastActivity ?? .distantPast) > cutoff }
-        case .favorites:
-            base = scopedClients.filter { $0.portalEnabled }
+            base = listable.filter { (computedStats[$0.id]?.lastActivity ?? .distantPast) > cutoff }
+        case .portalOn:
+            base = listable.filter { $0.portalEnabled }
         }
 
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -218,6 +228,7 @@ struct ClientListView: View {
         }
         .navigationTitle("Clients")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { addClientAndOpenSheet() } label: {
@@ -231,7 +242,7 @@ struct ClientListView: View {
                     client: draft,
                     isDraft: true,
                     onOpenExisting: { existing in
-                        deleteIfEmptyAndClose()
+                        discardDraftAndClose()
                         DispatchQueue.main.async {
                             openExistingClient = existing
                             showOpenExistingBanner = true
@@ -243,16 +254,17 @@ struct ClientListView: View {
                 )
                     .navigationTitle("New Client")
                     .navigationBarTitleDisplayMode(.inline)
+                    .sbwNavigationBarBackdrop()
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Cancel") {
-                                deleteIfEmptyAndClose()
+                                discardDraftAndClose()
                             }
                         }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") {
                                 if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    deleteIfEmptyAndClose()
+                                    discardDraftAndClose()
                                     return
                                 }
 
@@ -298,6 +310,10 @@ struct ClientListView: View {
             recomputeVisibleClients()
         }
         .onChange(of: invoices.count) {
+            recomputeVisibleClients()
+        }
+        .onChange(of: newClientDraft?.id) {
+            // Show or hide the in-flight draft row as the sheet opens and closes.
             recomputeVisibleClients()
         }
         .alert(
@@ -369,16 +385,21 @@ struct ClientListView: View {
         newClientDraft = c
     }
 
-    private func deleteIfEmptyAndClose() {
+    /// Throw the draft away.
+    ///
+    /// This used to delete only when *every* field was still blank, so typing a
+    /// single character into a new client and then tapping Cancel saved them
+    /// anyway. The record exists at all only because `addClientAndOpenSheet`
+    /// inserts one up front to give attachments a stable ID — from the user's
+    /// side nothing existed before this sheet opened, so cancelling has to
+    /// leave nothing behind.
+    private func discardDraftAndClose() {
         if let draft = newClientDraft {
-            let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = draft.email.trimmingCharacters(in: .whitespacesAndNewlines)
-            let phone = draft.phone.trimmingCharacters(in: .whitespacesAndNewlines)
-            let address = draft.address.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if name.isEmpty && email.isEmpty && phone.isEmpty && address.isEmpty {
-                modelContext.delete(draft)
-                try? modelContext.save()
+            modelContext.delete(draft)
+            do {
+                try modelContext.save()
+            } catch {
+                SBWLog.ui.problem("Failed to discard new client draft: \(error)")
             }
         }
         newClientDraft = nil

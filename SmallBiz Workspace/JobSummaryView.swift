@@ -311,6 +311,7 @@ struct JobSummaryView: View {
         }
         .navigationTitle("Job Summary")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .sheet(isPresented: $showEditor) {
             NavigationStack {
                 JobDetailView(job: job)

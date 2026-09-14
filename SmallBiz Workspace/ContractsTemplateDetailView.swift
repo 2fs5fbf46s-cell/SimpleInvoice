@@ -55,6 +55,7 @@ struct ContractTemplateDetailView: View {
         }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
 
         // Autosave edits
         .onChange(of: template.name) { _, _ in scheduleSave() }

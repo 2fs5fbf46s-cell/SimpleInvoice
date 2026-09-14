@@ -402,6 +402,7 @@ struct ClientSummaryView: View {
         }
         .navigationTitle("Client Summary")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .sheet(isPresented: $showEditSheet) {
             NavigationStack {
                 ClientEditView(client: client)
@@ -473,6 +474,7 @@ struct ClientSummaryView: View {
                 }
                 .navigationTitle("New Invoice")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") {

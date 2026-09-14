@@ -79,6 +79,7 @@ struct HelpCenterView: View {
         }
         .navigationTitle("Help Center")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .sheet(isPresented: $showSupportSheet) {
             NavigationStack {
                 ZStack {

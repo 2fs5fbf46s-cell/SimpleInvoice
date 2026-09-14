@@ -70,6 +70,7 @@ struct BookingPortalView: View {
                 }
                 .navigationTitle("Booking Portal")
                 .navigationBarTitleDisplayMode(.inline)
+                .sbwNavigationBarBackdrop()
                 .alert("Regenerate booking link?", isPresented: $showRegenerateConfirm) {
                     Button("Regenerate", role: .destructive) {
                         Task { await registerNewSlug(force: true) }

@@ -84,6 +84,7 @@ struct RevenueView: View {
         }
         .navigationTitle("Revenue")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $invoiceListDestination) { filter in
             InvoiceListView(businessID: effectiveBusinessID, initialFilter: filter)
         }

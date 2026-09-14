@@ -108,6 +108,7 @@ struct PortalDirectoryLauncherView: View {
         }
         .navigationTitle("Client Portal")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $navigateToClientSettings) { client in
             ClientEditView(client: client)
         }

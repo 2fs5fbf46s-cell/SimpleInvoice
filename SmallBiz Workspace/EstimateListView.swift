@@ -242,6 +242,7 @@ struct EstimateListView: View {
         }
         .navigationTitle("Estimates")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
 
         // MARK: - Toolbar (matches InvoiceListView style)
         .toolbar {
@@ -348,6 +349,7 @@ struct EstimateListView: View {
                         .interactiveDismissDisabled()
                         .navigationTitle("New Estimate")
                         .navigationBarTitleDisplayMode(.inline)
+                        .sbwNavigationBarBackdrop()
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
                                 Button("Cancel") {
@@ -444,7 +446,8 @@ struct EstimateListView: View {
 
     private func row(_ estimate: Invoice) -> some View {
         let statusText = estimatePillText(for: estimate)
-        let clientName = estimate.client?.name ?? "No Client"
+        // See InvoiceListView: the snapshot, not the relationship.
+        let clientName = estimate.displayClientName
         let date = estimate.issueDate.formatted(date: .abbreviated, time: .omitted)
         let total = estimate.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
         let subtitle = "\(statusText) • \(clientName) • \(date) • \(total)"

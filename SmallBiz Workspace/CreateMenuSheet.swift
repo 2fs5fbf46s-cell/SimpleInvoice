@@ -137,6 +137,7 @@ struct CreateMenuSheet: View {
             }
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -217,6 +218,7 @@ struct CreateMenuSheet: View {
                     )
                         .navigationTitle("New Client")
                         .navigationBarTitleDisplayMode(.inline)
+                        .sbwNavigationBarBackdrop()
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button("Cancel") { deleteClientIfEmptyAndClose() }
@@ -264,6 +266,7 @@ struct CreateMenuSheet: View {
                         JobDetailView(job: newJobDraft, isDraft: true)
                             .navigationTitle("New Request")
                             .navigationBarTitleDisplayMode(.inline)
+                            .sbwNavigationBarBackdrop()
                             .toolbar {
                                 ToolbarItem(placement: .cancellationAction) {
                                     Button("Cancel") { deleteJobIfEmptyAndClose() }

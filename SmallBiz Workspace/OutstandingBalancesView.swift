@@ -92,6 +92,7 @@ struct OutstandingBalancesView: View {
         }
         .navigationTitle(mode == .overdueOnly ? "Overdue Balances" : "Outstanding Balances")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .task(id: "\(businessID.uuidString)-\(mode == .overdueOnly ? "overdue" : "outstanding")") {
             await vm.load(modelContext: modelContext, businessID: businessID, mode: mode)
         }

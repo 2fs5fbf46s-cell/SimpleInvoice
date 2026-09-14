@@ -40,6 +40,11 @@ struct BusinessProfileView: View {
     @State private var stripeStatus: StripeConnectStatus?
     @State private var isLoadingStripeStatus = false
     @State private var isStartingStripeOnboarding = false
+    /// Inline status-read failures. Both of these used to fire modal alerts the
+    /// moment this screen appeared.
+    @State private var stripeStatusNotice: String? = nil
+    @State private var paypalStatusNotice: String? = nil
+
     @State private var stripeErrorMessage: String?
     @State private var showStripeErrorAlert = false
     @State private var showStripeSafari = false
@@ -54,7 +59,6 @@ struct BusinessProfileView: View {
     @State private var showEssentialsSection = true
     @State private var showBrandingSection = false
     @State private var showWebsiteSection = true
-    @State private var showPaymentsSection = true
     @State private var showNotificationsSection = false
     @State private var showAdvancedSection = false
     @State private var showDebugMetadata = false
@@ -125,6 +129,7 @@ struct BusinessProfileView: View {
         }
         .navigationTitle("Business")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         return applyProfileLifecycle(to: base, profile: profile)
     }
 
@@ -234,8 +239,20 @@ struct BusinessProfileView: View {
         ScrollView {
             VStack(spacing: 14) {
                 heroHeader(profile)
+
+                // Status-read failures report here. They used to be two modal
+                // alerts that fired the moment this screen appeared.
+                if let notice = stripeStatusNotice { statusNotice(notice) }
+                if let notice = paypalStatusNotice { statusNotice(notice) }
+
                 essentialsCard(profile)
                 brandingCard(profile)
+
+                // This screen ran Stripe and PayPal checks, showed an Action
+                // Needed badge, and then offered no way to set payments up —
+                // `paymentsShortcutCard` was declared and never rendered.
+                paymentsShortcutCard
+
                 notificationsCard
                 advancedOptionsCard(profile)
 
@@ -265,6 +282,29 @@ struct BusinessProfileView: View {
     }
 
     // MARK: - Cards
+
+    /// A failed background status read, as a row you can read past rather than a
+    /// dialog you have to dismiss.
+    private func statusNotice(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
+    }
 
     private func heroHeader(_ profile: BusinessProfile) -> some View {
         let name = profile.name.trimmed.isEmpty ? "Business Profile" : profile.name.trimmed
@@ -408,84 +448,6 @@ struct BusinessProfileView: View {
                 }
             }
             .buttonStyle(.plain)
-        }
-    }
-
-    private var paymentsCard: some View {
-        PremiumCard {
-            DisclosureGroup(isExpanded: $showPaymentsSection) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Stripe")
-                                .font(.subheadline.weight(.semibold))
-                            Text(stripeStatusText)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if isLoadingStripeStatus {
-                            ProgressView()
-                        } else {
-                            stripeStatusPill
-                        }
-                    }
-
-                    ActionButtonRow(
-                        primaryTitle: stripePrimaryActionTitle,
-                        primarySystemImage: "link",
-                        primaryTint: SBWTheme.brandGreen,
-                        primaryDisabled: isLoadingStripeStatus || isStartingStripeOnboarding,
-                        secondaryTitle: "Refresh",
-                        secondarySystemImage: "arrow.clockwise",
-                        secondaryDisabled: isLoadingStripeStatus || isStartingStripeOnboarding,
-                        onPrimaryTap: { Task { await startStripeOnboarding() } },
-                        onSecondaryTap: { Task { await refreshStripeStatus() } }
-                    )
-
-                    Divider().overlay(Color.white.opacity(0.08))
-
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("PayPal (Platform)")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Configured on server")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        StatusPill(text: "Server Configured", color: .secondary, systemImage: "server.rack")
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("PayPal.me (fallback)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        if business != nil {
-                            TextField("https://paypal.me/yourbusiness", text: paypalMeBinding)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.URL)
-                                .focused($focusedField, equals: .paypalMe)
-                                .submitLabel(.done)
-                                .onSubmit { focusedField = nil }
-                        } else {
-                            Text("Select a business to edit PayPal.me.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Text("Used only as fallback for client portal payments.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.top, 8)
-            } label: {
-                SectionHeaderRow(title: "Payments", subtitle: "Stripe and PayPal controls", systemImage: "creditcard.fill")
-            }
-            .tint(.secondary)
         }
     }
 
@@ -1071,8 +1033,12 @@ struct BusinessProfileView: View {
                 paypalStatus = PayPalStatus(connected: false, merchantIdLast4: nil, merchantIdFull: nil)
                 return
             }
-            paypalErrorMessage = error.localizedDescription
-            showPayPalErrorAlert = true
+            // A status read nobody asked for. Inline, never modal.
+            paypalStatusNotice = PaymentErrorPresenter.message(
+                forServerText: error.localizedDescription,
+                provider: .payPal
+            )
+            SBWLog.payments.problem("PayPal status read failed on Business Profile")
         }
     }
 
@@ -1122,8 +1088,13 @@ struct BusinessProfileView: View {
                 self.business = business
             }
         } catch {
-            stripeErrorMessage = error.localizedDescription
-            showStripeErrorAlert = true
+            // Same: this runs on appear, so it reports inline. Only the
+            // user-initiated onboarding below still raises an alert.
+            stripeStatusNotice = PaymentErrorPresenter.message(
+                forServerText: error.localizedDescription,
+                provider: .stripe
+            )
+            SBWLog.payments.problem("Stripe status read failed on Business Profile")
         }
     }
 

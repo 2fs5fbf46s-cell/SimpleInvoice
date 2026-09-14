@@ -122,6 +122,7 @@ struct BookingsListView: View {
         }
         .navigationTitle("Bookings")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedRequest) { request in
             BookingOverviewView(request: request) { newStatus in
                 updateStatus(for: request.requestId, newStatus: newStatus)

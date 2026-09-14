@@ -35,6 +35,7 @@ struct ClientPortalPreviewView: View {
         }
         .navigationTitle("Client Portal (Preview)")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .sheet(item: $pdfPreview) { item in
             QuickLookPreview(url: item.url)
         }

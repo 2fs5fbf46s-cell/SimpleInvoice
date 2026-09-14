@@ -43,6 +43,7 @@ struct QuickStartView: View {
         }
         .navigationTitle("Quick Start")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .task(id: activeBiz.activeBusinessID) { await refresh() }
     }
 

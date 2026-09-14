@@ -77,6 +77,7 @@ struct BusinessInsightsView: View {
         }
         .navigationTitle("Business Insights")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .task(id: effectiveBusinessID?.uuidString ?? "none") {
             guard let bizID = effectiveBusinessID else {
                 resetState()

@@ -229,6 +229,7 @@ struct AttachmentsManagerView: View {
         }
         .navigationTitle(entity.title)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Add") { showFileImporter = true }

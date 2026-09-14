@@ -117,6 +117,7 @@ struct MusicSplitSheetFormView: View {
         }
         .navigationTitle("Music Split Sheet")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }

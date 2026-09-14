@@ -67,6 +67,7 @@ struct MusicSplitSheetContributorEditView: View {
         }
         .navigationTitle("Contributor")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {

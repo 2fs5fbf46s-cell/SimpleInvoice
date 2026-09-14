@@ -89,6 +89,7 @@ struct LineItemEditView: View {
         }
         .navigationTitle("Line Item")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .onAppear { loadFromModel() }
         .onChange(of: nameText) { _, _ in saveToModel() }
         .onChange(of: detailsText) { _, _ in saveToModel() }

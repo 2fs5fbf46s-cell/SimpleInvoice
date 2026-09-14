@@ -339,6 +339,7 @@ private struct InvoiceOverviewSummaryView: View {
         }
         .navigationTitle(invoice.documentType == "estimate" ? "Estimate" : "Invoice")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .sheet(isPresented: Binding(
             get: { shareItems != nil },
             set: { if !$0 { shareItems = nil } }
@@ -354,6 +355,7 @@ private struct InvoiceOverviewSummaryView: View {
                     PDFPreviewView(url: url)
                         .navigationTitle(invoice.documentType == "estimate" ? "Estimate PDF" : "Invoice PDF")
                         .navigationBarTitleDisplayMode(.inline)
+                        .sbwNavigationBarBackdrop()
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Button("Share") { sharePDFOnly() }
@@ -536,6 +538,7 @@ private struct InvoiceLineItemsSummaryView: View {
         }
         .navigationTitle("Line Items")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") { dismiss() }
@@ -591,6 +594,7 @@ private struct InvoicePaymentsSummaryView: View {
         }
         .navigationTitle("Payments")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") { dismiss() }
@@ -607,6 +611,7 @@ private struct InvoiceAttachmentsSummaryView: View {
         AttachmentsManagerView(invoice: invoice)
             .navigationTitle("Invoice Attachments")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
@@ -650,6 +655,7 @@ private struct InvoiceActivitySummaryView: View {
         }
         .navigationTitle("Activity")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") { dismiss() }

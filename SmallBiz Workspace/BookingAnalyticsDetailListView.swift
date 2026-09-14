@@ -41,6 +41,7 @@ struct BookingAnalyticsDetailListView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedRequest) { request in
             BookingDetailView(request: request)
         }

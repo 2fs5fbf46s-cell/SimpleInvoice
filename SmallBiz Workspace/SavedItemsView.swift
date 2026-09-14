@@ -150,6 +150,7 @@ struct SavedItemsView: View {
         }
         .navigationTitle("Inventory")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { EditButton() }
 
@@ -491,6 +492,7 @@ private struct CategoriesEditorView: View {
         }
         .navigationTitle("Categories")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .onAppear {
             guard let profile else { return }
             draftCategories = categories(from: profile)
@@ -682,6 +684,7 @@ private struct CatalogItemEditorSheet: View {
         }
         .navigationTitle("Saved Item")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { onCancel() }

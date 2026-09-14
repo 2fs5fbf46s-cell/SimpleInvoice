@@ -81,6 +81,7 @@ struct WebsiteCustomizationView: View {
         }
         .navigationTitle("Business Customization")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {
@@ -551,6 +552,7 @@ private struct WebsiteHeroImageView: View {
         }
         .navigationTitle("Hero Image")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .onChange(of: selectedHeroItem) { _, newValue in
             Task {
                 guard let newValue,
@@ -621,6 +623,7 @@ private struct WebsiteServicesView: View {
         }
         .navigationTitle("Services")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { persistRows() }
@@ -775,6 +778,7 @@ private struct WebsiteAboutView: View {
         }
         .navigationTitle("About Us")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {
@@ -897,6 +901,7 @@ private struct WebsiteTeamView: View {
         }
         .navigationTitle("Our Team")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {
@@ -1168,6 +1173,7 @@ private struct WebsiteGalleryView: View {
         }
         .navigationTitle("Image Gallery")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .onChange(of: selectedGalleryItems) { _, items in
             Task {
                 guard !items.isEmpty else { return }

@@ -49,6 +49,7 @@ struct NotificationsView: View {
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
+        .sbwNavigationBarBackdrop()
         .refreshable {
             await refreshInbox()
         }
@@ -213,6 +214,7 @@ private struct NotificationDetailView: View {
             }
             .navigationTitle("Notification")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
         }
     }
 }

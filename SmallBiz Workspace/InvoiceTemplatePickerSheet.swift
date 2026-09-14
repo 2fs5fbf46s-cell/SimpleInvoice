@@ -161,5 +161,6 @@ struct InvoiceTemplatePickerSheet: View {
         }
         .navigationTitle(mode.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
     }
 }

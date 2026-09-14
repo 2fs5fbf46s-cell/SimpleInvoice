@@ -670,6 +670,7 @@ struct BookingDetailView: View {
         }
         .navigationTitle("Booking Request")
         .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .alert("Booking Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -906,6 +907,7 @@ struct BookingDetailView: View {
             }
             .navigationTitle("Request Deposit")
             .navigationBarTitleDisplayMode(.inline)
+            .sbwNavigationBarBackdrop()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { showDepositSheet = false }
