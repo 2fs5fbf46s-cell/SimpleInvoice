@@ -8,6 +8,7 @@ final class DashboardMetricsVM: ObservableObject {
     @Published private(set) var upcomingJobCount: Int = 0
     @Published private(set) var upcomingBookingCount: Int = 0
     @Published private(set) var scheduleCount: Int = 0
+    @Published private(set) var pendingApprovalBookingCount: Int = 0
 
     private struct BookingCacheEntry {
         let requests: [BookingRequestDTO]
@@ -33,6 +34,7 @@ final class DashboardMetricsVM: ObservableObject {
             upcomingJobCount = 0
             upcomingBookingCount = 0
             scheduleCount = 0
+            pendingApprovalBookingCount = 0
             return
         }
 
@@ -80,6 +82,7 @@ final class DashboardMetricsVM: ObservableObject {
         upcomingJobCount = metrics.upcomingJobCount
         upcomingBookingCount = metrics.upcomingBookingCount
         scheduleCount = metrics.scheduleCount
+        pendingApprovalBookingCount = metrics.pendingApprovalBookingCount
     }
 }
 
@@ -89,6 +92,7 @@ private struct DashboardMetrics {
     let upcomingJobCount: Int
     let upcomingBookingCount: Int
     let scheduleCount: Int
+    let pendingApprovalBookingCount: Int
 }
 
 private enum DashboardMetricsService {
@@ -158,12 +162,18 @@ private enum DashboardMetricsService {
 
         let scheduleCount = upcomingJobCount + upcomingBookingCount
 
+        let pendingApprovalBookingCount = bookingRequests
+            .filter { $0.businessId.lowercased() == businessIDString }
+            .filter { $0.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "pending" }
+            .count
+
         return DashboardMetrics(
             weeklyPaidCents: weeklyInvoicePaidCents + weeklyDepositsCents,
             monthlyPaidCents: monthlyInvoicePaidCents + monthlyDepositsCents,
             upcomingJobCount: upcomingJobCount,
             upcomingBookingCount: upcomingBookingCount,
-            scheduleCount: scheduleCount
+            scheduleCount: scheduleCount,
+            pendingApprovalBookingCount: pendingApprovalBookingCount
         )
     }
 

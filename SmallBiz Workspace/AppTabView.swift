@@ -65,7 +65,7 @@ struct AppTabView: View {
         TabView(selection: $tab) {
 
             NavigationStack(path: $todayPath) {
-                DashboardView(businessID: activeBiz.activeBusinessID)
+                TodayView(businessID: activeBiz.activeBusinessID)
             }
             .id(todayResetID)
             .tag(AppTab.today)
@@ -386,6 +386,8 @@ struct AppTabView: View {
             routeToTabRoot(.clients)
         case .invoicesRoot:
             routeToTabRoot(.money)
+        case .workRoot:
+            routeToTabRoot(.work)
         case .moreRoot:
             businessSettingsPresenter.open()
         case .paymentsSetup:

@@ -4,6 +4,7 @@ import Combine
 enum AppRoute {
     case clientsRoot
     case invoicesRoot
+    case workRoot
     case moreRoot
     case paymentsSetup
     case openAppSettings
