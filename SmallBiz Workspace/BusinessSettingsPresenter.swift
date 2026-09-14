@@ -54,5 +54,6 @@ struct BusinessAvatarButton: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("Business Settings")
+        .coachMark(id: "walkthrough.avatar")
     }
 }

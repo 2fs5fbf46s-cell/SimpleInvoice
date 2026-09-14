@@ -24,6 +24,18 @@ struct OnboardingFlowView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
+    // Step 2: first client (skippable — QuickStartChecklist already derives
+    // "add a client" from whether one exists, so skipping here needs no
+    // tracking of its own; it just surfaces on Today like any other gap).
+    @State private var clientName: String = ""
+    @State private var clientEmail: String = ""
+    @State private var clientPhone: String = ""
+
+    // Step 3: payment method (skippable, same reasoning).
+    @State private var showPaymentsSetup = false
+
+    private static let totalSteps = 5
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -32,6 +44,7 @@ struct OnboardingFlowView: View {
 
                 ScrollView {
                     VStack(spacing: 12) {
+                        stepDots
                         SBWCardContainer {
                             currentStepContent
                         }
@@ -68,6 +81,18 @@ struct OnboardingFlowView: View {
             } message: {
                 Text(errorMessage ?? "Something went wrong.")
             }
+            .sheet(isPresented: $showPaymentsSetup, onDismiss: {
+                withAnimation(.easeInOut(duration: 0.2)) { step = 4 }
+            }) {
+                NavigationStack {
+                    SetupPaymentsView()
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done") { showPaymentsSetup = false }
+                            }
+                        }
+                }
+            }
         }
     }
 
@@ -79,6 +104,12 @@ struct OnboardingFlowView: View {
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
             } else if step == 1 {
                 businessStep
+                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
+            } else if step == 2 {
+                clientStep
+                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
+            } else if step == 3 {
+                paymentStep
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
             } else {
                 notificationsStep
@@ -183,6 +214,57 @@ struct OnboardingFlowView: View {
         }
     }
 
+    private var clientStep: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            iconChip(systemName: "person.badge.plus")
+
+            Text(QuickStartChecklist.Step.addClient.title)
+                .font(.title3.weight(.bold))
+
+            Text(QuickStartChecklist.Step.addClient.detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Divider().overlay(Color.primary.opacity(0.08))
+
+            labeledField("Client Name") {
+                TextField("Ada Lovelace", text: $clientName)
+                    .textInputAutocapitalization(.words)
+            }
+
+            labeledField("Email (optional)") {
+                TextField("client@example.com", text: $clientEmail)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+            }
+
+            labeledField("Phone (optional)") {
+                TextField("(555) 123-4567", text: $clientPhone)
+                    .keyboardType(.phonePad)
+            }
+        }
+    }
+
+    private var paymentStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            iconChip(systemName: "creditcard")
+
+            Text(QuickStartChecklist.Step.setUpPayments.title)
+                .font(.title3.weight(.bold))
+
+            Text("Connect now, or come back to it later from your business avatar.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 10) {
+                featureRow(icon: "creditcard.fill", title: "Card payments", subtitle: "Stripe or Square, cards and wallets")
+                featureRow(icon: "arrow.left.arrow.right", title: "PayPal", subtitle: "Route payments to your PayPal account")
+                featureRow(icon: "banknote", title: "Cash App, Venmo, ACH", subtitle: "Whatever your clients already use")
+            }
+            .padding(.top, 4)
+        }
+    }
+
     private var notificationsStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             iconChip(systemName: "bell.badge")
@@ -245,6 +327,45 @@ struct OnboardingFlowView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(SBWTheme.brandBlue)
                 .disabled(trimmedBusinessName.isEmpty || isSaving)
+            } else if step == 2 {
+                Button("Skip for now") {
+                    Haptics.lightTap()
+                    withAnimation(.easeInOut(duration: 0.2)) { step = 3 }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSaving)
+
+                Button {
+                    Haptics.lightTap()
+                    Task { await addClientAndContinueTapped() }
+                } label: {
+                    if isSaving {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Add Client")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+                .disabled(clientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+            } else if step == 3 {
+                Button("Skip for now") {
+                    Haptics.lightTap()
+                    withAnimation(.easeInOut(duration: 0.2)) { step = 4 }
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    Haptics.lightTap()
+                    showPaymentsSetup = true
+                } label: {
+                    Text("Set Up Payments")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
             } else {
                 Button("Not Now") {
                     Haptics.lightTap()
@@ -368,6 +489,30 @@ struct OnboardingFlowView: View {
     }
 
     @MainActor
+    private func addClientAndContinueTapped() async {
+        let trimmedName = clientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, let businessID = activeBiz.activeBusinessID else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        let client = Client(
+            businessID: businessID,
+            name: trimmedName,
+            email: clientEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+            phone: clientPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        modelContext.insert(client)
+
+        do {
+            try modelContext.save()
+            withAnimation(.easeInOut(duration: 0.2)) { step = 3 }
+        } catch {
+            modelContext.delete(client)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
     private func enableNotificationsTapped() async {
         isSaving = true
         defer { isSaving = false }
@@ -432,6 +577,18 @@ struct OnboardingFlowView: View {
 
         try modelContext.save()
         activeBiz.setActiveBusiness(targetBusiness.id)
+    }
+
+    private var stepDots: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<Self.totalSteps, id: \.self) { index in
+                Capsule()
+                    .fill(index == step ? SBWTheme.brandBlue : Color.primary.opacity(0.14))
+                    .frame(width: index == step ? 16 : 6, height: 6)
+                    .animation(.easeInOut(duration: 0.2), value: step)
+            }
+        }
+        .padding(.top, 2)
     }
 
     private func iconChip(systemName: String) -> some View {

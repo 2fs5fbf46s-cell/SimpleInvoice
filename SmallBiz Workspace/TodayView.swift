@@ -84,6 +84,7 @@ struct TodayView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         sectionLabel("Needs You")
                         attentionSection
+                            .coachMark(id: "walkthrough.today.needsyou")
 
                         sectionLabel("This Week")
                         weekStrip

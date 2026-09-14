@@ -10,16 +10,16 @@ struct WalkthroughStep: Identifiable, Equatable {
 
 enum WalkthroughSteps {
     // Target ids updated for the Today/Clients/Create/Money/Work tab bar. The
-    // old "More" tab's coach mark (setup-payments) lives inside the Business
-    // settings sheet now rather than a tab, so that step's target frame won't
-    // register during a normal walkthrough — the coordinator already treats a
-    // frame that never appears as "skip this step," so it degrades gracefully
-    // rather than getting stuck. A proper fix (walkthrough opens the sheet for
-    // that one step) is scoped separately, not part of this navigation pass.
+    // Setup Payments step used to target a coach mark buried inside the old
+    // More tab — since that row now lives behind the Business settings sheet
+    // (which isn't open during a normal walkthrough), it points at the
+    // always-visible avatar button instead, which is genuinely where that
+    // action lives now rather than a stale reference the coordinator has to
+    // silently skip.
     static let core: [WalkthroughStep] = [
         WalkthroughStep(
             id: "today-overview",
-            targetCoachMarkId: "walkthrough.dashboard.metrics",
+            targetCoachMarkId: "walkthrough.today.needsyou",
             title: "Your Command Center",
             message: "Track cash flow and upcoming work from Today.",
             routeTab: .today
@@ -53,10 +53,10 @@ enum WalkthroughSteps {
             routeTab: .work
         ),
         WalkthroughStep(
-            id: "payments-tile",
-            targetCoachMarkId: "walkthrough.more.setup-payments",
-            title: "Setup Payments",
-            message: "Tap your business avatar, then Setup Payments, to connect Stripe/PayPal or add manual payment methods.",
+            id: "business-avatar",
+            targetCoachMarkId: "walkthrough.avatar",
+            title: "Your Business",
+            message: "Business Profile, Setup Payments, your website and more live here.",
             routeTab: .today
         )
     ]
