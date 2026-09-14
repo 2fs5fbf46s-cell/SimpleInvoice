@@ -119,8 +119,8 @@ struct CreateMenuSheet: View {
                             Divider().opacity(0.6)
 
                             CreateActionRow(
-                                title: "New Request",
-                                subtitle: "Create a job",
+                                title: "New Job",
+                                subtitle: "Track work for a client",
                                 systemImage: "tray.full",
                                 chipFill: SBWTheme.chipFill(for: "Requests")
                             ) {
@@ -264,7 +264,7 @@ struct CreateMenuSheet: View {
                 NavigationStack {
                     if let newJobDraft {
                         JobDetailView(job: newJobDraft, isDraft: true)
-                            .navigationTitle("New Request")
+                            .navigationTitle("New Job")
                             .navigationBarTitleDisplayMode(.inline)
                             .sbwNavigationBarBackdrop()
                             .toolbar {
@@ -288,7 +288,7 @@ struct CreateMenuSheet: View {
                                 }
                             }
                     } else {
-                        ProgressView("Loading…").navigationTitle("New Request")
+                        ProgressView("Loading…").navigationTitle("New Job")
                     }
                 }
                 .presentationDetents([.large])

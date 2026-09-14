@@ -105,22 +105,24 @@ struct SavedItemsView: View {
                 categoryFilterRow
 
                 if filteredItems.isEmpty {
-                    ContentUnavailableView(
-                        scopedItems.isEmpty ? "No Saved Items" : "No Results",
+                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || selectedCategory != "All"
+                    SBWEmptyState(
+                        title: scopedItems.isEmpty ? "No Saved Items" : "No Results",
+                        message: scopedItems.isEmpty
+                            ? "Save the services and materials you bill for, and they'll be one tap away on an invoice."
+                            : SBWEmptyStateCopy.message(noun: "item", pluralNoun: "items", isFiltered: true),
                         systemImage: "tray",
-                        description: Text(scopedItems.isEmpty
-                                          ? "Tap + to add your first saved item."
-                                          : "Try a different search.")
-                    )
-                    Button("Add Item") { addDraftAndOpenEditor() }
-                        .buttonStyle(.plain)
-                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedCategory != "All" {
-                        Button("Clear Filters") {
+                        actionTitle: scopedItems.isEmpty ? "Add Item" : nil,
+                        action: scopedItems.isEmpty ? { addDraftAndOpenEditor() } : nil,
+                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
+                        secondaryAction: isFiltered ? {
                             searchText = ""
                             selectedCategory = "All"
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        } : nil
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredItems) { item in
                         Button {
@@ -144,7 +146,9 @@ struct SavedItemsView: View {
                     .listRowBackground(Color.clear)
                 }
             }
-            .listStyle(.plain)
+            // Was .listStyle(.plain), which is why this screen alone had bare
+            // full-bleed rows and hairline rules instead of the rounded cards
+            // every other list uses. The default inset-grouped style matches.
             .listRowSeparator(.hidden)
             .scrollContentBackground(.hidden)
         }

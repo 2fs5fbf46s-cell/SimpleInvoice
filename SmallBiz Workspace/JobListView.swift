@@ -106,7 +106,7 @@ struct JobsListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search requests", text: $searchText)
+                        TextField("Search jobs", text: $searchText)
                             .textInputAutocapitalization(.never)
 
                         Button {
@@ -122,25 +122,13 @@ struct JobsListView: View {
                 }
 
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Filter.allCases) { option in
-                                Button {
-                                    filter = option
-                                } label: {
-                                    Text(option.rawValue)
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            Capsule()
-                                                .fill(filter == option ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    // Was a horizontal ScrollView with no fade, so "Cancelled"
+                    // rendered as "Car" sliced mid-glyph at the screen edge.
+                    SBWFilterChips(
+                        options: Filter.allCases,
+                        title: { $0.rawValue },
+                        selection: $filter
+                    )
                 }
 
                 if effectiveBusinessID == nil {
@@ -150,24 +138,24 @@ struct JobsListView: View {
                         description: Text("Select a business to view jobs.")
                     )
                 } else if filteredJobs.isEmpty {
-                    ContentUnavailableView(
-                        scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
+                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || filter != .all
+                    SBWEmptyState(
+                        title: scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
+                        message: scopedJobs.isEmpty
+                            ? SBWEmptyStateCopy.message(noun: "job", pluralNoun: "jobs", isFiltered: false)
+                            : SBWEmptyStateCopy.message(noun: "job", pluralNoun: "jobs", isFiltered: true),
                         systemImage: "briefcase",
-                        description: Text(scopedJobs.isEmpty
-                                          ? "Tap + to create your first job."
-                                          : "Try a different filter or search term.")
-                    )
-                    Button("Create Job") {
-                        addJobAndOpenSheet()
-                    }
-                    .buttonStyle(.plain)
-                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
-                        Button("Clear Filters") {
+                        actionTitle: scopedJobs.isEmpty ? "Create Job" : nil,
+                        action: scopedJobs.isEmpty ? { addJobAndOpenSheet() } : nil,
+                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
+                        secondaryAction: isFiltered ? {
                             searchText = ""
                             filter = .all
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        } : nil
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredJobs) { job in
                         Button {

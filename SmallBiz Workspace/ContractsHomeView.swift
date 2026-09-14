@@ -12,6 +12,10 @@ struct ContractsHomeView: View {
     private let businessID: UUID?
 
     @State private var filter: HomeFilter = .all
+    /// Contracts was the only list screen with no way to search it. (The app has
+    /// a second contracts list, `ContractListView`, which does have search — but
+    /// nothing navigates to it.)
+    @State private var searchText: String = ""
     @State private var selectedContract: Contract? = nil
     @State private var loadedContracts: [Contract] = []
     @State private var loadedClients: [Client] = []
@@ -29,6 +33,19 @@ struct ContractsHomeView: View {
         Dictionary(uniqueKeysWithValues: loadedClients.map { ($0.id, $0.name) })
     }
 
+    /// Match on the contract title and on whoever it is with — which is the
+    /// snapshot-aware name, so a deleted client is still searchable.
+    private func searchFiltered(_ contracts: [Contract]) -> [Contract] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return contracts }
+
+        return contracts.filter { contract in
+            contract.title.lowercased().contains(q)
+                || contract.displayClientName.lowercased().contains(q)
+                || contract.templateName.lowercased().contains(q)
+        }
+    }
+
     private enum HomeFilter: String, CaseIterable, Identifiable {
         case all = "All"
         case drafts = "Drafts"
@@ -37,7 +54,7 @@ struct ContractsHomeView: View {
     }
 
     var body: some View {
-        let currentContracts = loadedContracts
+        let currentContracts = searchFiltered(loadedContracts)
         let draftContracts = currentContracts.filter { $0.status == .draft }
         let activeContracts = currentContracts.filter { $0.status == .sent || $0.status == .signed }
 
@@ -54,6 +71,26 @@ struct ContractsHomeView: View {
                 .ignoresSafeArea()
 
             List {
+
+                Section {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search contracts", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
 
                 // MARK: - Create
                 Section("Create") {

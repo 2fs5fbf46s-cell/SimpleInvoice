@@ -9,7 +9,7 @@ struct BookingsListView: View {
 
     @State private var searchText = ""
     @State private var requests: [BookingRequestItem] = []
-    @State private var selectedStatus: BookingAdminStatus = .pending
+    @State private var selectedStatus: BookingAdminStatus = .all
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var refreshTask: Task<Void, Never>? = nil
@@ -63,25 +63,13 @@ struct BookingsListView: View {
                 }
 
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(BookingAdminStatus.allCases) { status in
-                                Button {
-                                    selectedStatus = status
-                                } label: {
-                                    Text(status.label)
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            Capsule()
-                                                .fill(selectedStatus == status ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    // Was a horizontal ScrollView with no fade, so the fourth
+                    // chip was sliced through its first letter at the edge.
+                    SBWFilterChips(
+                        options: BookingAdminStatus.allCases,
+                        title: { $0.label },
+                        selection: $selectedStatus
+                    )
                 }
 
                 if isLoading {

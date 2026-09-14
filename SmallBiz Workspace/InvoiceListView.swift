@@ -173,23 +173,28 @@ struct InvoiceListView: View {
                         description: Text("Select a business to view invoices.")
                     )
                 } else if visibleInvoices.isEmpty {
-                    ContentUnavailableView(
-                        "No Invoices",
+                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || filter != .all
+                    SBWEmptyState(
+                        title: "No Invoices",
+                        // Said "try changing the filter" even with All selected
+                        // and nothing to find.
+                        message: SBWEmptyStateCopy.message(
+                            noun: "invoice",
+                            pluralNoun: "invoices",
+                            isFiltered: isFiltered
+                        ),
                         systemImage: "doc.text",
-                        description: Text("Try changing the filter or create a new invoice.")
-                    )
-                    Button("Create Invoice") {
-                        Haptics.lightTap()
-                        showingNewInvoice = true
-                    }
-                    .buttonStyle(.plain)
-                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
-                        Button("Clear Filters") {
+                        actionTitle: "Create Invoice",
+                        action: { showingNewInvoice = true },
+                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
+                        secondaryAction: isFiltered ? {
                             searchText = ""
                             filter = .all
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        } : nil
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(visibleInvoiceRows) { rowModel in
                         Button {

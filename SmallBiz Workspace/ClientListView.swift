@@ -192,24 +192,24 @@ struct ClientListView: View {
                         description: Text("Select a business to view clients.")
                     )
                 } else if visibleClients.isEmpty {
-                    ContentUnavailableView(
-                        scopedClients.isEmpty ? "No Clients Yet" : "No Results",
+                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || filter != .all
+                    SBWEmptyState(
+                        title: scopedClients.isEmpty ? "No Clients Yet" : "No Results",
+                        message: scopedClients.isEmpty
+                            ? "Add the people you invoice and they'll show up here."
+                            : "No clients match this filter. Try a different one, or clear your search.",
                         systemImage: "person.2",
-                        description: Text(scopedClients.isEmpty
-                                          ? "Tap + to add your first client."
-                                          : "Try a different search.")
-                    )
-                    Button("Add Client") {
-                        addClientAndOpenSheet()
-                    }
-                    .buttonStyle(.plain)
-                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
-                        Button("Clear Filters") {
+                        actionTitle: scopedClients.isEmpty ? "Add Client" : nil,
+                        action: scopedClients.isEmpty ? { addClientAndOpenSheet() } : nil,
+                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
+                        secondaryAction: isFiltered ? {
                             searchText = ""
                             filter = .all
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        } : nil
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(visibleClientRows) { rowModel in
                         Button {

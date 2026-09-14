@@ -167,17 +167,25 @@ struct ContractsListView: View {
                         description: Text("Select a business to view contracts.")
                     )
                 } else if scopedContracts.isEmpty {
-                    ContentUnavailableView(
-                        "No Contracts Yet",
-                        systemImage: "doc.plaintext",
-                        description: Text("Create contracts from templates, then export to PDF.")
+                    SBWEmptyState(
+                        title: "No Contracts Yet",
+                        message: "Create a contract from a template, then send it for signature.",
+                        systemImage: "doc.plaintext"
                     )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else if filteredContracts.isEmpty {
-                    ContentUnavailableView(
-                        "No Matches",
-                        systemImage: "magnifyingglass",
-                        description: Text("Try a different filter or search term.")
+                    SBWEmptyState(
+                        title: "No Matches",
+                        message: SBWEmptyStateCopy.message(
+                            noun: "contract",
+                            pluralNoun: "contracts",
+                            isFiltered: true
+                        ),
+                        systemImage: "magnifyingglass"
                     )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredContracts) { contract in
                         Button {

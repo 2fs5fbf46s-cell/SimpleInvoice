@@ -70,7 +70,7 @@ enum SBWTheme {
             // Slight green lean (people/customer)
             return AnyShapeStyle(greenTint)
 
-        case "Requests", "Jobs", "New Request":
+        case "Requests", "Jobs", "New Job":
             // Neutral brand wash
             return AnyShapeStyle(brandGradient.opacity(0.14))
 

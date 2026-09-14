@@ -186,24 +186,30 @@ struct EstimateListView: View {
                         description: Text("Select a business to view estimates.")
                     )
                 } else if filteredEstimates.isEmpty {
-                    ContentUnavailableView(
-                        "No Estimates",
+                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || filter != .all
+                    SBWEmptyState(
+                        title: "No Estimates",
+                        message: SBWEmptyStateCopy.message(
+                            noun: "estimate",
+                            pluralNoun: "estimates",
+                            isFiltered: isFiltered
+                        ),
                         systemImage: "doc.text",
-                        description: Text("Try changing the filter or create a new estimate.")
-                    )
-                    Button("Create Estimate") {
-                        draftName = ""
-                        draftClient = nil
-                        showingCreateEstimate = true
-                    }
-                    .buttonStyle(.plain)
-                    if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all {
-                        Button("Clear Filters") {
+                        actionTitle: "Create Estimate",
+                        action: {
+                            draftName = ""
+                            draftClient = nil
+                            showingCreateEstimate = true
+                        },
+                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
+                        secondaryAction: isFiltered ? {
                             searchText = ""
                             filter = .all
-                        }
-                        .buttonStyle(.plain)
-                    }
+                        } : nil
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredEstimates) { estimate in
                         Button {
