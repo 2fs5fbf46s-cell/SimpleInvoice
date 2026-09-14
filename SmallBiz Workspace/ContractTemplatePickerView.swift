@@ -11,6 +11,7 @@ struct ContractTemplatePickerView: View {
     private let businessID: UUID?
 
     @Query(sort: \ContractTemplate.name) private var templates: [ContractTemplate]
+    @Query private var businessProfiles: [BusinessProfile]
 
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
@@ -19,7 +20,6 @@ struct ContractTemplatePickerView: View {
     @State private var navigateToContract: Contract? = nil
 
     // Setup sheet
-    @State private var showingSetup = false
     @State private var showingMusicSplitSheetForm = false
     @State private var selectedTemplate: ContractTemplate? = nil
 
@@ -61,6 +61,26 @@ struct ContractTemplatePickerView: View {
             if q.isEmpty { return true }
             return t.name.lowercased().contains(q) || t.body.lowercased().contains(q)
         }
+    }
+
+    /// The template as it will actually read, not as it is stored.
+    ///
+    /// This previewed `template.body` directly, so someone choosing a legal
+    /// document was shown "Date: {{Today}}" and "DJ/Provider: {{Business.Name}}".
+    /// Running it through the same engine the real contract uses resolves what
+    /// is known now and strips the rest, which is exactly what the created
+    /// contract looks like before a client is attached.
+    private func previewBody(for template: ContractTemplate) -> String {
+        let context = ContractContext(
+            business: businessProfiles.first,
+            client: nil,
+            invoice: nil
+        )
+        let rendered = ContractTemplateEngine
+            .render(template: template.body, context: context)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return rendered.isEmpty ? template.body : rendered
     }
 
     var body: some View {
@@ -112,14 +132,13 @@ struct ContractTemplatePickerView: View {
                                         .foregroundStyle(.secondary)
                                 }
 
-                                Text(template.body)
+                                Text(previewBody(for: template))
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(4)
 
                                 Button {
                                     selectedTemplate = template
-                                    showingSetup = true
                                 } label: {
                                     Label("Use This Template", systemImage: "wand.and.stars")
                                         .frame(maxWidth: .infinity)
@@ -135,6 +154,8 @@ struct ContractTemplatePickerView: View {
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Templates")
+        .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
         .searchable(text: $searchText, prompt: "Search templates")
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
@@ -155,11 +176,15 @@ struct ContractTemplatePickerView: View {
         .navigationDestination(item: $navigateToContract) { contract in
             ContractDetailView(contract: contract)
         }
-        .sheet(isPresented: $showingSetup) {
+        // Driven by the selection, not a separate flag. With `isPresented` the
+        // sheet body could be built before `selectedTemplate` had propagated, so
+        // the Template row fell back to the literal word "Template" instead of
+        // naming the template the user had just chosen.
+        .sheet(item: $selectedTemplate) { template in
             NavigationStack {
                 ContractDraftSetupContainerView(
                     businessID: businessID,
-                    templateName: selectedTemplate?.name ?? "Template"
+                    templateName: template.name.isEmpty ? "Untitled template" : template.name
                 ) { businessProfile, selectedClient, selectedInvoice in
                     createDraftFromSelectedTemplate(
                         businessProfile: businessProfile,
@@ -169,7 +194,7 @@ struct ContractTemplatePickerView: View {
                 }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showingSetup = false }
+                        Button("Cancel") { selectedTemplate = nil }
                     }
                 }
             }
@@ -218,7 +243,7 @@ struct ContractTemplatePickerView: View {
                 client: selectedClient,
                 invoice: selectedInvoice
             )
-            showingSetup = false
+            selectedTemplate = nil
 
             // Push into detail view after the sheet dismisses
             DispatchQueue.main.async {
@@ -334,7 +359,7 @@ private struct ContractDraftSetupView: View {
                         }
                     }
 
-                    Text("Tip: If you select a Client or Invoice, tokens like {{Client.Name}} or {{Invoice.Total}} will be filled automatically.")
+                    Text("Pick a client or invoice and their details — name, address, amounts — are filled into the contract for you.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

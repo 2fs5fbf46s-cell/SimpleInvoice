@@ -21,6 +21,14 @@ struct NewInvoiceView: View {
     @State private var selectedClient: Client? = nil
     @State private var suggestedNumber: String = ""
 
+    /// The first line item, entered here rather than hunted for later.
+    ///
+    /// This sheet used to collect a number and a client and nothing else, so
+    /// every invoice was born at $0.00 with a placeholder line reading
+    /// "Service" — and Send was enabled immediately.
+    @State private var itemDescription: String = ""
+    @State private var itemAmountText: String = ""
+
     init(businessID: UUID? = nil) {
         self.businessID = businessID
         if let businessID {
@@ -80,6 +88,32 @@ struct NewInvoiceView: View {
                                         .pickerStyle(.menu)
                                     }
                                 }
+                            }
+                        }
+
+                        card {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("First Item")
+                                    .font(.headline)
+
+                                VStack(spacing: 0) {
+                                    fieldRow(title: "Description") {
+                                        TextField("What are you charging for?", text: $itemDescription)
+                                            .multilineTextAlignment(.trailing)
+                                    }
+
+                                    Divider().opacity(0.22)
+
+                                    fieldRow(title: "Amount") {
+                                        TextField("0.00", text: $itemAmountText)
+                                            .multilineTextAlignment(.trailing)
+                                            .keyboardType(.decimalPad)
+                                    }
+                                }
+
+                                Text("You can add more items, tax and a discount after this.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
 
@@ -195,10 +229,11 @@ struct NewInvoiceView: View {
         }
 
 
+        let trimmedDescription = itemDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let newItem = LineItem(
-            itemDescription: "Service",
+            itemDescription: trimmedDescription.isEmpty ? "Service" : trimmedDescription,
             quantity: 1,
-            unitPrice: 0
+            unitPrice: InvoiceAmountParser.dollars(from: itemAmountText)
         )
 
         // Ensure items array exists

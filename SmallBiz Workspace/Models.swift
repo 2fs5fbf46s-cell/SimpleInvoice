@@ -541,6 +541,29 @@ extension Invoice {
         return "Business info locked for historical record"
     }
 
+    /// Whether this document is worth putting in front of a customer.
+    ///
+    /// A new invoice is created with one placeholder line at $0, and Send was
+    /// enabled the moment it existed — so the app would happily email someone a
+    /// bill for $0.00 with a line reading "Service". The amount is the entire
+    /// point of the document; it has to be there before it goes out.
+    var canBeSent: Bool {
+        cannotBeSentReason == nil
+    }
+
+    /// Why Send is unavailable, phrased for the person reading it.
+    var cannotBeSentReason: String? {
+        let noun = documentType == "estimate" ? "estimate" : "invoice"
+
+        if (items ?? []).isEmpty {
+            return "Add what you're charging for before sending this \(noun)."
+        }
+        if totalCents <= 0 {
+            return "This \(noun) totals $0.00. Set an amount on your line items before sending it."
+        }
+        return nil
+    }
+
     var isFinalized: Bool {
         isBusinessInfoLocked
     }

@@ -143,7 +143,15 @@ private struct InvoiceOverviewSummaryView: View {
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(title: "Primary Actions")
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    primaryActionButton(title: "Send", systemImage: "paperplane") {
+                    // Send is the only filled button here. It emails a document to
+                    // a customer and can't be taken back; Preview opens a sheet.
+                    // They used to look identical.
+                    primaryActionButton(
+                        title: "Send",
+                        systemImage: "paperplane",
+                        prominence: .primary,
+                        isEnabled: invoice.canBeSent
+                    ) {
                         sharePDFOnly()
                     }
 
@@ -165,6 +173,14 @@ private struct InvoiceOverviewSummaryView: View {
                     primaryActionButton(title: "Detail", systemImage: "square.and.pencil") {
                         detailInvoice = invoice
                     }
+                }
+
+                if let reason = invoice.cannotBeSentReason {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
                 }
             }
             .listRowBackground(Color.clear)
@@ -380,12 +396,39 @@ private struct InvoiceOverviewSummaryView: View {
         }
     }
 
-    private func primaryActionButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            primaryActionLabel(title: title, systemImage: systemImage)
+    /// How loud an action should be.
+    ///
+    /// Everything in this card used to be `.borderedProminent` in the same blue,
+    /// so the irreversible action and the harmless one were indistinguishable.
+    private enum ActionProminence {
+        case primary
+        case secondary
+    }
+
+    @ViewBuilder
+    private func primaryActionButton(
+        title: String,
+        systemImage: String,
+        prominence: ActionProminence = .secondary,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        switch prominence {
+        case .primary:
+            Button(action: action) {
+                primaryActionLabel(title: title, systemImage: systemImage)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(SBWTheme.brandBlue)
+            .disabled(!isEnabled)
+        case .secondary:
+            Button(action: action) {
+                primaryActionLabel(title: title, systemImage: systemImage)
+            }
+            .buttonStyle(.bordered)
+            .tint(SBWTheme.brandBlue)
+            .disabled(!isEnabled)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(SBWTheme.brandBlue)
     }
 
     private func primaryActionLabel(title: String, systemImage: String) -> some View {
