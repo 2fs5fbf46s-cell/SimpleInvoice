@@ -79,6 +79,36 @@ struct JobSummaryView: View {
         return text.isEmpty ? "No Client" : text
     }
 
+    /// A soft reminder, never a gate — the contract can be (and likely
+    /// already was) signed regardless of deposit status. See
+    /// Job.depositAmountCents / EstimateAcceptancePullService.
+    @ViewBuilder
+    private func depositStatusBanner(depositCents: Int) -> some View {
+        let isPaid = job.depositPaidAtMs != nil
+        SummaryKit.SummaryCard {
+            HStack(spacing: 10) {
+                Image(systemName: isPaid ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(isPaid ? .green : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isPaid ? "Deposit Paid" : "Deposit Due Before Starting")
+                        .font(.subheadline.weight(.semibold))
+                    Text(depositAmountString(depositCents))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private func depositAmountString(_ cents: Int) -> String {
+        let dollars = Double(cents) / 100.0
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        return formatter.string(from: NSNumber(value: dollars)) ?? String(format: "$%.2f", dollars)
+    }
+
     private var statusText: String {
         switch job.stage {
         case .booked:
@@ -140,6 +170,11 @@ struct JobSummaryView: View {
                 }
             }
             .listRowBackground(Color.clear)
+
+            if let depositCents = job.depositAmountCents {
+                depositStatusBanner(depositCents: depositCents)
+                    .listRowBackground(Color.clear)
+            }
 
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(title: "Primary Actions")

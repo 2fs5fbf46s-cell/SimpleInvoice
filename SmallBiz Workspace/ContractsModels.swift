@@ -82,6 +82,16 @@ final class Contract {
     var job: Job? = nil
     // Stores all linked job ids (including primary) as comma-separated UUIDs.
     var linkedJobIDsCSV: String = ""
+
+    /// Configured while drafting/bundling this contract with its estimate
+    /// (nil = no deposit required). Copied onto the Job at acceptance
+    /// (EstimateAcceptanceHandler.handleAccepted) and used there to create
+    /// the actual deposit Invoice on activation
+    /// (EstimateAcceptancePullService.materialize) — this field itself is
+    /// never uploaded or paid against directly. Deliberately unrelated to
+    /// signing: the client can sign the moment they accept the estimate,
+    /// the deposit is tracked and surfaced as due before the job starts.
+    var depositAmountCents: Int? = nil
     
     // ✅ Optional “generated from” reference (should point to an estimate Invoice)
     var estimate: Invoice? = nil

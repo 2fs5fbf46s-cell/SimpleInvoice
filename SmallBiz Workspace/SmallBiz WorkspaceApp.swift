@@ -135,6 +135,10 @@ struct SmallBizWorkspaceApp: App {
         // Same reasoning: estimate acceptance is server/push-driven now
         // (POST /api/portal/estimate/decision), this is the fallback leg.
         await EstimateAcceptancePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
+        // Deposits are a soft reminder, not a gate, so a plain periodic
+        // poll of each pending deposit's own payment status is enough —
+        // no push/pull pair needed here.
+        await DepositStatusSyncService.refreshPendingDeposits(context: context, businessID: activeBiz.activeBusinessID)
     }
 
     @MainActor

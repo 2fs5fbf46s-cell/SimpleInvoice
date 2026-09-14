@@ -36,6 +36,16 @@ final class Job {
     var sourceEstimateId: String? = nil
     var calendarEventId: String? = nil
 
+    /// Deposit tracking, decoupled from contract signing — surfaced as a
+    /// soft reminder ("Deposit due before starting"), never a gate. Copied
+    /// from the bundled Contract's depositAmountCents at acceptance time;
+    /// depositInvoiceId/depositPaidAtMs are set once
+    /// EstimateAcceptancePullService.materialize creates the actual deposit
+    /// Invoice and, later, once it's paid.
+    var depositAmountCents: Int? = nil
+    var depositInvoiceId: String? = nil
+    var depositPaidAtMs: Int64? = nil
+
     var stage: JobStage {
         get { JobStage(rawValue: stageRaw) ?? .booked }
         set { stageRaw = newValue.rawValue }

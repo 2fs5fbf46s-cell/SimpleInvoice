@@ -52,10 +52,12 @@ enum EstimateAcceptancePullService {
         var latestUpdatedAtMs = watermarkMs
         var materializedCount = 0
         var contractsToUpload: [UUID] = []
+        var invoicesToUpload: [UUID] = []
         for item in accepted {
             let result = materialize(item, businessID: businessID, context: context)
             if result.didChange { materializedCount += 1 }
             if let contractID = result.activatedContractID { contractsToUpload.append(contractID) }
+            if let depositInvoiceID = result.depositInvoiceID { invoicesToUpload.append(depositInvoiceID) }
             latestUpdatedAtMs = max(latestUpdatedAtMs, item.updatedAtMs)
         }
 
@@ -70,6 +72,9 @@ enum EstimateAcceptancePullService {
         for contractID in contractsToUpload {
             _ = await PortalAutoSyncService.uploadContract(contractId: contractID, context: context)
         }
+        for invoiceID in invoicesToUpload {
+            _ = await PortalAutoSyncService.uploadInvoice(invoiceId: invoiceID, context: context)
+        }
 
         // Advance the watermark even for entries this device chose to skip
         // (e.g. an estimate it doesn't have locally, from another device) —
@@ -82,6 +87,7 @@ enum EstimateAcceptancePullService {
     struct MaterializeResult {
         let didChange: Bool
         let activatedContractID: UUID?
+        let depositInvoiceID: UUID?
     }
 
     /// Exposed at `internal` (not `private`), same reasoning as
@@ -94,14 +100,14 @@ enum EstimateAcceptancePullService {
         context: ModelContext
     ) -> MaterializeResult {
         guard let estimateUUID = UUID(uuidString: item.estimateId) else {
-            return MaterializeResult(didChange: false, activatedContractID: nil)
+            return MaterializeResult(didChange: false, activatedContractID: nil, depositInvoiceID: nil)
         }
 
         let estimate = (try? context.fetch(
             FetchDescriptor<Invoice>(predicate: #Predicate { $0.id == estimateUUID })
         ))?.first
         guard let estimate, estimate.documentType == "estimate", estimate.businessID == businessID else {
-            return MaterializeResult(didChange: false, activatedContractID: nil)
+            return MaterializeResult(didChange: false, activatedContractID: nil, depositInvoiceID: nil)
         }
 
         let wasAlreadyProcessed = estimate.estimateStatus
@@ -118,16 +124,79 @@ enum EstimateAcceptancePullService {
         }
 
         var activatedContractID: UUID?
+        var depositInvoiceID: UUID?
         if let contract = linkedDraftContract(for: estimate, businessID: businessID, context: context) {
             contract.statusRaw = ContractStatus.sent.rawValue
             contract.portalNeedsUpload = true
             activatedContractID = contract.id
+
+            if let depositCents = contract.depositAmountCents, let job = estimate.job {
+                depositInvoiceID = createDepositInvoiceIfNeeded(
+                    depositCents: depositCents,
+                    contract: contract,
+                    job: job,
+                    estimate: estimate,
+                    context: context
+                )
+            }
         }
 
         return MaterializeResult(
-            didChange: !wasAlreadyProcessed || activatedContractID != nil,
-            activatedContractID: activatedContractID
+            didChange: !wasAlreadyProcessed || activatedContractID != nil || depositInvoiceID != nil,
+            activatedContractID: activatedContractID,
+            depositInvoiceID: depositInvoiceID
         )
+    }
+
+    /// Deposit tracking, decoupled from signing: creates an ordinary local
+    /// invoice for the configured deposit and links it to the Job. Never
+    /// blocks or is blocked by contract activation above — a deposit that
+    /// fails to create here doesn't stop the client from being able to
+    /// sign; it's a soft reminder, not a gate (see Job.depositAmountCents).
+    /// Idempotent via job.depositInvoiceId.
+    private static func createDepositInvoiceIfNeeded(
+        depositCents: Int,
+        contract: Contract,
+        job: Job,
+        estimate: Invoice,
+        context: ModelContext
+    ) -> UUID? {
+        guard job.depositInvoiceId == nil else { return nil }
+        guard let client = estimate.client else { return nil }
+
+        let jobBusinessID = job.businessID
+        let profile = (try? context.fetch(
+            FetchDescriptor<BusinessProfile>(predicate: #Predicate<BusinessProfile> { $0.businessID == jobBusinessID })
+        ))?.first
+        let invoiceNumber = profile.map { InvoiceNumberGenerator.consumeNextNumber(profile: $0) }
+            ?? "DEP-\(String(job.id.uuidString.prefix(8)))"
+
+        let deposit = Invoice(
+            businessID: job.businessID,
+            invoiceNumber: invoiceNumber,
+            issueDate: .now,
+            dueDate: job.startDate,
+            paymentTerms: "Deposit due before work starts",
+            notes: "Deposit for \(contract.title.isEmpty ? "contract" : contract.title)",
+            thankYou: profile?.defaultThankYou ?? "",
+            termsAndConditions: "",
+            taxRate: 0,
+            discountAmount: 0,
+            isPaid: false,
+            documentType: "invoice",
+            client: client,
+            job: job,
+            items: [LineItem(itemDescription: "Deposit", quantity: 1, unitPrice: Double(depositCents) / 100.0)]
+        )
+        deposit.sourceContractId = contract.id.uuidString
+        deposit.portalNeedsUpload = true
+
+        context.insert(deposit)
+
+        job.depositAmountCents = depositCents
+        job.depositInvoiceId = deposit.id.uuidString
+
+        return deposit.id
     }
 
     /// A contract bundled with this estimate that's still sitting in

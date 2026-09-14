@@ -256,6 +256,13 @@ final class Invoice {
     var sourceBookingDepositPaidAtMs: Int? = nil
     var sourceBookingDepositInvoiceId: String? = nil
 
+    /// Set when this invoice IS a deposit tied to a bundled Contract (as
+    /// opposed to sourceBookingDepositInvoiceId above, which points AT a
+    /// deposit invoice from a regular invoice). Uploaded to the backend so
+    /// the Stripe checkout route can trace a paid deposit back to its
+    /// contract — see PortalBackend.indexInvoiceForPortalDirectory.
+    var sourceContractId: String? = nil
+
     /// True when this invoice was materialized from a recurring schedule's
     /// server-side generation rather than created by hand — the thing that
     /// actually distinguishes it from any other invoice nobody has reviewed

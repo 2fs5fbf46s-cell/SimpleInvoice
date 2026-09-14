@@ -1313,7 +1313,7 @@ final class PortalBackend {
         let taxCents = portalTaxCents(invoice: invoice)
         let totalCents = portalTotalCents(invoice: invoice)
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "businessId": invoice.businessID.uuidString,
             "clientId": client.id.uuidString,
             "scope": "invoice",
@@ -1344,6 +1344,12 @@ final class PortalBackend {
             "pdfUrl": (pdfUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             "paymentMethods": paymentMethodsPayload(for: business)
         ]
+        // Only present when this invoice IS a deposit tied to a bundled
+        // Contract — lets the Stripe checkout route trace a paid deposit
+        // back to its contract (stripeWebhookHandler.syncDepositContractReady).
+        if let sourceContractId = invoice.sourceContractId, !sourceContractId.isEmpty {
+            body["sourceContractId"] = sourceContractId
+        }
 
         _ = try await seedToken(payload: body)
     }

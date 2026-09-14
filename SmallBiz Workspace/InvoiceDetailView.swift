@@ -102,6 +102,7 @@ struct InvoiceDetailView: View {
     // picker.
     @Query(sort: \ContractTemplate.name) private var contractTemplates: [ContractTemplate]
     @State private var selectedContractTemplate: ContractTemplate?
+    @State private var depositAmountText: String = ""
 
     @State private var showPortal = false
     @State private var showTemplatePicker = false
@@ -1607,6 +1608,12 @@ struct InvoiceDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                if let depositCents = first.depositAmountCents {
+                    Text("Deposit required: \(currencyString(fromCents: depositCents)) — due before the job starts, not before signing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
             } else {
                 Text("Draft the contract now, alongside the estimate — it stays private until the estimate is approved, then it's automatically sent for signature. Optional; skip if this job doesn't need one.")
                     .font(.caption)
@@ -1625,6 +1632,19 @@ struct InvoiceDetailView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+
+                    HStack {
+                        Text("Deposit (optional)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("$")
+                            .foregroundStyle(.secondary)
+                        TextField("0.00", text: $depositAmountText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 90)
+                    }
 
                     Button {
                         draftBundledContract()
@@ -2114,9 +2134,8 @@ struct InvoiceDetailView: View {
     /// template (client name, line items, total — via ContractCreation.create)
     /// rather than the old bare, unrendered Contract(). Doesn't require a Job
     /// to exist yet — a job gets linked automatically once the estimate is
-    /// accepted (EstimateAcceptancePullService). Stays in .draft, invisible
-    /// to the client, until PortalService.markContractSentAndIndex activates
-    /// it on acceptance.
+    /// accepted. Stays in .draft, invisible to the client, until
+    /// EstimateAcceptancePullService.materialize activates it on acceptance.
     private func draftBundledContract() {
         exportError = nil
         guard let template = selectedContractTemplate else { return }
@@ -2134,11 +2153,21 @@ struct InvoiceDetailView: View {
                 invoice: invoice
             )
             contract.job = invoice.job
+            contract.depositAmountCents = parsedDepositAmountCents()
             try? modelContext.save()
             createdContract = contract
         } catch {
             exportError = error.localizedDescription
         }
+    }
+
+    /// nil when the field is empty or not a usable positive amount — a
+    /// deposit is optional, so an unparsable/blank entry just means "no
+    /// deposit," not an error.
+    private func parsedDepositAmountCents() -> Int? {
+        let trimmed = depositAmountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let dollars = Double(trimmed), dollars > 0 else { return nil }
+        return Int((dollars * 100).rounded())
     }
     
     private var isEstimateLocked: Bool {

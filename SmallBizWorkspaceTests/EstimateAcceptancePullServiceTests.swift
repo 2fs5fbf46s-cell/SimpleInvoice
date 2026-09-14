@@ -216,4 +216,110 @@ final class EstimateAcceptancePullServiceTests: XCTestCase {
         XCTAssertNil(result.activatedContractID)
         XCTAssertNotNil(estimate.job, "bundling a contract is optional — acceptance must still create the Job")
     }
+
+    // MARK: - Deposit tracking
+
+    func testMaterializeCreatesADepositInvoiceWhenTheContractConfiguresOne() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+        let template = ContractTemplate(name: "Standard Service", category: "General", body: "Body.")
+        context.insert(template)
+        try context.save()
+
+        let contract = try ContractCreation.create(
+            context: context,
+            template: template,
+            businessID: businessID,
+            business: nil,
+            client: client,
+            invoice: estimate
+        )
+        contract.depositAmountCents = 15000 // $150
+        try context.save()
+
+        let event = makeAcceptedEvent(estimate: estimate, businessID: businessID, clientID: client.id)
+        let result = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
+        try context.save()
+
+        XCTAssertNotNil(result.depositInvoiceID, "a configured deposit must produce a real invoice to upload")
+        let job = try XCTUnwrap(estimate.job)
+        XCTAssertEqual(job.depositAmountCents, 15000)
+        XCTAssertEqual(job.depositInvoiceId, result.depositInvoiceID?.uuidString)
+        XCTAssertNil(job.depositPaidAtMs, "not paid yet — only DepositStatusSyncService sets this")
+
+        let depositID = try XCTUnwrap(result.depositInvoiceID)
+        let deposit = try XCTUnwrap((try context.fetch(
+            FetchDescriptor<Invoice>(predicate: #Predicate { $0.id == depositID })
+        )).first)
+        XCTAssertEqual(deposit.documentType, "invoice")
+        XCTAssertEqual(deposit.sourceContractId, contract.id.uuidString)
+        XCTAssertEqual(deposit.client?.id, client.id)
+        XCTAssertEqual(deposit.job?.id, job.id)
+        XCTAssertEqual(deposit.items?.count, 1)
+        let depositLineItem = try XCTUnwrap(deposit.items?.first)
+        XCTAssertEqual(depositLineItem.itemDescription, "Deposit")
+        XCTAssertEqual(depositLineItem.unitPrice, 150, accuracy: 0.001)
+    }
+
+    func testMaterializeCreatesNoDepositInvoiceWhenNoneIsConfigured() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+        let template = ContractTemplate(name: "Standard Service", category: "General", body: "Body.")
+        context.insert(template)
+        try context.save()
+
+        try ContractCreation.create(
+            context: context,
+            template: template,
+            businessID: businessID,
+            business: nil,
+            client: client,
+            invoice: estimate
+        )
+        // depositAmountCents left nil — no deposit configured.
+
+        let event = makeAcceptedEvent(estimate: estimate, businessID: businessID, clientID: client.id)
+        let result = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
+
+        XCTAssertNil(result.depositInvoiceID)
+        XCTAssertNil(estimate.job?.depositInvoiceId)
+
+        let invoices = try context.fetch(FetchDescriptor<Invoice>())
+        XCTAssertEqual(invoices.count, 1, "only the original estimate should exist — no deposit invoice")
+    }
+
+    func testMaterializeIsIdempotentForTheDepositInvoiceToo() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+        let template = ContractTemplate(name: "Standard Service", category: "General", body: "Body.")
+        context.insert(template)
+        try context.save()
+
+        let contract = try ContractCreation.create(
+            context: context,
+            template: template,
+            businessID: businessID,
+            business: nil,
+            client: client,
+            invoice: estimate
+        )
+        contract.depositAmountCents = 5000
+        try context.save()
+
+        let event = makeAcceptedEvent(estimate: estimate, businessID: businessID, clientID: client.id)
+        let first = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
+        try context.save()
+
+        let second = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
+        try context.save()
+
+        XCTAssertNil(second.depositInvoiceID, "a repeat pull must not create a second deposit invoice")
+        XCTAssertEqual(estimate.job?.depositInvoiceId, first.depositInvoiceID?.uuidString)
+
+        let deposits = try context.fetch(FetchDescriptor<Invoice>()).filter { $0.sourceContractId == contract.id.uuidString }
+        XCTAssertEqual(deposits.count, 1)
+    }
 }
