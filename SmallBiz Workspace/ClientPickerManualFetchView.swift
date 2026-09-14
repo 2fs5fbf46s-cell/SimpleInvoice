@@ -94,7 +94,6 @@ struct ClientPickerManualFetchView: View {
                             Button("Edit") { editingClient = client }
                         }
                     }
-                    .onDelete(perform: deleteClients)
                 }
             }
         }
@@ -278,19 +277,10 @@ struct ClientPickerManualFetchView: View {
         }
     }
 
-    private func deleteClients(at offsets: IndexSet) {
-        for index in offsets {
-            guard index < clients.count else { continue }
-            modelContext.delete(clients[index])
-        }
-
-        do {
-            try modelContext.save()
-            loadClients()
-        } catch {
-            loadError = error.localizedDescription
-        }
-    }
+    // Deleting was removed here deliberately. This is a picker — you open it to
+    // choose who an invoice is for — and a swipe destroyed the client record for
+    // good, from a screen nobody opens to manage clients. Deleting lives in the
+    // client list, where it confirms and says what else references them.
 
     private func applyContactToDraft(_ contact: CNContact) {
         let f = ContactImportMapper.fields(from: contact)

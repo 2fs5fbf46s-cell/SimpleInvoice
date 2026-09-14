@@ -29,6 +29,9 @@ struct ClientListView: View {
     @State private var showOpenExistingBanner = false
     @State private var selectedClient: Client? = nil
 
+    // Delete confirmation
+    @State private var pendingDeletion: PendingClientDeletion? = nil
+
     init(businessID: UUID? = nil) {
         self.businessID = businessID
         if let businessID {
@@ -297,6 +300,19 @@ struct ClientListView: View {
         .onChange(of: invoices.count) {
             recomputeVisibleClients()
         }
+        .alert(
+            "Delete \(pendingDeletion?.name ?? "client")?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { pending in
+            Button("Delete", role: .destructive) { confirmDeletion(pending) }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: { pending in
+            Text(pending.impact.confirmationMessage(clientName: pending.name))
+        }
         .overlay(alignment: .top) {
             if showOpenExistingBanner {
                 OpenExistingClientBanner()
@@ -369,9 +385,41 @@ struct ClientListView: View {
     }
 
 
+    /// Swipe-to-delete used to destroy the client immediately, with no
+    /// confirmation and no hint that invoices, jobs or bookings referenced it.
+    /// Now it asks, and says what else is involved.
     private func deleteFiltered(at offsets: IndexSet) {
         let toDelete = offsets.map { visibleClients[$0] }
-        for c in toDelete { modelContext.delete(c) }
+        guard !toDelete.isEmpty else { return }
+
+        let impacts = toDelete.map { ClientDeletionImpact.forClient($0, jobs: jobs) }
+        let combined = impacts.reduce(into: ClientDeletionImpact()) { total, next in
+            total.invoices += next.invoices
+            total.estimates += next.estimates
+            total.jobs += next.jobs
+            total.contracts += next.contracts
+            total.bookings += next.bookings
+        }
+
+        pendingDeletion = PendingClientDeletion(
+            clients: toDelete,
+            impact: combined,
+            name: toDelete.count == 1
+                ? toDelete[0].name
+                : "\(toDelete.count) clients"
+        )
+    }
+
+    private func confirmDeletion(_ pending: PendingClientDeletion) {
+        // Every invoice already carries its own copy of the client it was sent
+        // to, so deleting the record does not blank the documents. Take one last
+        // snapshot for anything that somehow missed it.
+        for client in pending.clients {
+            for invoice in client.invoices ?? [] {
+                invoice.captureClientSnapshotIfNeeded()
+            }
+            modelContext.delete(client)
+        }
 
         do {
             try modelContext.save()
@@ -381,8 +429,18 @@ struct ClientListView: View {
             Haptics.error()
             SBWLog.ui.problem("Failed to save deletes: \(error)")
         }
+
+        pendingDeletion = nil
     }
 
+}
+
+/// A delete the user has asked for but not yet confirmed.
+private struct PendingClientDeletion: Identifiable {
+    let id = UUID()
+    let clients: [Client]
+    let impact: ClientDeletionImpact
+    let name: String
 }
 
 private struct ClientRowView: View {

@@ -232,6 +232,9 @@ struct InvoiceDetailView: View {
         }
         .onChange(of: invoice.client?.id) { _, newClientID in
             invoice.clientID = newClientID
+            // Record who this is addressed to now, so the invoice survives that
+            // client being deleted even if it is never rendered here.
+            invoice.captureClientSnapshotIfNeeded()
             try? modelContext.save()
         }
         
@@ -536,8 +539,16 @@ struct InvoiceDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text(invoice.client?.name ?? "No Client Selected")
-                        .foregroundStyle(invoice.client == nil ? .secondary : .primary)
+                    // The snapshot, not the relationship: a sent invoice keeps
+                    // naming its client after that client record is deleted.
+                    Text(invoice.clientForRendering?.name ?? "No Client Selected")
+                        .foregroundStyle(invoice.clientForRendering == nil ? .secondary : .primary)
+
+                    if invoice.client == nil, invoice.clientSnapshot?.isEmpty == false {
+                        Text("This client was deleted. The invoice keeps the details it was sent with.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     NavigationLink("Select / Edit Client") {
                         ClientPickerManualFetchView(selectedClient: $invoice.client)

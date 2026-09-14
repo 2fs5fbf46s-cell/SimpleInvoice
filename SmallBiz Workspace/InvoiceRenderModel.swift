@@ -84,12 +84,16 @@ extension InvoiceRenderModel {
             )
         }
 
-        if let client = invoice.client {
+        // Not `invoice.client` directly: a sent invoice must keep rendering the
+        // name and address it was sent with, even after that client record is
+        // deleted. `clientForRendering` resolves live-vs-snapshot; see
+        // `ClientSnapshotPolicy`.
+        if let party = invoice.clientForRendering, !party.isEmpty {
             self.client = Party(
-                name: client.name,
-                email: client.email,
-                phone: client.phone,
-                address: client.address
+                name: party.name,
+                email: party.email,
+                phone: party.phone,
+                address: party.address
             )
         } else {
             self.client = nil

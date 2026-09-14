@@ -82,7 +82,15 @@ Two exceptions: `BusinessProfile` is one row per business, so leaving it unfilte
 
 There is no `Estimate` model. An estimate is an `Invoice` with `documentType == "estimate"` (vs `"invoice"`), with its own lifecycle fields (`estimateStatus`: draft/sent/accepted/declined, `estimateAcceptedAt`, `estimateDeclinedAt`). ~55 sites branch on `documentType`. `EstimateToInvoiceConverter` handles conversion; `sourceEstimateId` records the link. Any list, filter, or count over invoices must decide explicitly which `documentType` it means.
 
-Invoices also snapshot business identity at lock time (`businessSnapshotData` / `businessSnapshotLockedAt`) so a past invoice's letterhead doesn't change when the business profile is edited.
+### A finalized document stops tracking live records
+
+Three things snapshot themselves so history stays readable, and they share one rule: while a document is a draft it follows the live record; once it is locked it keeps what it recorded.
+
+- **Business identity** — `businessSnapshotData` / `businessSnapshotLockedAt`, locked via `InvoicePDFService`. Editing your profile doesn't change a past invoice's letterhead.
+- **The client** — `clientSnapshotData`, decided by `ClientSnapshotPolicy`, resolved for display via `invoice.clientForRendering` / `displayClientName`. `Invoice.client` is a plain relationship with **no delete rule** — exactly one of the schema's 29 relationships has one (`Invoice.items`) — so deleting a client leaves its invoices alive with `client == nil`. Never read `invoice.client` when rendering or displaying who an invoice is for.
+
+`isBusinessInfoLocked` is the shared "is this finalized" predicate: snapshot lock record, or paid, or uploaded to the portal, or a sent/accepted/declined estimate.
+
 
 ### Money: integer cents are authoritative
 

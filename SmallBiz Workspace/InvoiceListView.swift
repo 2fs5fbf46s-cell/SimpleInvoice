@@ -345,7 +345,7 @@ struct InvoiceListView: View {
         } else {
             filtered = base.filter { invoice in
                 if invoice.invoiceNumber.localizedCaseInsensitiveContains(q) { return true }
-                if (invoice.client?.name ?? "").localizedCaseInsensitiveContains(q) { return true }
+                if invoice.displayClientName.localizedCaseInsensitiveContains(q) { return true }
                 if (invoice.notes).localizedCaseInsensitiveContains(q) { return true }
                 if (invoice.sourceBookingRequestId ?? "").localizedCaseInsensitiveContains(q) { return true }
 

@@ -218,6 +218,11 @@ final class Invoice {
     var businessSnapshotLockedAt: Date? = nil
     var businessSnapshotLockReason: String? = nil
 
+    /// Who this was billed to, copied onto the invoice. See `ClientSnapshot`:
+    /// `client` is a plain relationship with no delete rule, so this is what
+    /// keeps a sent invoice readable after the client record is gone.
+    var clientSnapshotData: Data? = nil
+
     var invoiceNumber: String = ""
     var issueDate: Date = Foundation.Date()
     var dueDate: Date = Calendar.current.date(byAdding: .day, value: 14, to: Foundation.Date()) ?? Foundation.Date()
@@ -330,6 +335,14 @@ final class Invoice {
         self.client = client
         self.clientID = client?.id
         self.job = job
+        if let client {
+            self.clientSnapshot = ClientSnapshot(
+                name: client.name,
+                email: client.email,
+                phone: client.phone,
+                address: client.address
+            )
+        }
 
         self.items = items
         for item in items { item.invoice = self }
@@ -337,6 +350,65 @@ final class Invoice {
 
     func syncClientIDFromRelationship() {
         clientID = client?.id
+        captureClientSnapshotIfNeeded()
+    }
+
+    var clientSnapshot: ClientSnapshot? {
+        get {
+            guard let data = clientSnapshotData else { return nil }
+            return try? JSONDecoder().decode(ClientSnapshot.self, from: data)
+        }
+        set {
+            guard let newValue else {
+                clientSnapshotData = nil
+                return
+            }
+            clientSnapshotData = try? JSONEncoder().encode(newValue)
+        }
+    }
+
+    /// The live client as a snapshot, if the relationship still points at one.
+    var liveClientSnapshot: ClientSnapshot? {
+        guard let client else { return nil }
+        return ClientSnapshot(
+            name: client.name,
+            email: client.email,
+            phone: client.phone,
+            address: client.address
+        )
+    }
+
+    /// Refresh the stored copy if policy says to. Cheap and idempotent — call it
+    /// anywhere the invoice is about to be rendered, sent, or saved.
+    @discardableResult
+    func captureClientSnapshotIfNeeded() -> Bool {
+        guard let next = ClientSnapshotPolicy.snapshotToStore(
+            live: liveClientSnapshot,
+            stored: clientSnapshot,
+            isLocked: isBusinessInfoLocked
+        ) else { return false }
+
+        clientSnapshot = next
+        return true
+    }
+
+    /// Who the document should name as the customer.
+    var clientForRendering: ClientSnapshot? {
+        ClientSnapshotPolicy.partyToRender(
+            live: liveClientSnapshot,
+            stored: clientSnapshot,
+            isLocked: isBusinessInfoLocked
+        )
+    }
+
+    /// The customer name for lists and detail headers.
+    ///
+    /// Prefers the live record, falls back to the snapshot, and only says
+    /// "No Client" when the invoice genuinely never had one.
+    var displayClientName: String {
+        let name = (clientForRendering?.name ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "No Client" : name
     }
 
     @MainActor

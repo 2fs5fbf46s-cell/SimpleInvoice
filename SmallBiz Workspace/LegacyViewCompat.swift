@@ -117,7 +117,7 @@ private struct InvoiceOverviewSummaryView: View {
                 )
                 SummaryKit.SummaryKeyValueRow(label: "Amount", value: amountText)
                 SummaryKit.SummaryKeyValueRow(label: dueLabel, value: invoice.dueDate.formatted(date: .abbreviated, time: .omitted))
-                SummaryKit.SummaryKeyValueRow(label: "Client", value: invoice.client?.name.isEmpty == false ? (invoice.client?.name ?? "") : "No Client")
+                SummaryKit.SummaryKeyValueRow(label: "Client", value: invoice.displayClientName)
                 if let lockText = invoice.businessInfoLockStatusText {
                     Text(lockText)
                         .font(.caption)

@@ -44,6 +44,10 @@ enum InvoicePDFService {
         reason: BusinessSnapshotLockReason = .historical,
         replaceExistingUnlockedSnapshot: Bool = false
     ) -> BusinessSnapshot {
+        // Before the lock stamp, while this invoice still counts as a draft, so a
+        // document being finalized records the client it is actually addressed to.
+        invoice.captureClientSnapshotIfNeeded()
+
         if let snapshot = invoice.businessSnapshot,
            invoice.hasBusinessSnapshotLockRecord || !replaceExistingUnlockedSnapshot {
             stampBusinessSnapshotLock(invoice: invoice, reason: reason)
@@ -67,6 +71,8 @@ enum InvoicePDFService {
         profiles: [BusinessProfile],
         context: ModelContext?
     ) -> BusinessSnapshot {
+        invoice.captureClientSnapshotIfNeeded()
+
         if invoice.isBusinessInfoLocked {
             return lockBusinessSnapshotIfNeeded(
                 invoice: invoice,

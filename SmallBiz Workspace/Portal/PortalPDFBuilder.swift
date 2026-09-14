@@ -11,6 +11,7 @@ enum PortalPDFBuilder {
 
     @MainActor
     static func buildInvoicePDF(invoice: Invoice, snapshot: BusinessSnapshot) throws -> URL {
+        invoice.captureClientSnapshotIfNeeded()
         let fileName = InvoicePDFGenerator.preferredPDFBaseName(for: invoice)
         let resolvedSnapshot = invoice.isBusinessInfoLocked ? (invoice.businessSnapshot ?? snapshot) : snapshot
         let templateKey = InvoicePDFService.effectiveInvoiceTemplateKey(invoice: invoice, business: nil)
