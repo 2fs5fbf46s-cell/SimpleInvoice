@@ -76,6 +76,8 @@ struct InvoiceDetailView: View {
     @State private var selectedLineItem: LineItem? = nil
     @State private var selectedLinkedContract: Contract? = nil
     @State private var invoiceOverviewRoute: Invoice? = nil
+    @State private var newRecurringScheduleDraft: RecurringInvoiceSchedule? = nil
+    @State private var showingNewRecurringSchedule = false
 
 
     // Open job workspace folder in Files
@@ -172,7 +174,23 @@ struct InvoiceDetailView: View {
         .navigationDestination(item: $invoiceOverviewRoute) { routedInvoice in
             InvoiceOverviewView(invoice: routedInvoice)
         }
-        
+        .sheet(isPresented: $showingNewRecurringSchedule, onDismiss: { newRecurringScheduleDraft = nil }) {
+            NavigationStack {
+                if let newRecurringScheduleDraft {
+                    RecurringInvoiceScheduleFormView(schedule: newRecurringScheduleDraft, isDraft: true) {
+                        showingNewRecurringSchedule = false
+                    } onCancel: {
+                        modelContext.delete(newRecurringScheduleDraft)
+                        try? modelContext.save()
+                        showingNewRecurringSchedule = false
+                    }
+                } else {
+                    ProgressView("Loading…")
+                }
+            }
+            .presentationDetents([.large])
+        }
+
         .sheet(isPresented: $showPortal, onDismiss: {
             Task { await refreshInvoicePortalState() }
         }) {
@@ -1836,6 +1854,11 @@ struct InvoiceDetailView: View {
             Button { emailPDF() } label: { Image(systemName: "envelope") }.accessibilityLabel("Email invoice")
             Button { duplicateInvoice() } label: { Image(systemName: "doc.on.doc") }
                 .accessibilityLabel(duplicateActionTitle)
+
+            if invoice.documentType != "estimate", invoice.client?.portalEnabled == true {
+                Button { makeRecurring() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                    .accessibilityLabel("Make Recurring")
+            }
         }
     }
 
@@ -2153,6 +2176,44 @@ struct InvoiceDetailView: View {
             Haptics.error()
             exportError = error.localizedDescription
         }
+    }
+
+    /// Snapshots this invoice's line items and terms into a new recurring
+    /// schedule, opened as a draft so the owner confirms cadence and next
+    /// run date before it starts generating anything.
+    private func makeRecurring() {
+        guard let client = invoice.client, client.portalEnabled else {
+            exportError = "Enable Client Portal for this client first — recurring invoices are sent through the portal."
+            return
+        }
+
+        let schedule = RecurringInvoiceSchedule(
+            businessID: invoice.businessID,
+            clientID: client.id,
+            nextRunAt: Calendar.current.date(byAdding: .month, value: 1, to: .now) ?? .now
+        )
+        schedule.lineItems = (invoice.items ?? []).map {
+            RecurringScheduleLineItem(
+                itemDescription: $0.itemDescription,
+                quantity: $0.quantity,
+                unitPrice: $0.unitPrice
+            )
+        }
+        schedule.taxRatePercent = invoice.taxRate * 100
+        schedule.discountAmount = invoice.discountAmount
+
+        modelContext.insert(schedule)
+        do {
+            try modelContext.save()
+        } catch {
+            exportError = error.localizedDescription
+            modelContext.delete(schedule)
+            return
+        }
+
+        Haptics.lightTap()
+        newRecurringScheduleDraft = schedule
+        showingNewRecurringSchedule = true
     }
 
     private func persistInvoicePDFToJobFiles(lockReason: BusinessSnapshotLockReason = .sent) throws -> URL {

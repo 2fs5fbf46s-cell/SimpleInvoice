@@ -156,6 +156,31 @@ struct PortalSeedResponseDTO: Decodable {
     let session: PortalSessionDTO?
 }
 
+struct PullRecurringResponseDTO: Decodable {
+    let ok: Bool?
+    let invoices: [GeneratedRecurringInvoiceDTO]
+}
+
+struct GeneratedRecurringInvoiceDTO: Decodable {
+    let invoiceId: String
+    let invoiceNumber: String
+    let clientId: String
+    let amountCents: Int
+    let taxCents: Int
+    let discountAmountCents: Int
+    let taxRate: Double
+    let currency: String
+    let dueAtMs: Double
+    let updatedAtMs: Double
+    let lineItems: [GeneratedLineItemDTO]
+}
+
+struct GeneratedLineItemDTO: Decodable {
+    let description: String
+    let quantity: Double
+    let unitPrice: Double
+}
+
 struct PortalSessionDTO: Decodable {
     let businessId: String?
     let brand: PortalBrandDTO?
@@ -1691,6 +1716,104 @@ final class PortalBackend {
         guard (200...299).contains(http.statusCode) else {
             throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
+    }
+
+    // MARK: - Recurring invoice schedules
+
+    /// The backend can't read SwiftData, so a schedule's client email rides
+    /// along explicitly rather than being looked up server-side — the caller
+    /// already has the `Client` in hand.
+    func upsertRecurringSchedule(_ schedule: RecurringInvoiceSchedule, clientEmail: String) async throws {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/recurring/schedule")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let lineItemsPayload: [[String: Any]] = schedule.lineItems.map { item in
+            [
+                "description": item.itemDescription,
+                "quantity": item.quantity,
+                "unitPriceCents": Int((item.unitPrice * 100).rounded())
+            ]
+        }
+
+        let payload: [String: Any] = [
+            "scheduleId": schedule.id.uuidString,
+            "clientId": schedule.clientID.uuidString,
+            "clientEmail": clientEmail.trimmingCharacters(in: .whitespacesAndNewlines),
+            "active": schedule.active,
+            "cadence": schedule.cadence.rawValue,
+            "nextRunAtMs": Int((schedule.nextRunAt.timeIntervalSince1970 * 1000).rounded()),
+            "netDays": schedule.netDays,
+            "invoiceNumberPrefix": schedule.invoiceNumberPrefix,
+            "taxRatePercent": schedule.taxRatePercent,
+            "discountAmountCents": Int((schedule.discountAmount * 100).rounded()),
+            "lineItems": lineItemsPayload
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    func deleteRecurringSchedule(scheduleId: UUID) async throws {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/recurring/schedule"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "scheduleId", value: scheduleId.uuidString)]
+
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "DELETE"
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    /// Invoices the generation cron produced since `since` that no device has
+    /// materialized yet. See the backend's `/api/recurring/pull` for how a
+    /// re-uploaded (reviewed) invoice naturally drops out of this list.
+    func pullGeneratedRecurringInvoices(since: Date) async throws -> [GeneratedRecurringInvoiceDTO] {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/recurring/pull"),
+            resolvingAgainstBaseURL: false
+        )!
+        let sinceMs = Int((since.timeIntervalSince1970 * 1000).rounded())
+        comps.queryItems = [URLQueryItem(name: "since", value: String(sinceMs))]
+
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+
+        let decoded = try decoder().decode(PullRecurringResponseDTO.self, from: data)
+        return decoded.invoices
     }
 
     // MARK: - Payment status

@@ -107,6 +107,16 @@ private struct InvoiceOverviewSummaryView: View {
         invoice.documentType == "estimate" ? "Valid Until" : "Due"
     }
 
+    /// The Today "ready to review" card exists purely to draw the owner's
+    /// eye to a server-generated invoice — once they've actually opened it,
+    /// it's been reviewed by definition, and the card shouldn't follow them
+    /// back to Today for an invoice they've already looked at.
+    private func markRecurringReviewedIfNeeded() {
+        guard invoice.isRecurringGenerated, invoice.recurringReviewedAt == nil else { return }
+        invoice.recurringReviewedAt = .now
+        try? modelContext.save()
+    }
+
     var body: some View {
         List {
             SummaryKit.SummaryCard {
@@ -343,6 +353,7 @@ private struct InvoiceOverviewSummaryView: View {
         .navigationTitle(invoice.documentType == "estimate" ? "Estimate" : "Invoice")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
+        .onAppear { markRecurringReviewedIfNeeded() }
         .sheet(isPresented: Binding(
             get: { shareItems != nil },
             set: { if !$0 { shareItems = nil } }

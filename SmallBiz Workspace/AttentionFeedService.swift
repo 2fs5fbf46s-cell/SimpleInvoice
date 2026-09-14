@@ -8,6 +8,7 @@ enum AttentionKind: Equatable {
     case overdueInvoice(invoiceID: UUID)
     case unsignedContract(contractID: UUID)
     case pendingBookings(count: Int)
+    case recurringInvoicesReady(count: Int)
     case setupStep(QuickStartChecklist.Step)
 }
 
@@ -53,6 +54,7 @@ enum AttentionFeedService {
         var items: [AttentionItem] = []
         items.append(contentsOf: overdueInvoiceItems(businessID: businessID, context: context, now: now))
         items.append(contentsOf: unsignedContractItems(businessID: businessID, context: context))
+        items.append(contentsOf: recurringInvoiceReadyItems(businessID: businessID, context: context))
 
         if pendingApprovalBookingCount > 0 {
             items.append(AttentionItem(
@@ -115,6 +117,28 @@ enum AttentionFeedService {
                     kind: .overdueInvoice(invoiceID: invoice.id)
                 )
             }
+    }
+
+    @MainActor
+    private static func recurringInvoiceReadyItems(businessID: UUID, context: ModelContext) -> [AttentionItem] {
+        let descriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate<Invoice> { invoice in
+                invoice.businessID == businessID
+                    && invoice.isRecurringGenerated
+                    && invoice.recurringReviewedAt == nil
+            }
+        )
+        let count = (try? context.fetchCount(descriptor)) ?? 0
+        guard count > 0 else { return [] }
+
+        return [AttentionItem(
+            id: "recurring-ready",
+            severity: .warning,
+            title: count == 1 ? "1 recurring invoice ready" : "\(count) recurring invoices ready",
+            subtitle: "Generated automatically \u{2014} review before sending",
+            amountText: nil,
+            kind: .recurringInvoicesReady(count: count)
+        )]
     }
 
     @MainActor

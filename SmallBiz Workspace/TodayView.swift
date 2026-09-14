@@ -245,6 +245,7 @@ struct TodayView: View {
         case .overdueInvoice: return "exclamationmark.circle"
         case .unsignedContract: return "signature"
         case .pendingBookings: return "calendar.badge.clock"
+        case .recurringInvoicesReady: return "arrow.triangle.2.circlepath"
         case .setupStep: return "sparkles"
         }
     }
@@ -257,6 +258,8 @@ struct TodayView: View {
             selectedContract = fetchContract(id: contractID)
         case .pendingBookings:
             AppRouteCenter.shared.route(.workRoot)
+        case .recurringInvoicesReady:
+            AppRouteCenter.shared.route(.invoicesRoot)
         case .setupStep(let step):
             AppRouteCenter.shared.route(step.route)
         }

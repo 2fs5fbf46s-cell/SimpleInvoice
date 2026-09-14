@@ -256,6 +256,15 @@ final class Invoice {
     var sourceBookingDepositPaidAtMs: Int? = nil
     var sourceBookingDepositInvoiceId: String? = nil
 
+    /// True when this invoice was materialized from a recurring schedule's
+    /// server-side generation rather than created by hand — the thing that
+    /// actually distinguishes it from any other invoice nobody has reviewed
+    /// yet. `recurringReviewedAt` stays nil until the owner actually opens
+    /// it — that's what keeps it showing up as a Today "ready to review"
+    /// card, and what stops the card from coming back once it's been seen.
+    var isRecurringGenerated: Bool = false
+    var recurringReviewedAt: Date? = nil
+
     var pdfRelativePath: String = ""
     var invoiceTemplateKeyOverride: String? = nil
     var portalNeedsUpload: Bool = true
@@ -314,6 +323,8 @@ final class Invoice {
         documentType: String = "invoice",
         sourceBookingRequestId: String? = nil,
         sourceEstimateId: String? = nil,
+        isRecurringGenerated: Bool = false,
+        recurringReviewedAt: Date? = nil,
         pdfRelativePath: String = "",
         invoiceTemplateKeyOverride: String? = nil,
         portalNeedsUpload: Bool = true,
@@ -341,6 +352,8 @@ final class Invoice {
         self.documentType = documentType
         self.sourceBookingRequestId = sourceBookingRequestId
         self.sourceEstimateId = sourceEstimateId
+        self.isRecurringGenerated = isRecurringGenerated
+        self.recurringReviewedAt = recurringReviewedAt
         self.pdfRelativePath = pdfRelativePath
         self.invoiceTemplateKeyOverride = invoiceTemplateKeyOverride
         self.portalNeedsUpload = portalNeedsUpload

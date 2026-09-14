@@ -84,6 +84,7 @@ struct InvoiceListView: View {
     @State private var showingNewInvoice = false
     @State private var showingTemplates = false
     @State private var showingInvoiceSettings = false
+    @State private var showingRecurringSchedules = false
     @State private var toolbarRoute: InvoiceListToolbarRoute?
 
     // Navigate to the invoice created from a template
@@ -259,6 +260,12 @@ struct InvoiceListView: View {
                     } label: {
                         Label("Invoice Settings", systemImage: "gearshape")
                     }
+
+                    Button {
+                        showingRecurringSchedules = true
+                    } label: {
+                        Label("Recurring Invoices", systemImage: "arrow.triangle.2.circlepath")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -294,6 +301,16 @@ struct InvoiceListView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { showingInvoiceSettings = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showingRecurringSchedules) {
+            NavigationStack {
+                RecurringInvoiceScheduleListView(businessID: effectiveBusinessID)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showingRecurringSchedules = false }
                         }
                     }
             }

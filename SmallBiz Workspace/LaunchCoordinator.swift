@@ -231,7 +231,9 @@ enum AppModelContainerFactory {
             AppNotification.self,
 
             Expense.self,
-            ExpenseAttachment.self
+            ExpenseAttachment.self,
+
+            RecurringInvoiceSchedule.self
     ]
 
     static func makeContainer() throws -> ModelContainer {

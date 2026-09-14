@@ -241,6 +241,78 @@ final class AttentionFeedServiceTests: XCTestCase {
         XCTAssertTrue(items(for: business.id, pendingApprovalBookingCount: 0).isEmpty)
     }
 
+    // MARK: - Recurring invoices ready for review
+
+    func testUnreviewedRecurringGeneratedInvoiceProducesOneSummaryItem() throws {
+        let business = try makeBusiness()
+        let client = Client(businessID: business.id, name: "Ada Lovelace")
+        context.insert(client)
+        let invoice = Invoice(
+            businessID: business.id, invoiceNumber: "SI-2026-001",
+            isPaid: false, isRecurringGenerated: true,
+            client: client, items: [LineItem(itemDescription: "Retainer", quantity: 1, unitPrice: 100)]
+        )
+        context.insert(invoice)
+        try context.save()
+
+        let result = items(for: business.id)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].kind, .recurringInvoicesReady(count: 1))
+        XCTAssertEqual(result[0].severity, .warning)
+    }
+
+    func testAReviewedRecurringInvoiceProducesNoItem() throws {
+        let business = try makeBusiness()
+        let client = Client(businessID: business.id, name: "Ada Lovelace")
+        context.insert(client)
+        let invoice = Invoice(
+            businessID: business.id, invoiceNumber: "SI-2026-001",
+            isPaid: false, isRecurringGenerated: true, recurringReviewedAt: .now,
+            client: client, items: [LineItem(itemDescription: "Retainer", quantity: 1, unitPrice: 100)]
+        )
+        context.insert(invoice)
+        try context.save()
+
+        XCTAssertTrue(items(for: business.id).isEmpty)
+    }
+
+    func testAnOrdinaryInvoiceIsNotMistakenForARecurringOne() throws {
+        // Guards the exact bug the isRecurringGenerated flag exists to avoid:
+        // every ordinary invoice also has recurringReviewedAt == nil, since
+        // that field is never touched outside the recurring flow.
+        let business = try makeBusiness()
+        let client = Client(businessID: business.id, name: "Ada Lovelace")
+        context.insert(client)
+        let invoice = Invoice(
+            businessID: business.id, invoiceNumber: "SI-2026-001",
+            isPaid: false,
+            client: client, items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
+        )
+        context.insert(invoice)
+        try context.save()
+
+        XCTAssertTrue(items(for: business.id).isEmpty)
+    }
+
+    func testMultipleUnreviewedRecurringInvoicesAreBundledIntoOneCard() throws {
+        let business = try makeBusiness()
+        let client = Client(businessID: business.id, name: "Ada Lovelace")
+        context.insert(client)
+        for i in 0..<3 {
+            let invoice = Invoice(
+                businessID: business.id, invoiceNumber: "SI-2026-00\(i)",
+                isPaid: false, isRecurringGenerated: true,
+                client: client, items: [LineItem(itemDescription: "Retainer", quantity: 1, unitPrice: 100)]
+            )
+            context.insert(invoice)
+        }
+        try context.save()
+
+        let result = items(for: business.id)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].kind, .recurringInvoicesReady(count: 3))
+    }
+
     // MARK: - Setup step
 
     func testIncompleteChecklistAddsSetupCard() throws {

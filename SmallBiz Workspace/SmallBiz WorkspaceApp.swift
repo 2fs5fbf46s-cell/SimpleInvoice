@@ -129,6 +129,9 @@ struct SmallBizWorkspaceApp: App {
         await BusinessSitePublishService.shared.syncQueuedSites(context: context)
         await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
         await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID)
+        // Generation itself is server/push-driven; this is the "next launch as
+        // a fallback" leg, covering a push that never arrived or was denied.
+        await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
     }
 
     @MainActor

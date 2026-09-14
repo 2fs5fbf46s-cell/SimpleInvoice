@@ -474,6 +474,13 @@ struct AppTabView: View {
             return
         }
 
+        if eventKey.contains("recurring") {
+            tab = .today
+            notificationRouter.consumePendingPayload()
+            Task { await RecurringInvoicePullService.pullAndMaterialize(context: modelContext, businessID: activeBiz.activeBusinessID) }
+            return
+        }
+
         if notificationRouter.openFallbackIfPossible(effectivePayload) {
             notificationRouter.consumePendingPayload()
             return
