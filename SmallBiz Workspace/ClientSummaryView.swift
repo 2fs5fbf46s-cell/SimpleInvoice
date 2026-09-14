@@ -186,13 +186,13 @@ struct ClientSummaryView: View {
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(title: "Primary Actions")
                 SummaryKit.PrimaryActionRow(actions: [
-                    .init(title: "Message / Email", systemImage: "envelope") {
-                        messageOrEmail()
-                    },
-                    .init(title: "Create Invoice", systemImage: "doc.badge.plus") {
+                    .init(title: "Create Invoice", systemImage: "doc.badge.plus", prominence: .primary) {
                         startCreateInvoiceDraft()
                     },
-                    .init(title: "Edit Client", systemImage: "square.and.pencil") {
+                    .init(title: "Message", systemImage: "envelope", prominence: .secondary) {
+                        messageOrEmail()
+                    },
+                    .init(title: "Edit Client", systemImage: "square.and.pencil", prominence: .secondary) {
                         showEditSheet = true
                     }
                 ])
@@ -400,6 +400,7 @@ struct ClientSummaryView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             SBWTheme.headerWash()
         }
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 24) }
         .navigationTitle("Client Summary")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()

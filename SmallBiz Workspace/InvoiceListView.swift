@@ -253,18 +253,17 @@ struct InvoiceListView: View {
                     Button { showingTemplates = true } label: {
                         Label("Templates", systemImage: "square.grid.2x2")
                     }
+
+                    Button {
+                        showingInvoiceSettings = true
+                    } label: {
+                        Label("Invoice Settings", systemImage: "gearshape")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("Invoice Menu")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingInvoiceSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-            }
-
         }
 
         // MARK: - Sheets

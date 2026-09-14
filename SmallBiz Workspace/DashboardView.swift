@@ -278,7 +278,7 @@ struct DashboardView: View {
 
                             NavigationLink { SavedItemsView(businessID: effectiveBusinessID) } label: {
                                 TileCard(
-                                    title: "Inventory",
+                                    title: "Saved Items",
                                     subtitle: "Services & materials",
                                     systemImage: "tag",
                                     tint: .mint
@@ -304,7 +304,7 @@ struct DashboardView: View {
                 } label: {
                     Image(systemName: "questionmark.circle")
                 }
-                .accessibilityLabel("Help Center")
+                .accessibilityLabel("Help & About")
             }
         }
         .navigationDestination(isPresented: $showHelpCenter) {

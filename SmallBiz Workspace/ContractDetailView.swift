@@ -96,7 +96,7 @@ struct ContractDetailView: View {
         .listStyle(.plain)
         .listRowSeparator(.hidden)
         .safeAreaInset(edge: .top, spacing: 0) { pinnedHeader }
-        .navigationTitle(navTitle)
+        .navigationTitle("Contract")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .toolbar { toolbarContent }
@@ -333,19 +333,23 @@ private extension ContractDetailView {
         ToolbarItem(placement: .topBarTrailing) {
             let portalDisabled = (openingPortal || contract.resolvedClient?.portalEnabled == false)
 
-            Button(action: openContractPortalTapped) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-            }
-            .disabled(portalDisabled)
-            .opacity(portalDisabled ? 0.6 : 1)
-            .accessibilityLabel("Open in Client Portal")
-        }
+            Menu {
+                Button {
+                    openContractPortalTapped()
+                } label: {
+                    Label("Open in Client Portal", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+                .disabled(portalDisabled)
 
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { openContractFolder() } label: {
-                Image(systemName: "folder")
+                Button {
+                    openContractFolder()
+                } label: {
+                    Label("Open Files", systemImage: "folder")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
-            .accessibilityLabel("Open Files")
+            .accessibilityLabel("More")
         }
     }
 }

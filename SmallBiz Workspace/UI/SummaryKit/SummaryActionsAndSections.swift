@@ -2,17 +2,24 @@ import SwiftUI
 
 extension SummaryKit {
 struct PrimaryActionRow: View {
+    enum Prominence {
+        case primary
+        case secondary
+    }
+
     struct ActionItem: Identifiable {
         let id = UUID()
         let title: String
         let systemImage: String
         let role: ButtonRole?
+        let prominence: Prominence
         let action: () -> Void
 
-        init(title: String, systemImage: String, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        init(title: String, systemImage: String, role: ButtonRole? = nil, prominence: Prominence = .primary, action: @escaping () -> Void) {
             self.title = title
             self.systemImage = systemImage
             self.role = role
+            self.prominence = prominence
             self.action = action
         }
     }
@@ -22,20 +29,32 @@ struct PrimaryActionRow: View {
     var body: some View {
         HStack(spacing: 8) {
             ForEach(actions) { item in
-                Button(role: item.role, action: item.action) {
-                    HStack(spacing: 6) {
-                        Image(systemName: item.systemImage)
-                        Text(item.title)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
-                    .padding(.horizontal, 4)
-                }
+                actionButton(for: item)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionButton(for item: ActionItem) -> some View {
+        let label = HStack(spacing: 6) {
+            Image(systemName: item.systemImage)
+            Text(item.title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .font(.subheadline.weight(.semibold))
+        .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
+        .padding(.horizontal, 4)
+
+        switch item.prominence {
+        case .primary:
+            Button(role: item.role, action: item.action) { label }
                 .buttonStyle(.borderedProminent)
                 .tint(SBWTheme.brandBlue)
-            }
+        case .secondary:
+            Button(role: item.role, action: item.action) { label }
+                .buttonStyle(.bordered)
+                .tint(SBWTheme.brandBlue)
         }
     }
 }

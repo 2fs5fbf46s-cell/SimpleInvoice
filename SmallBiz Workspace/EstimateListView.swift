@@ -266,16 +266,15 @@ struct EstimateListView: View {
                         Label("Saved Items", systemImage: "tray")
                     }
 
+                    Button {
+                        showingEstimateSettings = true
+                    } label: {
+                        Label("Estimate Settings", systemImage: "gearshape")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingEstimateSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                }
+                .accessibilityLabel("Estimate Menu")
             }
         }
 

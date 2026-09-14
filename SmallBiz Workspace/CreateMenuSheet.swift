@@ -497,7 +497,7 @@ private func hapticTap() {
 
 // MARK: - UI Components
 
-private struct CreateSectionCard<Content: View>: View {
+struct CreateSectionCard<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
 
@@ -527,12 +527,20 @@ private struct CreateSectionCard<Content: View>: View {
     }
 }
 
-private struct CreateActionRow: View {
+struct CreateActionRow: View {
     let title: String
     let subtitle: String
     let systemImage: String
     let chipFill: AnyShapeStyle
     let action: () -> Void
+
+    init(title: String, subtitle: String, systemImage: String, chipFill: AnyShapeStyle, action: @escaping () -> Void) {
+        self.title = title
+        self.subtitle = subtitle
+        self.systemImage = systemImage
+        self.chipFill = chipFill
+        self.action = action
+    }
 
     var body: some View {
         Button {

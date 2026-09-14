@@ -28,6 +28,7 @@ struct WebsiteCustomizationView: View {
     @State private var siteDomainCheckTask: Task<Void, Never>?
     @State private var siteDomainLastCheckedValue: String = ""
     @State private var siteDomainLastCheckedAt: Date = .distantPast
+    @State private var showPublishConfirmation = false
 
     var body: some View {
         ZStack {
@@ -79,7 +80,7 @@ struct WebsiteCustomizationView: View {
                 .padding(.bottom, 72)
             }
         }
-        .navigationTitle("Business Customization")
+        .navigationTitle("Website")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .toolbar {
@@ -104,7 +105,7 @@ struct WebsiteCustomizationView: View {
                     .buttonStyle(.bordered)
 
                     Button {
-                        Task { await publishWebsite(draft: draft) }
+                        showPublishConfirmation = true
                     } label: {
                         if isPublishing {
                             ProgressView()
@@ -116,8 +117,21 @@ struct WebsiteCustomizationView: View {
                     .disabled(isPublishing)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.top, 6)
+                .padding(.bottom, 16)
                 .background(.ultraThinMaterial)
+                .confirmationDialog(
+                    "Publish this website?",
+                    isPresented: $showPublishConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Publish") {
+                        Task { await publishWebsite(draft: draft) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Your site becomes publicly visible on the internet at this address.")
+                }
             }
         }
         .sheet(isPresented: $showPreviewSafari) {
@@ -193,20 +207,20 @@ struct WebsiteCustomizationView: View {
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("App Name")
+                    Text("Site Address")
                         .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
                         .foregroundStyle(SBWTheme.brandBlue)
 
-                    Text("Will be used as the unique app name to identify your website")
+                    Text("The web address customers use to find your site")
                         .foregroundStyle(.secondary)
                         .font(.scaledSystem(size: 11, relativeTo: .caption2))
 
-                    Text("App Name")
+                    Text("Site Address")
                         .foregroundStyle(.secondary)
                         .font(.scaledSystem(size: 11, relativeTo: .caption2))
                         .padding(.top, 4)
 
-                    TextField("App Name", text: Binding(
+                    TextField("Site Address", text: Binding(
                         get: { draft?.handle ?? "" },
                         set: { value in
                             draft?.handle = PublishedBusinessSite.normalizeHandle(value)

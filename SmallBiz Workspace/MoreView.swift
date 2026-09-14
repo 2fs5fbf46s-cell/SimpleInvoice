@@ -3,133 +3,167 @@ import SwiftUI
 struct MoreView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @State private var searchText = ""
-    @State private var showHelpCenter = false
+    @State private var selectedItem: MoreItem?
 
-    private struct MoreItem: Identifiable {
+    private struct MoreItem: Identifiable, Hashable {
         let id = UUID()
         let title: String
+        let subtitle: String
         let systemImage: String
         let keyword: String   // drives chipFill consistency
         let destination: AnyView
+
+        static func == (lhs: MoreItem, rhs: MoreItem) -> Bool { lhs.id == rhs.id }
+        func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
-    private var items: [MoreItem] {
-        var base: [MoreItem] = [
-            MoreItem(
-                title: "Notifications",
-                systemImage: "bell.badge",
-                keyword: "Notifications",
-                destination: AnyView(NotificationsView())
-            ),
-            MoreItem(
-                title: "Help Center",
-                systemImage: "questionmark.circle",
-                keyword: "Help",
-                destination: AnyView(HelpCenterView())
-            ),
-            MoreItem(
-                title: "Booking Portal",
-                systemImage: "calendar.badge.clock",
-                keyword: "Booking Portal",
-                destination: AnyView(BookingPortalView())
-            ),
-            MoreItem(
-                title: "Business Profile",
-                systemImage: "building.2",
-                keyword: "Business Profile",
-                destination: AnyView(BusinessProfileView())
-            ),
-            MoreItem(
-                title: "Setup Payments",
-                systemImage: "creditcard.fill",
-                keyword: "Payments",
-                destination: AnyView(SetupPaymentsView())
-            ),
-            MoreItem(
-                title: "Website",
-                systemImage: "globe",
-                keyword: "Website",
-                destination: AnyView(WebsiteCustomizationView())
-            ),
-            MoreItem(
-                title: "Client Portal",
-                systemImage: "person.2.badge.gearshape",
-                keyword: "Client Portal",
-                destination: AnyView(PortalDirectoryLauncherView())
-            ),
-            MoreItem(
-                title: "Clients",
-                systemImage: "person.2",
-                keyword: "Customers",
-                destination: AnyView(ClientListView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Contracts",
-                systemImage: "doc.text",
-                keyword: "Contracts",
-                destination: AnyView(ContractsHomeView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Estimates",
-                systemImage: "doc.text.fill",
-                keyword: "Estimates",
-                destination: AnyView(EstimateListView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Inventory",
-                systemImage: "tray",
-                keyword: "Saved Items",
-                destination: AnyView(SavedItemsView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Invoices",
-                systemImage: "doc.text.fill",
-                keyword: "Invoices",
-                destination: AnyView(InvoiceListView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Business Insights",
-                systemImage: "chart.line.uptrend.xyaxis",
-                keyword: "Revenue",
-                destination: AnyView(BusinessInsightsView(businessID: activeBiz.activeBusinessID))
-            ),
-            MoreItem(
-                title: "Jobs",
-                systemImage: "tray.full",
-                keyword: "Jobs",
-                destination: AnyView(JobsListView(businessID: activeBiz.activeBusinessID))
-            )
+    private struct MoreGroup: Identifiable {
+        let id = UUID()
+        let title: String
+        let items: [MoreItem]
+    }
+
+    private var groups: [MoreGroup] {
+        var base: [MoreGroup] = [
+            MoreGroup(title: "Billing", items: [
+                MoreItem(
+                    title: "Invoices",
+                    subtitle: "Create and track invoices",
+                    systemImage: "doc.text.fill",
+                    keyword: "Invoices",
+                    destination: AnyView(InvoiceListView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Estimates",
+                    subtitle: "Send quotes and proposals",
+                    systemImage: "doc.text.fill",
+                    keyword: "Estimates",
+                    destination: AnyView(EstimateListView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Saved Items",
+                    subtitle: "Services and materials you sell",
+                    systemImage: "tray",
+                    keyword: "Saved Items",
+                    destination: AnyView(SavedItemsView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Setup Payments",
+                    subtitle: "Choose how you get paid",
+                    systemImage: "creditcard.fill",
+                    keyword: "Payments",
+                    destination: AnyView(SetupPaymentsView())
+                )
+            ]),
+            MoreGroup(title: "Scheduling", items: [
+                MoreItem(
+                    title: "Jobs",
+                    subtitle: "Scheduled work and requests",
+                    systemImage: "tray.full",
+                    keyword: "Jobs",
+                    destination: AnyView(JobsListView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Booking Portal",
+                    subtitle: "Manage booking requests",
+                    systemImage: "calendar.badge.clock",
+                    keyword: "Booking Portal",
+                    destination: AnyView(BookingPortalView())
+                )
+            ]),
+            MoreGroup(title: "Customers", items: [
+                MoreItem(
+                    title: "Clients",
+                    subtitle: "Contacts and their history",
+                    systemImage: "person.2",
+                    keyword: "Customers",
+                    destination: AnyView(ClientListView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Contracts",
+                    subtitle: "Agreements and signatures",
+                    systemImage: "doc.text",
+                    keyword: "Contracts",
+                    destination: AnyView(ContractsHomeView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Client Portal",
+                    subtitle: "Share files with clients",
+                    systemImage: "person.2.badge.gearshape",
+                    keyword: "Client Portal",
+                    destination: AnyView(PortalDirectoryLauncherView())
+                )
+            ]),
+            MoreGroup(title: "Business", items: [
+                MoreItem(
+                    title: "Business Profile",
+                    subtitle: "Letterhead, branding, and setup",
+                    systemImage: "building.2",
+                    keyword: "Business Profile",
+                    destination: AnyView(BusinessProfileView())
+                ),
+                MoreItem(
+                    title: "Website",
+                    subtitle: "Your public booking page",
+                    systemImage: "globe",
+                    keyword: "Website",
+                    destination: AnyView(WebsiteCustomizationView())
+                ),
+                MoreItem(
+                    title: "Business Insights",
+                    subtitle: "Cash in, outstanding, pipeline",
+                    systemImage: "chart.line.uptrend.xyaxis",
+                    keyword: "Revenue",
+                    destination: AnyView(BusinessInsightsView(businessID: activeBiz.activeBusinessID))
+                ),
+                MoreItem(
+                    title: "Notifications",
+                    subtitle: "Alerts and reminders",
+                    systemImage: "bell.badge",
+                    keyword: "Notifications",
+                    destination: AnyView(NotificationsView())
+                )
+            ]),
+            MoreGroup(title: "Support", items: [
+                MoreItem(
+                    title: "Help & About",
+                    subtitle: "Tutorials and contact support",
+                    systemImage: "questionmark.circle",
+                    keyword: "Help",
+                    destination: AnyView(HelpCenterView())
+                )
+            ])
         ]
 
         #if DEBUG
-        base.append(
+        base.append(MoreGroup(title: "Developer", items: [
             MoreItem(
                 title: "Portal Preview",
+                subtitle: "Preview the client portal",
                 systemImage: "person.crop.rectangle",
                 keyword: "Client Portal",
                 destination: AnyView(PortalPreviewView())
-            )
-        )
-        base.append(
+            ),
             MoreItem(
                 title: "Developer Tools",
+                subtitle: "Reset onboarding for local testing",
                 systemImage: "wrench.and.screwdriver",
                 keyword: "Settings",
                 destination: AnyView(OnboardingDebugToolsView())
             )
-        )
+        ]))
         #endif
 
         return base
     }
 
-    private var filtered: [MoreItem] {
+    private var filteredGroups: [MoreGroup] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let sorted = items.sorted {
-            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        guard !q.isEmpty else { return groups }
+        return groups.compactMap { group in
+            let items = group.items.filter { $0.title.lowercased().contains(q) || $0.subtitle.lowercased().contains(q) }
+            return items.isEmpty ? nil : MoreGroup(title: group.title, items: items)
         }
-        guard !q.isEmpty else { return sorted }
-        return sorted.filter { $0.title.lowercased().contains(q) }
     }
 
     var body: some View {
@@ -144,94 +178,45 @@ struct MoreView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    ForEach(filtered) { item in
-                        NavigationLink {
-                            item.destination
-                        } label: {
-                            tile(item)
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(filteredGroups) { group in
+                        CreateSectionCard(title: group.title) {
+                            ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                                if index > 0 {
+                                    Divider().opacity(0.6)
+                                }
+                                CreateActionRow(
+                                    title: item.title,
+                                    subtitle: item.subtitle,
+                                    systemImage: item.systemImage,
+                                    chipFill: SBWTheme.chipFill(for: item.keyword)
+                                ) {
+                                    selectedItem = item
+                                }
+                                .modifier(SetupPaymentsCoachMarkModifier(shouldMark: item.title == "Setup Payments"))
+                            }
                         }
-                        .buttonStyle(.plain)
+                    }
+
+                    if filteredGroups.isEmpty {
+                        ContentUnavailableView(
+                            "No Results",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try a different search.")
+                        )
+                        .padding(.top, 12)
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
-
-                if filtered.isEmpty {
-                    ContentUnavailableView(
-                        "No Results",
-                        systemImage: "magnifyingglass",
-                        description: Text("Try a different search.")
-                    )
-                    .padding(.top, 12)
-                }
-
-                helpCard
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
+                .padding(.top, 14)
+                .padding(.bottom, 24)
             }
         }
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showHelpCenter = true
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                }
-                .accessibilityLabel("Help Center")
-            }
-        }
-        .navigationDestination(isPresented: $showHelpCenter) {
-            HelpCenterView()
-        }
-    }
-
-    private var helpCard: some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Help")
-                    .font(.headline)
-                Text("Need a refresher? Open Help Center for tutorial and support.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                NavigationLink {
-                    HelpCenterView()
-                } label: {
-                    Label("Open Help Center", systemImage: "questionmark.circle")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
-            }
-        }
-    }
-
-    private func tile(_ item: MoreItem) -> some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(SBWTheme.chipFill(for: item.keyword))
-                    Image(systemName: item.systemImage)
-                        .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
-                        .foregroundStyle(.primary)
-                }
-                .frame(width: 38, height: 38)
-
-                Text(item.title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(2)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
-        }
-        .modifier(SetupPaymentsCoachMarkModifier(shouldMark: item.title == "Setup Payments"))
+        .searchable(text: $searchText, prompt: "Search")
+        .navigationDestination(item: $selectedItem) { $0.destination }
     }
 }
 

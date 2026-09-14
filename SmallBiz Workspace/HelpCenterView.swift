@@ -77,7 +77,7 @@ struct HelpCenterView: View {
                 .padding(.bottom, 24)
             }
         }
-        .navigationTitle("Help Center")
+        .navigationTitle("Help & About")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .sheet(isPresented: $showSupportSheet) {

@@ -144,14 +144,14 @@ struct JobSummaryView: View {
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(title: "Primary Actions")
                 SummaryKit.PrimaryActionRow(actions: [
-                    .init(title: "Edit / Details", systemImage: "square.and.pencil") {
+                    .init(title: linkedInvoiceForPrimaryAction == nil ? "Create Invoice" : "Open Invoice", systemImage: "doc.plaintext", prominence: .primary) {
+                        openOrCreateInvoice()
+                    },
+                    .init(title: "Edit", systemImage: "square.and.pencil", prominence: .secondary) {
                         showEditor = true
                     },
-                    .init(title: "Share", systemImage: "square.and.arrow.up") {
+                    .init(title: "Share", systemImage: "square.and.arrow.up", prominence: .secondary) {
                         shareJob()
-                    },
-                    .init(title: linkedInvoiceForPrimaryAction == nil ? "Create Invoice" : "Open Invoice", systemImage: "doc.plaintext") {
-                        openOrCreateInvoice()
                     }
                 ])
             }

@@ -117,9 +117,10 @@ struct ContractTemplatePickerView: View {
                     ForEach(filteredTemplates) { template in
                         Section {
                             VStack(alignment: .leading, spacing: 10) {
-                                HStack(alignment: .firstTextBaseline) {
+                                HStack(alignment: .top) {
                                     Text(template.name.isEmpty ? "Template" : template.name)
                                         .font(.headline)
+                                        .fixedSize(horizontal: false, vertical: true)
 
                                     Spacer(minLength: 8)
 
@@ -130,6 +131,7 @@ struct ContractTemplatePickerView: View {
                                         .background(SBWTheme.brandBlue.opacity(0.16))
                                         .clipShape(Capsule())
                                         .foregroundStyle(.secondary)
+                                        .fixedSize()
                                 }
 
                                 Text(previewBody(for: template))
@@ -159,15 +161,10 @@ struct ContractTemplatePickerView: View {
         .searchable(text: $searchText, prompt: "Search templates")
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
-                Picker("Category", selection: $selectedCategory) {
-                    ForEach(categories, id: \.self) { c in
-                        Text(c).tag(c)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                SBWFilterChips(options: categories, title: { $0 }, selection: $selectedCategory)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
 
                 Divider()
             }
@@ -404,9 +401,10 @@ struct MusicSplitSheetSmartEntryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top) {
                 Text(MusicSplitSheetDraft.templateName)
                     .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 8)
 
@@ -417,6 +415,7 @@ struct MusicSplitSheetSmartEntryCard: View {
                     .background(SBWTheme.brandBlue.opacity(0.16))
                     .clipShape(Capsule())
                     .foregroundStyle(.secondary)
+                    .fixedSize()
             }
 
             Text("Guided split sheet with contributor rows, ownership totals, and percentage validation.")

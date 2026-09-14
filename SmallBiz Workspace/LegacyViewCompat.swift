@@ -122,20 +122,6 @@ private struct InvoiceOverviewSummaryView: View {
                     Text(lockText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if invoice.canRefreshBusinessInfo {
-                    Button {
-                        refreshBusinessInfo()
-                    } label: {
-                        Label("Refresh Business Info", systemImage: "arrow.clockwise")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-                if let businessInfoNotice {
-                    Text(businessInfoNotice)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .listRowBackground(Color.clear)
@@ -170,7 +156,7 @@ private struct InvoiceOverviewSummaryView: View {
                         previewPDF()
                     }
 
-                    primaryActionButton(title: "Detail", systemImage: "square.and.pencil") {
+                    primaryActionButton(title: "Edit", systemImage: "square.and.pencil") {
                         detailInvoice = invoice
                     }
                 }
@@ -353,6 +339,7 @@ private struct InvoiceOverviewSummaryView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             SBWTheme.headerWash()
         }
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 24) }
         .navigationTitle(invoice.documentType == "estimate" ? "Estimate" : "Invoice")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()

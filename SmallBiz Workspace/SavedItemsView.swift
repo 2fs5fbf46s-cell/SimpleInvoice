@@ -152,7 +152,7 @@ struct SavedItemsView: View {
             .listRowSeparator(.hidden)
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Inventory")
+        .navigationTitle("Saved Items")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .toolbar {

@@ -1,6 +1,13 @@
 import OSLog
 import SwiftUI
 import SwiftData
+import Charts
+
+struct WeeklyPaidPoint: Identifiable {
+    let id = UUID()
+    let weekStart: Date
+    let paidCents: Int
+}
 
 struct BusinessInsightsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -15,6 +22,7 @@ struct BusinessInsightsView: View {
     @State private var draftCount: Int = 0
     @State private var sentUnpaidCount: Int = 0
     @State private var estimateCount: Int = 0
+    @State private var weeklyPaidTrend: [WeeklyPaidPoint] = []
     @State private var isLoadingInsights = false
     @State private var hasAnyRecords = false
     @State private var loadGeneration = UUID()
@@ -64,6 +72,7 @@ struct BusinessInsightsView: View {
                         } else if !hasAnyRecords {
                             emptyInsightsCard
                         } else {
+                            trendCard
                             cashInCard
                             outstandingCard(businessID: bizID)
                             pipelineCard
@@ -106,6 +115,61 @@ struct BusinessInsightsView: View {
                 systemImage: "chart.bar.xaxis",
                 description: Text("Create your first invoice to start tracking revenue and outstanding balances.")
             )
+        }
+    }
+
+    private var trendCard: some View {
+        SBWCardContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Paid Per Week")
+                    .font(.headline)
+
+                if weeklyPaidTrend.allSatisfy({ $0.paidCents == 0 }) {
+                    Text("Nothing paid in the last \(weeklyPaidTrend.count) weeks.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(height: 120, alignment: .center)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Chart(weeklyPaidTrend) { point in
+                        LineMark(
+                            x: .value("Week", point.weekStart),
+                            y: .value("Paid", Double(point.paidCents) / 100.0)
+                        )
+                        .foregroundStyle(SBWTheme.brandBlue)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .interpolationMethod(.catmullRom)
+
+                        AreaMark(
+                            x: .value("Week", point.weekStart),
+                            y: .value("Paid", Double(point.paidCents) / 100.0)
+                        )
+                        .foregroundStyle(SBWTheme.brandBlue.opacity(0.16))
+                        .interpolationMethod(.catmullRom)
+
+                        PointMark(
+                            x: .value("Week", point.weekStart),
+                            y: .value("Paid", Double(point.paidCents) / 100.0)
+                        )
+                        .foregroundStyle(SBWTheme.brandBlue)
+                        .symbolSize(point.weekStart == weeklyPaidTrend.last?.weekStart ? 60 : 0)
+                    }
+                    .frame(height: 120)
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: .weekOfYear, count: 2)) { _ in
+                            AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { value in
+                            AxisGridLine()
+                            if let cents = value.as(Double.self) {
+                                AxisValueLabel(InsightsCurrency.string(cents: Int(cents * 100), code: currencyCode))
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -231,6 +295,7 @@ struct BusinessInsightsView: View {
         draftCount = 0
         sentUnpaidCount = 0
         estimateCount = 0
+        weeklyPaidTrend = []
         hasAnyRecords = false
         isLoadingInsights = false
         loadGeneration = UUID()
@@ -272,6 +337,7 @@ struct BusinessInsightsView: View {
             draftCount = snapshot.draftCount
             sentUnpaidCount = snapshot.sentUnpaidCount
             estimateCount = snapshot.estimateCount
+            weeklyPaidTrend = snapshot.weeklyPaidTrend
             isLoadingInsights = false
 
             #if DEBUG
@@ -328,6 +394,8 @@ struct BusinessInsightsView: View {
         let outstandingCents = sentUnpaid.reduce(0) { $0 + max(0, $1.remainingDueCents) }
         let overdueCents = overdue.reduce(0) { $0 + max(0, $1.remainingDueCents) }
 
+        let weeklyTrend = weeklyPaidTrend(from: nonEstimates, now: now, weekCount: 8)
+
         return InsightsSnapshot(
             paidWeekCents: paidWeekCents,
             paidMonthCents: paidMonthCents,
@@ -336,8 +404,33 @@ struct BusinessInsightsView: View {
             draftCount: draftUnpaid.count,
             sentUnpaidCount: sentUnpaid.count,
             estimateCount: estimates.count,
+            weeklyPaidTrend: weeklyTrend,
             records: invoices
         )
+    }
+
+    private func weeklyPaidTrend(from invoices: [Invoice], now: Date, weekCount: Int) -> [WeeklyPaidPoint] {
+        let calendar = InsightsDateSupport.calendar
+        guard let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else {
+            return []
+        }
+
+        let weekStarts: [Date] = (0..<weekCount).reversed().compactMap { offset in
+            calendar.date(byAdding: .weekOfYear, value: -offset, to: currentWeekStart)
+        }
+
+        var totalsByWeekStart: [Date: Int] = [:]
+        for invoice in invoices where invoice.isPaid {
+            guard let paidDate = InsightsDateSupport.resolvedPaidDate(for: invoice),
+                  let weekStart = calendar.dateInterval(of: .weekOfYear, for: paidDate)?.start else {
+                continue
+            }
+            totalsByWeekStart[weekStart, default: 0] += max(0, invoice.totalCents)
+        }
+
+        return weekStarts.map { weekStart in
+            WeeklyPaidPoint(weekStart: weekStart, paidCents: totalsByWeekStart[weekStart] ?? 0)
+        }
     }
 }
 
@@ -349,6 +442,7 @@ private struct InsightsSnapshot {
     let draftCount: Int
     let sentUnpaidCount: Int
     let estimateCount: Int
+    let weeklyPaidTrend: [WeeklyPaidPoint]
     let records: [Invoice]
 }
 
