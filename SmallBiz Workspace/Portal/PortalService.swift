@@ -232,10 +232,42 @@ final class PortalService {
             throw Self.err("Contract not found.")
         }
 
+        // Keep the signature itself, not just the fact that one happened.
+        //
+        // This function used to take the drawn PNG, the typed text, the consent
+        // version, the session and the device label — and write none of them,
+        // setting only the status. `ContractSignature` was never constructed
+        // anywhere, so the summary view's signature list and the signature block
+        // in `PortalContractPDFBuilder` always found nothing to show. The client
+        // signed, the app rendered their signature, and it was dropped.
+        let signature = ContractSignature(
+            businessID: contract.businessID,
+            clientID: session.clientID,
+            contract: contract,
+            sessionID: session.id,
+            signerRole: "client",
+            signerName: signerName,
+            signatureType: signatureType.rawValue,
+            signatureImageData: signatureImageData,
+            signatureText: signatureText,
+            consentVersion: consentVersion,
+            // What was actually agreed to, recorded per signature as well as on
+            // the contract — so a signature stays verifiable on its own terms.
+            contractBodyHash: ContractSignLock.bodyHash(contract.renderedBody),
+            deviceLabel: deviceLabel
+        )
+        modelContext.insert(signature)
+
         // markSigned, not a raw status write: it records the hash of the text that
         // was actually agreed to, which is what makes a later edit detectable.
-        contract.markSigned(byName: signerName)
-        try? modelContext.save()
+        contract.markSigned(byName: signerName, at: signature.signedAt)
+
+        do {
+            try modelContext.save()
+        } catch {
+            SBWLog.portal.problem("Failed to save contract signature: \(error)")
+            throw Self.err("Could not save the signature. Please try again.")
+        }
 
         log(
             clientID: session.clientID,

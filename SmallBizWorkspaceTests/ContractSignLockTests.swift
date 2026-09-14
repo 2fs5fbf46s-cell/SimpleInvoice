@@ -228,6 +228,137 @@ final class ContractSignLockTests: XCTestCase {
         XCTAssertNotEqual(contract.renderedBody, body, "an unsigned contract is still editable")
     }
 
+    // MARK: - The signature is kept, not just the fact of it
+
+    private func makeSession(businessID: UUID) throws -> PortalSession {
+        let session = PortalSession(
+            clientID: UUID(),
+            businessID: businessID,
+            portalIdentityID: UUID(),
+            tokenHash: "hash",
+            expiresAt: Date().addingTimeInterval(3600),
+            deviceLabel: "iPhone"
+        )
+        context.insert(session)
+        try context.save()
+        return session
+    }
+
+    /// `ContractSignature` was never constructed anywhere. Signing through the
+    /// portal rendered the client's drawn signature to a PNG, handed it to
+    /// `signContractFromPortal` along with the consent version, session and
+    /// device — and the function wrote none of it, setting only the status. Both
+    /// read sites (the summary list, the PDF signature block) always found
+    /// nothing.
+    func testSigningThroughThePortalKeepsTheDrawnSignature() throws {
+        let contract = try makeContract()
+        let session = try makeSession(businessID: contract.businessID)
+        let png = Data("not-really-a-png".utf8)
+
+        let portal = PortalService(modelContext: context)
+        try portal.signContractFromPortal(
+            contractID: contract.id,
+            session: session,
+            signerName: "Ada Lovelace",
+            signatureType: .drawn,
+            signatureImageData: png,
+            signatureText: nil,
+            consentVersion: "portal-consent-v1",
+            deviceLabel: session.deviceLabel
+        )
+
+        let signatures = contract.signatures ?? []
+        XCTAssertEqual(signatures.count, 1, "the signature itself has to be kept")
+
+        let signature = try XCTUnwrap(signatures.first)
+        XCTAssertEqual(signature.signatureImageData, png, "the drawn signature was being dropped")
+        XCTAssertEqual(signature.signerName, "Ada Lovelace")
+        XCTAssertEqual(signature.signerRole, "client")
+        XCTAssertEqual(signature.signatureType, "drawn")
+        XCTAssertEqual(signature.consentVersion, "portal-consent-v1")
+        XCTAssertEqual(signature.sessionID, session.id)
+        XCTAssertEqual(signature.clientID, session.clientID)
+        XCTAssertEqual(signature.deviceLabel, "iPhone")
+    }
+
+    func testATypedSignatureKeepsItsText() throws {
+        let contract = try makeContract()
+        let session = try makeSession(businessID: contract.businessID)
+
+        let portal = PortalService(modelContext: context)
+        try portal.signContractFromPortal(
+            contractID: contract.id,
+            session: session,
+            signerName: "Ada Lovelace",
+            signatureType: .typed,
+            signatureImageData: nil,
+            signatureText: "Ada Lovelace",
+            consentVersion: "portal-consent-v1",
+            deviceLabel: nil
+        )
+
+        let signature = try XCTUnwrap((contract.signatures ?? []).first)
+        XCTAssertEqual(signature.signatureType, "typed")
+        XCTAssertEqual(signature.signatureText, "Ada Lovelace")
+        XCTAssertNil(signature.signatureImageData)
+    }
+
+    /// A signature has to stay verifiable on its own terms, not only through the
+    /// contract it hangs off.
+    func testTheSignatureRecordsWhatWasSigned() throws {
+        let contract = try makeContract()
+        let session = try makeSession(businessID: contract.businessID)
+
+        let portal = PortalService(modelContext: context)
+        try portal.signContractFromPortal(
+            contractID: contract.id,
+            session: session,
+            signerName: "Ada Lovelace",
+            signatureType: .typed,
+            signatureImageData: nil,
+            signatureText: "Ada Lovelace",
+            consentVersion: "portal-consent-v1",
+            deviceLabel: nil
+        )
+
+        let signature = try XCTUnwrap((contract.signatures ?? []).first)
+        XCTAssertEqual(signature.contractBodyHash, ContractSignLock.bodyHash(body))
+
+        contract.renderedBody = tampered
+        XCTAssertNotEqual(
+            signature.contractBodyHash,
+            ContractSignLock.bodyHash(contract.renderedBody),
+            "an edit after signing must be detectable from the signature alone"
+        )
+    }
+
+    func testSigningThroughThePortalLocksTheContract() throws {
+        let contract = try makeContract()
+        let session = try makeSession(businessID: contract.businessID)
+
+        let portal = PortalService(modelContext: context)
+        try portal.signContractFromPortal(
+            contractID: contract.id,
+            session: session,
+            signerName: "Ada Lovelace",
+            signatureType: .typed,
+            signatureImageData: nil,
+            signatureText: "Ada Lovelace",
+            consentVersion: "portal-consent-v1",
+            deviceLabel: nil
+        )
+
+        XCTAssertTrue(contract.isSigned)
+        XCTAssertEqual(contract.signatureIntegrity, .intact)
+        XCTAssertFalse(ContractSignLock.canEditBody(status: contract.status))
+
+        let signature = try XCTUnwrap((contract.signatures ?? []).first)
+        XCTAssertEqual(
+            contract.signedAt, signature.signedAt,
+            "the contract and its signature must agree on when it happened"
+        )
+    }
+
     func testAnUnnamedSignerStillReadsSensibly() throws {
         let contract = try makeContract()
         contract.markSigned()
