@@ -132,6 +132,9 @@ struct SmallBizWorkspaceApp: App {
         // Generation itself is server/push-driven; this is the "next launch as
         // a fallback" leg, covering a push that never arrived or was denied.
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
+        // Same reasoning: estimate acceptance is server/push-driven now
+        // (POST /api/portal/estimate/decision), this is the fallback leg.
+        await EstimateAcceptancePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
     }
 
     @MainActor

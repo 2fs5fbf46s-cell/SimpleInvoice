@@ -161,6 +161,19 @@ struct PullRecurringResponseDTO: Decodable {
     let invoices: [GeneratedRecurringInvoiceDTO]
 }
 
+struct PullAcceptedEstimatesResponseDTO: Decodable {
+    let ok: Bool?
+    let accepted: [AcceptedEstimateDTO]
+}
+
+struct AcceptedEstimateDTO: Decodable {
+    let estimateId: String
+    let businessId: String
+    let clientId: String
+    let decidedAtMs: Double
+    let updatedAtMs: Double
+}
+
 struct GeneratedRecurringInvoiceDTO: Decodable {
     let invoiceId: String
     let invoiceNumber: String
@@ -1831,6 +1844,38 @@ final class PortalBackend {
 
         let decoded = try decoder().decode(PullRecurringResponseDTO.self, from: data)
         return decoded.invoices
+    }
+
+    /// Estimates accepted since `since` that this device hasn't materialized
+    /// yet. See the backend's `/api/estimate/accepted/pull` — unlike the
+    /// recurring-invoice pull above, nothing here needs generating: the
+    /// estimate and any bundled draft contract already exist locally, so
+    /// this only answers "did estimate X get accepted, and when."
+    func pullAcceptedEstimates(since: Date) async throws -> [AcceptedEstimateDTO] {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/estimate/accepted/pull"),
+            resolvingAgainstBaseURL: false
+        )!
+        let sinceMs = Int((since.timeIntervalSince1970 * 1000).rounded())
+        comps.queryItems = [URLQueryItem(name: "since", value: String(sinceMs))]
+
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+
+        let decoded = try decoder().decode(PullAcceptedEstimatesResponseDTO.self, from: data)
+        return decoded.accepted
     }
 
     // MARK: - Payment status

@@ -481,6 +481,13 @@ struct AppTabView: View {
             return
         }
 
+        if eventKey.contains("estimate"), eventKey.contains("accepted") {
+            tab = .today
+            notificationRouter.consumePendingPayload()
+            Task { await EstimateAcceptancePullService.pullAndMaterialize(context: modelContext, businessID: activeBiz.activeBusinessID) }
+            return
+        }
+
         if notificationRouter.openFallbackIfPossible(effectivePayload) {
             notificationRouter.consumePendingPayload()
             return
