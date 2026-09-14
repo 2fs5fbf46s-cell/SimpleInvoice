@@ -28,6 +28,12 @@ final class Job {
     var status: String = "scheduled"
     var stageRaw: String = JobStage.booked.rawValue
     var sourceBookingRequestId: String? = nil
+    // Set when this Job was materialized from an accepted estimate (see
+    // EstimateAcceptancePullService). Matched against on every materialize
+    // call so a repeat pull (or the old foreground-poll fallback still
+    // running alongside it) can never create a duplicate Job for the same
+    // estimate — mirrors the sourceBookingRequestId idempotency pattern.
+    var sourceEstimateId: String? = nil
     var calendarEventId: String? = nil
 
     var stage: JobStage {
@@ -66,6 +72,7 @@ final class Job {
         status: String = "scheduled",
         stageRaw: String = JobStage.booked.rawValue,
         sourceBookingRequestId: String? = nil,
+        sourceEstimateId: String? = nil,
         calendarEventId: String? = nil,
         workspaceFolderKey: String? = nil
     ) {
@@ -82,6 +89,7 @@ final class Job {
         self.status = status
         self.stageRaw = stageRaw
         self.sourceBookingRequestId = sourceBookingRequestId
+        self.sourceEstimateId = sourceEstimateId
         self.calendarEventId = calendarEventId
         self.workspaceFolderKey = workspaceFolderKey
     }

@@ -100,9 +100,9 @@ final class NotificationManager {
         }
     }
 
-    func syncBookingComingUpReminders(
+    func syncJobComingUpReminders(
         businessID: UUID,
-        bookings: [Booking]
+        jobs: [Job]
     ) async {
         let status = await getAuthorizationStatus()
         guard [.authorized, .provisional, .ephemeral].contains(status) else { return }
@@ -112,14 +112,14 @@ final class NotificationManager {
         let now = Date()
         let calendar = Calendar.current
 
-        for booking in bookings {
-            let triggerDate = calendar.date(byAdding: .hour, value: -24, to: booking.startDate) ?? booking.startDate
+        for job in jobs {
+            let triggerDate = calendar.date(byAdding: .hour, value: -24, to: job.startDate) ?? job.startDate
             guard triggerDate > now else { continue }
 
-            let title = booking.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let reminderTitle = title.isEmpty ? "Booking reminder" : title
+            let title = job.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let reminderTitle = title.isEmpty ? "Job reminder" : title
             let content = UNMutableNotificationContent()
-            content.title = "Booking coming up"
+            content.title = "Job coming up"
             content.body = "\(reminderTitle) starts in about 24 hours."
             content.sound = .default
             content.userInfo = [
@@ -132,14 +132,14 @@ final class NotificationManager {
                 repeats: false
             )
             let request = UNNotificationRequest(
-                identifier: reminderIdentifier(kind: "booking_upcoming", businessID: businessIDString, itemID: booking.id.uuidString),
+                identifier: reminderIdentifier(kind: "booking_upcoming", businessID: businessIDString, itemID: job.id.uuidString),
                 content: content,
                 trigger: trigger
             )
             do {
                 try await center.add(request)
             } catch {
-                SBWLog.notifications.problem("⚠️ Failed to schedule booking reminder for \(booking.id): \(error)")
+                SBWLog.notifications.problem("⚠️ Failed to schedule job reminder for \(job.id): \(error)")
             }
         }
     }

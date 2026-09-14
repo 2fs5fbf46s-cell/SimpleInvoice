@@ -20,9 +20,6 @@ struct CreateMenuSheet: View {
     @State private var createdInvoice: Invoice? = nil
     @State private var createdContract: Contract? = nil
 
-    // Booking creation sheet
-    @State private var showNewBooking = false
-
     // New Estimate (name + client)
     @State private var showNewEstimateSheet = false
     @State private var draftEstimateName: String = ""
@@ -92,17 +89,6 @@ struct CreateMenuSheet: View {
                                 chipFill: SBWTheme.chipFill(for: "Contracts")
                             ) {
                                 showNewContractSheet = true
-                            }
-                        }
-
-                        CreateSectionCard(title: "Scheduling") {
-                            CreateActionRow(
-                                title: "New Booking",
-                                subtitle: "Add to schedule",
-                                systemImage: "calendar.badge.clock",
-                                chipFill: SBWTheme.chipFill(for: "Bookings")
-                            ) {
-                                showNewBooking = true
                             }
                         }
 
@@ -190,11 +176,6 @@ struct CreateMenuSheet: View {
                         }
                     )
                 }
-            }
-
-            // New booking flow
-            .sheet(isPresented: $showNewBooking) {
-                NavigationStack { NewBookingView() }
             }
 
             // New client flow (uses ClientEditView)

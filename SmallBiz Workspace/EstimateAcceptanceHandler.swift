@@ -27,7 +27,8 @@ enum EstimateAcceptanceHandler {
             locationName: "",
             latitude: nil,
             longitude: nil,
-            status: "scheduled"
+            status: "scheduled",
+            sourceEstimateId: estimate.id.uuidString
         )
 
         context.insert(job)

@@ -26,18 +26,18 @@ final class LocalReminderScheduler {
         }
 
         do {
-            let bookings = try modelContext.fetch(FetchDescriptor<Booking>())
-            let scopedBookings = bookings.filter {
-                guard $0.status.lowercased() == "scheduled" else { return false }
+            let jobs = try modelContext.fetch(FetchDescriptor<Job>())
+            let scopedJobs = jobs.filter {
+                guard $0.stage == .booked else { return false }
                 guard $0.startDate > Date() else { return false }
-                return $0.client?.businessID == businessID
+                return $0.businessID == businessID
             }
-            await NotificationManager.shared.syncBookingComingUpReminders(
+            await NotificationManager.shared.syncJobComingUpReminders(
                 businessID: businessID,
-                bookings: scopedBookings
+                jobs: scopedJobs
             )
         } catch {
-            SBWLog.notifications.problem("⚠️ Failed to fetch bookings for reminders: \(error)")
+            SBWLog.notifications.problem("⚠️ Failed to fetch jobs for reminders: \(error)")
         }
     }
 }
