@@ -115,3 +115,11 @@ struct CatalogItemEditView: View {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension CatalogItemEditView: Equatable {
+    static func == (lhs: CatalogItemEditView, rhs: CatalogItemEditView) -> Bool {
+        lhs.item.persistentModelID == rhs.item.persistentModelID
+    }
+}

@@ -9,7 +9,10 @@ struct BookingAnalyticsView: View {
     @Query private var invoices: [Invoice]
     @Query private var jobs: [Job]
 
+    private let businessID: UUID?
+
     init(businessID: UUID? = nil) {
+        self.businessID = businessID
         let scopedID = BusinessScoped.queryBusinessID(businessID)
         _invoices = Query(
             filter: #Predicate<Invoice> { $0.businessID == scopedID },
@@ -568,5 +571,13 @@ private struct AnalyticsCard<Content: View>: View {
                     )
                     .shadow(color: .black.opacity(0.20), radius: 14, x: 0, y: 8)
             )
+    }
+}
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension BookingAnalyticsView: Equatable {
+    static func == (lhs: BookingAnalyticsView, rhs: BookingAnalyticsView) -> Bool {
+        lhs.businessID == rhs.businessID
     }
 }

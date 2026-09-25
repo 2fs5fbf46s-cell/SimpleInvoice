@@ -1286,3 +1286,21 @@ private func fetchPublishedBusinessSite(id: UUID, context: ModelContext) -> Publ
     let all = (try? context.fetch(FetchDescriptor<PublishedBusinessSite>())) ?? []
     return all.first(where: { $0.id == id })
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// No inputs: queries and state drive every update.
+extension WebsiteCustomizationView: Equatable {
+    static func == (_: WebsiteCustomizationView, _: WebsiteCustomizationView) -> Bool {
+        true
+    }
+}
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// Compared by what it shows; callbacks and bindings are ignored.
+extension WebsiteHeroImageView: Equatable {
+    static func == (lhs: WebsiteHeroImageView, rhs: WebsiteHeroImageView) -> Bool {
+        lhs.draft.persistentModelID == rhs.draft.persistentModelID
+    }
+}

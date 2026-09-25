@@ -376,3 +376,13 @@ private struct ClientContractRouteView: View {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension ClientContractsView: Equatable {
+    static func == (lhs: ClientContractsView, rhs: ClientContractsView) -> Bool {
+        lhs.businessID == rhs.businessID
+            && lhs.clientID == rhs.clientID
+            && lhs.clientName == rhs.clientName
+    }
+}

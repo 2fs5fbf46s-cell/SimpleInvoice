@@ -536,3 +536,11 @@ struct JobSummaryView: View {
         return comps.url ?? url
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension JobSummaryView: Equatable {
+    static func == (lhs: JobSummaryView, rhs: JobSummaryView) -> Bool {
+        lhs.job.persistentModelID == rhs.job.persistentModelID
+    }
+}

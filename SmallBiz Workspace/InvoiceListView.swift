@@ -585,3 +585,11 @@ private extension InvoiceListView {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension InvoiceListView: Equatable {
+    static func == (lhs: InvoiceListView, rhs: InvoiceListView) -> Bool {
+        lhs.businessID == rhs.businessID
+    }
+}

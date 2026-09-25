@@ -206,3 +206,12 @@ struct PortalDirectoryLauncherView: View {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// No inputs: queries and state drive every update.
+extension PortalDirectoryLauncherView: Equatable {
+    static func == (_: PortalDirectoryLauncherView, _: PortalDirectoryLauncherView) -> Bool {
+        true
+    }
+}

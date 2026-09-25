@@ -1405,3 +1405,12 @@ struct BookingDetailView: View {
 
     private var dateFormatter: DateFormatter { Self.dateFormatter }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// Compared by what it shows; callbacks and bindings are ignored.
+extension BookingDetailView: Equatable {
+    static func == (lhs: BookingDetailView, rhs: BookingDetailView) -> Bool {
+        lhs.request == rhs.request
+    }
+}

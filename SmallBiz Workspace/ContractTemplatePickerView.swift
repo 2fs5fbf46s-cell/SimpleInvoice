@@ -433,3 +433,11 @@ struct MusicSplitSheetSmartEntryCard: View {
         .padding(.vertical, 6)
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension ContractTemplatePickerView: Equatable {
+    static func == (lhs: ContractTemplatePickerView, rhs: ContractTemplatePickerView) -> Bool {
+        lhs.businessID == rhs.businessID
+    }
+}

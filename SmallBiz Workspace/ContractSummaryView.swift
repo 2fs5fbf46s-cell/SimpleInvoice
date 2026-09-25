@@ -547,3 +547,11 @@ struct ContractSummaryView: View {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension ContractSummaryView: Equatable {
+    static func == (lhs: ContractSummaryView, rhs: ContractSummaryView) -> Bool {
+        lhs.contract.persistentModelID == rhs.contract.persistentModelID
+    }
+}

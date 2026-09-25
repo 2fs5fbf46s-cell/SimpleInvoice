@@ -452,3 +452,11 @@ struct BookingRequestItem: Identifiable, Hashable {
 
     var id: String { requestId }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension BookingsListView: Equatable {
+    static func == (lhs: BookingsListView, rhs: BookingsListView) -> Bool {
+        lhs.businessID == rhs.businessID
+    }
+}

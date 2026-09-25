@@ -1353,3 +1353,11 @@ private extension View {
         modifier(SBWContractCardRow())
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension ContractDetailView: Equatable {
+    static func == (lhs: ContractDetailView, rhs: ContractDetailView) -> Bool {
+        lhs.contract.persistentModelID == rhs.contract.persistentModelID
+    }
+}

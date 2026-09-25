@@ -518,3 +518,11 @@ private struct OpenExistingClientBanner: View {
         .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension ClientListView: Equatable {
+    static func == (lhs: ClientListView, rhs: ClientListView) -> Bool {
+        lhs.businessID == rhs.businessID
+    }
+}

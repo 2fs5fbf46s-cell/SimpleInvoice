@@ -220,3 +220,12 @@ struct BusinessSwitcherView: View {
         for item in items { modelContext.delete(item) }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// No inputs: queries and state drive every update.
+extension BusinessSwitcherView: Equatable {
+    static func == (_: BusinessSwitcherView, _: BusinessSwitcherView) -> Bool {
+        true
+    }
+}

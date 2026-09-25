@@ -299,3 +299,13 @@ struct ExpenseFormView: View {
         return try ActiveBusinessProvider.getOrCreateActiveBusiness(in: modelContext)
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// Compared by what it shows; callbacks and bindings are ignored.
+extension ExpenseFormView: Equatable {
+    static func == (lhs: ExpenseFormView, rhs: ExpenseFormView) -> Bool {
+        lhs.expense.persistentModelID == rhs.expense.persistentModelID
+            && lhs.isDraft == rhs.isDraft
+    }
+}

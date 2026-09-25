@@ -850,3 +850,12 @@ private enum FolderSort: CaseIterable, Hashable {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension FolderBrowserView: Equatable {
+    static func == (lhs: FolderBrowserView, rhs: FolderBrowserView) -> Bool {
+        lhs.business.persistentModelID == rhs.business.persistentModelID
+            && lhs.folder.persistentModelID == rhs.folder.persistentModelID
+    }
+}

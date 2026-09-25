@@ -738,3 +738,14 @@ private struct ClientJobRouteView: View {
         }
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// Compared by what it shows; callbacks and bindings are ignored.
+extension ClientJobsBookingsView: Equatable {
+    static func == (lhs: ClientJobsBookingsView, rhs: ClientJobsBookingsView) -> Bool {
+        lhs.businessID == rhs.businessID
+            && lhs.clientID == rhs.clientID
+            && lhs.clientName == rhs.clientName
+    }
+}

@@ -366,3 +366,11 @@ private struct JobRowView: View {
         .frame(minHeight: 56, alignment: .topLeading)
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension JobsListView: Equatable {
+    static func == (lhs: JobsListView, rhs: JobsListView) -> Bool {
+        lhs.businessID == rhs.businessID
+    }
+}

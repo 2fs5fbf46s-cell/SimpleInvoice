@@ -754,3 +754,11 @@ private extension View {
         modifier(SBWCardRow())
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension SavedItemsView: Equatable {
+    static func == (lhs: SavedItemsView, rhs: SavedItemsView) -> Bool {
+        lhs.businessID == rhs.businessID
+    }
+}

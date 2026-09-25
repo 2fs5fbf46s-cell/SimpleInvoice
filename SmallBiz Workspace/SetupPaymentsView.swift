@@ -1438,3 +1438,12 @@ private struct PaymentProviderCard<Content: View>: View {
         )
     }
 }
+
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+// No inputs: queries and state drive every update.
+extension SetupPaymentsView: Equatable {
+    static func == (_: SetupPaymentsView, _: SetupPaymentsView) -> Bool {
+        true
+    }
+}
