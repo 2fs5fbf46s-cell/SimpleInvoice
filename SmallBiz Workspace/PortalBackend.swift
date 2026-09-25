@@ -2717,8 +2717,10 @@ final class PortalBackend {
     func fetchNotifications(businessId: UUID) async throws -> (items: [AppNotificationDTO], unreadCount: Int) {
         let adminKey = try requireAdminKey()
 
+        // The inbox lives at /list. Plain /api/notifications has never existed
+        // on the server, so the inbox always came back empty (404).
         var comps = URLComponents(
-            url: baseURL.appendingPathComponent("/api/notifications"),
+            url: baseURL.appendingPathComponent("/api/notifications/list"),
             resolvingAgainstBaseURL: false
         )!
         comps.queryItems = [
