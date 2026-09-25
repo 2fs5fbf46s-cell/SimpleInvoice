@@ -545,7 +545,9 @@ final class Invoice {
     var paidCents: Int {
         let recorded = (payments ?? []).reduce(0) { $0 + max(0, $1.amountCents) }
         if isPaid && recorded == 0 { return totalCents }
-        return recorded + bookingDepositCents
+        // A booking deposit counts only once it was actually paid.
+        let depositPaid = (sourceBookingDepositPaidAtMs ?? 0) > 0 ? bookingDepositCents : 0
+        return recorded + depositPaid
     }
 
     var balanceDueCents: Int {

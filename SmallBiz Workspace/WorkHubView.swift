@@ -13,7 +13,15 @@ struct WorkHubView: View {
         var id: String { rawValue }
     }
 
-    @State private var segment: Segment = .jobs
+    /// Remembered, and settable from elsewhere (Today's "Bookings need
+    /// approval" opens the Bookings segment).
+    @AppStorage(WorkHubView.segmentKey) private var segment: Segment = .jobs
+
+    static let segmentKey = "sbw.workHub.segment"
+
+    static func show(_ segment: Segment) {
+        UserDefaults.standard.set(segment.rawValue, forKey: segmentKey)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,7 +37,7 @@ struct WorkHubView: View {
             case .jobs:
                 JobsListView(businessID: activeBiz.activeBusinessID)
             case .bookings:
-                BookingsListView(businessID: activeBiz.activeBusinessID)
+                BookingListView(businessID: activeBiz.activeBusinessID)
             case .contracts:
                 ContractListView(businessID: activeBiz.activeBusinessID)
             }

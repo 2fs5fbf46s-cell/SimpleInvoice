@@ -5,6 +5,8 @@ enum AppRoute {
     case clientsRoot
     case invoicesRoot
     case workRoot
+    /// The Work tab, on its Bookings segment.
+    case bookingsRoot
     case moreRoot
     case paymentsSetup
     case openAppSettings

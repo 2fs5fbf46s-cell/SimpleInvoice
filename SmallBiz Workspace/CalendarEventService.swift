@@ -200,9 +200,6 @@ final class CalendarEventService {
         if let clientPhone {
             lines.append("Client Phone: \(clientPhone)")
         }
-        if let requestID = trimmed(job.sourceBookingRequestId) {
-            lines.append("Booking Request ID: \(requestID)")
-        }
         lines.append("Created from SmallBiz Workspace")
 
         if let jobNotes = trimmed(job.notes) {

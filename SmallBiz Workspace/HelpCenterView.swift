@@ -245,7 +245,7 @@ private struct FAQCategory: Identifiable {
             ),
             FAQItem(
                 question: "What's the Create button for?",
-                answer: "The + tab in the middle of the bar is a shortcut to start anything new — an invoice, estimate, contract, booking, client or job — grouped by what you're trying to do."
+                answer: "The + tab in the middle of the bar is a shortcut to start anything new — an invoice, estimate, contract, client or job — grouped by what you're trying to do."
             )
         ]),
         FAQCategory(title: "Invoices & Estimates", items: [
@@ -311,7 +311,7 @@ private struct FAQCategory: Identifiable {
         FAQCategory(title: "Jobs & Bookings", items: [
             FAQItem(
                 question: "What's the difference between Jobs and Bookings?",
-                answer: "Jobs are work you're tracking internally. Bookings are requests coming in from your public booking page that need your approval before they become a job."
+                answer: "Bookings are requests from your public booking page. Confirm one (or ask for a deposit first) and it becomes a job on your calendar, with the customer added as a client. Jobs are the work itself."
             ),
             FAQItem(
                 question: "Can a deposit be more than the booking total?",

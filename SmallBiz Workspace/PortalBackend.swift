@@ -67,6 +67,7 @@ extension PortalBackendError {
     static let actionableServerErrors: Set<String> = [
         "DEPOSIT_EXCEEDS_TOTAL",
         "TOTAL_BELOW_PAID_DEPOSIT",
+        "DEPOSIT_PAYMENT_REQUIRED",
         "CONTRACT_SIGNED_BODY_LOCKED",
         "CONTRACT_SIGNED_TITLE_LOCKED",
     ]
@@ -439,6 +440,10 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
     let depositInvoiceId: String?
     let depositPaidAtMs: Int?
     let finalInvoiceId: String?
+    let depositRequestedAtMs: Int?
+    let depositWaivedAtMs: Int?
+    let cancelledAtMs: Int?
+    let rescheduledAtMs: Int?
 
     // Local-only for future workflow; not encoded/decoded.
     var isHandled: Bool = false
@@ -490,6 +495,10 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         case depositInvoiceID
         case depositPaidAt
         case finalInvoiceID
+        case depositRequestedAtMs
+        case depositWaivedAtMs
+        case cancelledAtMs
+        case rescheduledAtMs
     }
 
     init(from decoder: Decoder) throws {
@@ -567,6 +576,10 @@ struct BookingRequestDTO: Decodable, Identifiable, Equatable {
         self.depositInvoiceId = decodeFirst([.depositInvoiceId, .depositInvoiceID])
         self.depositPaidAtMs = decodeFirstInt([.depositPaidAtMs, .depositPaidAt])
         self.finalInvoiceId = decodeFirst([.finalInvoiceId, .finalInvoiceID])
+        self.depositRequestedAtMs = decodeFirstInt([.depositRequestedAtMs])
+        self.depositWaivedAtMs = decodeFirstInt([.depositWaivedAtMs])
+        self.cancelledAtMs = decodeFirstInt([.cancelledAtMs])
+        self.rescheduledAtMs = decodeFirstInt([.rescheduledAtMs])
 
         self.isHandled = false
     }
@@ -2561,7 +2574,10 @@ final class PortalBackend {
             "maxBookingMinutes": settings.maxBookingMinutes ?? NSNull(),
             "max_booking_minutes": settings.maxBookingMinutes ?? NSNull(),
             "allowSameDay": settings.allowSameDay ?? false,
-            "allow_same_day": settings.allowSameDay ?? false
+            "allow_same_day": settings.allowSameDay ?? false,
+            // The booking page shows times in this zone; left out, the server
+            // used to reset it to New York on every save.
+            "timezone": TimeZone.current.identifier
         ]
 
         let payloadData = try JSONSerialization.data(withJSONObject: payload, options: [])
@@ -3051,6 +3067,31 @@ final class PortalBackend {
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
         guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
+    }
+
+    /// Booking actions that answer with the updated booking: confirm,
+    /// decline, cancel, reschedule, mark the deposit paid.
+    struct BookingActionResponseDTO: Decodable {
+        let ok: Bool?
+        let request: BookingRequestDTO?
+        let emailed: Bool?
+        let error: String?
+    }
+
+    func postBookingAction(path: String, payload: [String: Any]) async throws -> BookingActionResponseDTO {
+        let adminKey = try requireAdminKey()
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw, path: path) }
+        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw, path: path) }
+        return (try? decoder().decode(BookingActionResponseDTO.self, from: data))
+            ?? BookingActionResponseDTO(ok: true, request: nil, emailed: nil, error: nil)
     }
 
     private func sendBookingAdminDecision(

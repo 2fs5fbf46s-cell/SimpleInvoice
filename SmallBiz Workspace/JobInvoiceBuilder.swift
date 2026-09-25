@@ -48,6 +48,15 @@ enum JobInvoiceBuilder {
                 unitPrice: item.unitPrice
             ))
         }
+        // A booking's job has no estimate; its agreed price is the one line.
+        if estimate == nil, let quoted = job.quotedTotalCents, quoted > 0 {
+            let title = job.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            items.append(LineItem(
+                itemDescription: title.isEmpty ? "Services" : title,
+                quantity: 1,
+                unitPrice: Double(quoted) / 100.0
+            ))
+        }
         if job.depositPaidAtMs != nil, let depositCents = job.depositAmountCents, depositCents > 0 {
             items.append(LineItem(
                 itemDescription: "Less deposit paid",

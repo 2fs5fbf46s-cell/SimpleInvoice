@@ -223,7 +223,7 @@ struct DashboardView: View {
                                 )
                             }
 
-                            NavigationLink { BookingsListView(businessID: effectiveBusinessID) } label: {
+                            NavigationLink { BookingListView(businessID: effectiveBusinessID) } label: {
                                 TileCard(
                                     title: "Bookings",
                                     subtitle: "Schedule",

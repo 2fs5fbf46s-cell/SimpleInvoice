@@ -436,25 +436,7 @@ struct BookingAnalyticsView: View {
         do {
             let dtos = try await PortalBackend.shared.fetchBookingRequests(businessId: businessId)
             bookingRequests = dtos.map { dto in
-                BookingRequestItem(
-                    requestId: dto.requestId,
-                    businessId: dto.businessId,
-                    slug: dto.slug,
-                    clientName: dto.clientName,
-                    clientEmail: dto.clientEmail,
-                    clientPhone: dto.clientPhone,
-                    requestedStart: dto.requestedStart,
-                    requestedEnd: dto.requestedEnd,
-                    serviceType: dto.serviceType,
-                    notes: dto.notes,
-                    status: dto.status,
-                    createdAtMs: dto.createdAtMs,
-                    bookingTotalAmountCents: dto.bookingTotalAmountCents,
-                    depositAmountCents: dto.depositAmountCents,
-                    depositInvoiceId: dto.depositInvoiceId,
-                    depositPaidAtMs: dto.depositPaidAtMs,
-                    finalInvoiceId: dto.finalInvoiceId
-                )
+                BookingRequestItem(dto: dto)
             }
             errorMessage = nil
         } catch {

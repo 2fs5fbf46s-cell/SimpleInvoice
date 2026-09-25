@@ -54,6 +54,9 @@ final class Job {
     /// EstimateAcceptancePullService.materialize creates the actual deposit
     /// Invoice and, later, once it's paid.
     var depositAmountCents: Int? = nil
+    /// The agreed price, when it wasn't priced by an estimate (a booking's
+    /// total). "Bill for it" invoices this, less any deposit paid.
+    var quotedTotalCents: Int? = nil
     var depositInvoiceId: String? = nil
     var depositPaidAtMs: Int64? = nil
 

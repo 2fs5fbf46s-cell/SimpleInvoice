@@ -71,7 +71,8 @@ enum InvoicePaymentService {
     /// not started from here, where it would outlive whoever asked.
     static func settle(_ invoice: Invoice, context: ModelContext) {
         let recorded = (invoice.payments ?? []).reduce(0) { $0 + $1.amountCents }
-        let covered = recorded + invoice.bookingDepositCents
+        let depositPaid = (invoice.sourceBookingDepositPaidAtMs ?? 0) > 0 ? invoice.bookingDepositCents : 0
+        let covered = recorded + depositPaid
         invoice.isPaid = invoice.totalCents > 0 && covered >= invoice.totalCents
         if invoice.wasSent { invoice.portalNeedsUpload = true }
         try? context.save()

@@ -26,7 +26,10 @@ struct ContractDetailView: View {
     @Query private var jobs: [Job]
     @Query private var clients: [Client]
 
-    @State private var busy = false
+    /// What's in flight, so only that button says so.
+    @State private var sendingKind: ContractSendService.Kind? = nil
+    @State private var copyingLink = false
+    private var busy: Bool { sendingKind != nil || copyingLink }
     @State private var pendingSend: ContractSendService.Kind? = nil
     @State private var confirmRevise = false
     @State private var confirmCancel = false
@@ -233,7 +236,7 @@ struct ContractDetailView: View {
                 )
                 HStack(spacing: 10) {
                     Button { pendingSend = .reminder } label: {
-                        Label(busy ? "Sending…" : "Send Reminder", systemImage: "bell")
+                        Label(sendingKind == .reminder ? "Sending…" : "Send Reminder", systemImage: "bell")
                     }
                     .sbwProminentButton()
                     .disabled(busy)
@@ -292,7 +295,7 @@ struct ContractDetailView: View {
             )
             HStack(spacing: 10) {
                 Button { pendingSend = .send } label: {
-                    Label(busy ? "Sending…" : "Send for Signature", systemImage: "paperplane")
+                    Label(sendingKind == .send ? "Sending…" : "Send for Signature", systemImage: "paperplane")
                 }
                 .sbwProminentButton()
                 .disabled(busy)
@@ -646,9 +649,9 @@ struct ContractDetailView: View {
         pendingSend = nil
         guard !busy else { return }
         saveNow()
-        busy = true
+        sendingKind = kind
         Task {
-            defer { busy = false }
+            defer { sendingKind = nil }
             do {
                 switch try await ContractSendService.send(contract, kind: kind, context: modelContext) {
                 case .emailed(let email):
@@ -693,9 +696,9 @@ struct ContractDetailView: View {
     }
 
     private func copyClientLink() {
-        busy = true
+        copyingLink = true
         Task {
-            defer { busy = false }
+            defer { copyingLink = false }
             do {
                 let token = try await PortalBackend.shared.createContractPortalToken(
                     contract: contract,

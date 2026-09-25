@@ -59,7 +59,7 @@ struct NotificationRoutePayload: Equatable {
         let eventKey = (event ?? "").lowercased()
         let invoiceId = readString("invoiceId") ?? (eventKey.hasPrefix("invoice") ? entityId : nil)
         let contractId = readString("contractId") ?? (eventKey.hasPrefix("contract") ? entityId : nil)
-        let bookingRequestId = readString("bookingRequestId")
+        let bookingRequestId = readString("bookingRequestId") ?? (eventKey.hasPrefix("booking") ? entityId : nil)
         let deepLink = readString("deepLink") ?? readString("deeplink")
         let urlString = readString("portalUrl") ?? readString("portalURL") ?? readString("url")
 
@@ -130,6 +130,12 @@ final class NotificationRouter: ObservableObject {
         // the app opens as its own record instead.
         if (comps.scheme ?? "").lowercased() != "sbw" {
             let parts = comps.path.split(separator: "/").map(String.init)
+            // "/admin/bookings?request=<id>" from a booking notification.
+            if parts.count == 2, parts[0].lowercased() == "admin", parts[1].lowercased() == "bookings" {
+                let businessId = UserDefaults.standard.string(forKey: "activeBusinessID") ?? ""
+                let requestId = comps.queryItems?.first(where: { $0.name == "request" })?.value
+                return NotificationRoutePayload(event: "booking_deeplink", businessId: businessId, bookingRequestId: requestId, deepLink: url.absoluteString)
+            }
             guard parts.count >= 3, parts[0].lowercased() == "portal" else { return nil }
             let businessId = UserDefaults.standard.string(forKey: "activeBusinessID") ?? ""
             let id = parts[2].removingPercentEncoding ?? parts[2]

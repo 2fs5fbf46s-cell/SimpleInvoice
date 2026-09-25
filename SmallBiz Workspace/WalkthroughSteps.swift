@@ -35,7 +35,7 @@ enum WalkthroughSteps {
             id: "create-tab",
             targetCoachMarkId: "walkthrough.tab.create",
             title: "Create Fast",
-            message: "Use Create to add invoices, clients, bookings, and more.",
+            message: "Use Create to add invoices, estimates, clients, jobs, and more.",
             routeTab: .today
         ),
         WalkthroughStep(

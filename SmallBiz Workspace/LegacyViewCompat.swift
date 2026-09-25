@@ -51,9 +51,9 @@ struct InvoiceOverviewView: View {
 
 struct BookingOverviewView: View {
     let request: BookingRequestItem
-    let onStatusChange: (String) -> Void
+    let onStatusChange: (BookingRequestItem) -> Void
 
-    init(request: BookingRequestItem, onStatusChange: @escaping (String) -> Void = { _ in }) {
+    init(request: BookingRequestItem, onStatusChange: @escaping (BookingRequestItem) -> Void = { _ in }) {
         self.request = request
         self.onStatusChange = onStatusChange
     }

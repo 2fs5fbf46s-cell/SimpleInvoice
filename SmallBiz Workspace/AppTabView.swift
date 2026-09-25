@@ -41,7 +41,6 @@ struct AppTabView: View {
     @State private var deepLinkedInvoice: Invoice? = nil
     @State private var deepLinkedContract: Contract? = nil
     @State private var deepLinkedBookingRequest: BookingRequestItem? = nil
-    @State private var showBookingAdminSheet = false
     @State private var toastDismissTask: Task<Void, Never>? = nil
     @State private var coachMarkFrames: [String: CGRect] = [:]
     @State private var isWalkthroughPresented = false
@@ -176,11 +175,11 @@ struct AppTabView: View {
         .sheet(item: $deepLinkedBookingRequest) { request in
             NavigationStack {
                 BookingOverviewView(request: request)
-            }
-        }
-        .sheet(isPresented: $showBookingAdminSheet) {
-            NavigationStack {
-                BookingsListView(businessID: activeBiz.activeBusinessID)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { deepLinkedBookingRequest = nil }
+                        }
+                    }
             }
         }
         .onChange(of: portalReturn.requestedEstimateID) { _, id in
@@ -388,6 +387,9 @@ struct AppTabView: View {
             routeToTabRoot(.money)
         case .workRoot:
             routeToTabRoot(.work)
+        case .bookingsRoot:
+            WorkHubView.show(.bookings)
+            routeToTabRoot(.work)
         case .moreRoot:
             businessSettingsPresenter.open()
         case .paymentsSetup:
@@ -471,7 +473,7 @@ struct AppTabView: View {
         let eventKey = effectivePayload.event.lowercased()
         if eventKey.contains("booking") {
             tab = .work
-            showBookingAdminSheet = true
+            showBookingsList()
             notificationRouter.consumePendingPayload()
             return
         }
@@ -548,6 +550,12 @@ struct AppTabView: View {
         }
     }
 
+    /// The Bookings list, on the Work tab. Used to be a sheet with no Done.
+    private func showBookingsList() {
+        WorkHubView.show(.bookings)
+        tab = .work
+    }
+
     @MainActor
     private func routeToBookingRequest(payload: NotificationRoutePayload, requestId: String) async {
         do {
@@ -557,42 +565,24 @@ struct AppTabView: View {
             )
             guard let dto = results.first(where: { $0.requestId == requestId }) else {
                 if notificationRouter.openFallbackIfPossible(payload) == false {
-                    showBookingAdminSheet = true
+                    showBookingsList()
                     tab = .work
-                    notificationRouter.showToast("Opened bookings admin. Request \(requestId) was not found.")
+                    notificationRouter.showToast("That booking wasn't found. Here are your bookings.")
                 }
                 notificationRouter.consumePendingPayload()
                 return
             }
 
-            let item = BookingRequestItem(
-                requestId: dto.requestId,
-                businessId: dto.businessId,
-                slug: dto.slug,
-                clientName: dto.clientName,
-                clientEmail: dto.clientEmail,
-                clientPhone: dto.clientPhone,
-                requestedStart: dto.requestedStart,
-                requestedEnd: dto.requestedEnd,
-                serviceType: dto.serviceType,
-                notes: dto.notes,
-                status: dto.status,
-                createdAtMs: dto.createdAtMs,
-                bookingTotalAmountCents: dto.bookingTotalAmountCents,
-                depositAmountCents: dto.depositAmountCents,
-                depositInvoiceId: dto.depositInvoiceId,
-                depositPaidAtMs: dto.depositPaidAtMs,
-                finalInvoiceId: dto.finalInvoiceId
-            )
+            let item = BookingRequestItem(dto: dto)
 
             tab = .work
             deepLinkedBookingRequest = item
             notificationRouter.consumePendingPayload()
         } catch {
             if notificationRouter.openFallbackIfPossible(payload) == false {
-                showBookingAdminSheet = true
+                showBookingsList()
                 tab = .work
-                notificationRouter.showToast("Opened bookings admin. Push route failed: \(error.localizedDescription)")
+                notificationRouter.showToast("Couldn't open that booking. Here are your bookings.")
             }
             notificationRouter.consumePendingPayload()
         }

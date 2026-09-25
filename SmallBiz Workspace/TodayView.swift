@@ -257,7 +257,8 @@ struct TodayView: View {
         case .unsignedContract(let contractID):
             selectedContract = fetchContract(id: contractID)
         case .pendingBookings:
-            AppRouteCenter.shared.route(.workRoot)
+            // Straight to Bookings; this landed on the Jobs segment.
+            AppRouteCenter.shared.route(.bookingsRoot)
         case .recurringInvoicesReady:
             AppRouteCenter.shared.route(.invoicesRoot)
         case .setupStep(let step):

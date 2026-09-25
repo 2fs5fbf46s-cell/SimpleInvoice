@@ -37,6 +37,7 @@
 		B7A000000000000000000048 /* InvoiceLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000049 /* InvoiceLifecycleTests.swift */; };
 		B7A00000000000000000004A /* ClientOverviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000004B /* ClientOverviewTests.swift */; };
 		B7A00000000000000000004C /* ContractLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000004D /* ContractLifecycleTests.swift */; };
+		B7A00000000000000000004E /* BookingLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000004F /* BookingLifecycleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +82,7 @@
 		B7A000000000000000000049 /* InvoiceLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceLifecycleTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000004B /* ClientOverviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientOverviewTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000004D /* ContractLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractLifecycleTests.swift; sourceTree = "<group>"; };
+		B7A00000000000000000004F /* BookingLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookingLifecycleTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -154,6 +156,7 @@
 				B7A000000000000000000049 /* InvoiceLifecycleTests.swift */,
 				B7A00000000000000000004B /* ClientOverviewTests.swift */,
 				B7A00000000000000000004D /* ContractLifecycleTests.swift */,
+				B7A00000000000000000004F /* BookingLifecycleTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -312,6 +315,7 @@
 				B7A000000000000000000048 /* InvoiceLifecycleTests.swift in Sources */,
 				B7A00000000000000000004A /* ClientOverviewTests.swift in Sources */,
 				B7A00000000000000000004C /* ContractLifecycleTests.swift in Sources */,
+				B7A00000000000000000004E /* BookingLifecycleTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,
