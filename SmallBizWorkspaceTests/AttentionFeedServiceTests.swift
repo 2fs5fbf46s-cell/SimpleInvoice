@@ -2,19 +2,17 @@ import XCTest
 import SwiftData
 @testable import SmallBizWorkspace
 
-/// Today's whole pitch is that the feed only ever shows what's real. These
-/// cover the filtering (what counts as overdue, what counts as awaiting
-/// signature) and the ranking (critical before warning before info, and a
-/// stable order within each) that `AttentionFeedService` is responsible for.
-///
-/// Container is held in a property for the test's lifetime — see
-/// `QuickStartQueryTests` for why a container built and discarded in the same
-/// expression traps on save.
+/// Today's Needs You: only what's real, most urgent first. Overdue means
+/// sent and unpaid past the due date; contracts show once they've been out
+/// 4 days; recurring invoices that went out are named as such; setup steps
+/// aren't here at all (the Business sheet has them).
 @MainActor
 final class AttentionFeedServiceTests: XCTestCase {
 
     private var container: ModelContainer!
     private var context: ModelContext { container.mainContext }
+    private let businessID = UUID()
+    private let day: TimeInterval = 86_400
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -26,337 +24,151 @@ final class AttentionFeedServiceTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    private func items(_ remote: TodayRemoteState = TodayRemoteState()) -> [AttentionItem] {
+        AttentionFeedService.attentionItems(businessID: businessID, context: context, remote: remote)
+    }
+
     @discardableResult
-    private func makeBusiness(name: String = "Test Biz") throws -> Business {
-        let business = Business(name: name, isActive: true)
-        context.insert(business)
-        try context.save()
-        return business
-    }
-
-    private func emptyChecklist() -> QuickStartChecklist {
-        QuickStartChecklist(completed: Set(QuickStartChecklist.Step.allCases))
-    }
-
-    private func items(
-        for businessID: UUID?,
-        checklist: QuickStartChecklist? = nil,
-        pendingApprovalBookingCount: Int = 0,
-        now: Date = .now
-    ) -> [AttentionItem] {
-        AttentionFeedService.attentionItems(
-            businessID: businessID,
-            context: context,
-            checklist: checklist ?? emptyChecklist(),
-            pendingApprovalBookingCount: pendingApprovalBookingCount,
-            now: now
-        )
-    }
-
-    // MARK: - Empty / no business
-
-    func testNoBusinessMeansNoItems() {
-        XCTAssertTrue(items(for: nil).isEmpty)
-    }
-
-    func testNothingOutstandingMeansNoItems() throws {
-        let business = try makeBusiness()
-        XCTAssertTrue(items(for: business.id).isEmpty)
-    }
-
-    // MARK: - Overdue invoices
-
-    func testOverdueUnpaidInvoiceWithLineItemsIsCritical() throws {
-        let business = try makeBusiness()
-        let invoice = Invoice(
-            businessID: business.id,
-            invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -3, to: .now)!,
-            isPaid: false,
-            items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
+    private func invoice(_ total: Double, sent: Bool = true, dueInDays: Double) throws -> Invoice {
+        let client = Client(businessID: businessID, name: "Maria Reyes", email: "m@example.com")
+        context.insert(client)
+        let invoice = Invoice(businessID: businessID, invoiceNumber: "SI-2026-014", client: client)
         context.insert(invoice)
+        let item = LineItem(itemDescription: "Work", quantity: 1, unitPrice: total)
+        item.invoice = invoice
+        invoice.items = [item]
+        context.insert(item)
+        if sent { invoice.sentAt = .now.addingTimeInterval(-20 * day) }
+        invoice.dueDate = .now.addingTimeInterval(dueInDays * day)
         try context.save()
-
-        let result = items(for: business.id)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].severity, .critical)
-        XCTAssertEqual(result[0].kind, .overdueInvoice(invoiceID: invoice.id))
+        return invoice
     }
 
-    func testPaidInvoiceIsNotOverdue() throws {
-        let business = try makeBusiness()
-        let invoice = Invoice(
-            businessID: business.id,
-            invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -3, to: .now)!,
-            isPaid: true,
-            items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
+    private func booking(_ name: String, start: String) -> BookingRequestItem {
+        BookingRequestItem(
+            requestId: UUID().uuidString, businessId: businessID.uuidString, slug: "dunn", clientName: name,
+            clientEmail: "b@example.com", clientPhone: nil, requestedStart: start, requestedEnd: nil,
+            serviceType: "Mowing", notes: nil, status: "pending",
+            createdAtMs: 1_790_000_000_000, bookingTotalAmountCents: nil,
+            depositAmountCents: nil, depositInvoiceId: nil, depositPaidAtMs: nil, finalInvoiceId: nil
         )
-        context.insert(invoice)
-        try context.save()
-
-        XCTAssertTrue(items(for: business.id).isEmpty)
     }
 
-    func testDraftInvoiceWithNoItemsIsNotOverdue() throws {
-        // Mirrors canBeSent: a document nobody could have sent isn't a missed
-        // payment, whatever its due date says.
-        let business = try makeBusiness()
-        let invoice = Invoice(
-            businessID: business.id,
-            invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -3, to: .now)!,
-            isPaid: false,
-            items: []
-        )
-        context.insert(invoice)
-        try context.save()
-
-        XCTAssertTrue(items(for: business.id).isEmpty)
+    func testNoBusinessMeansNothing() {
+        XCTAssertTrue(AttentionFeedService.attentionItems(businessID: nil, context: context, remote: .init()).isEmpty)
     }
 
-    func testOverdueEstimateIsNotAnOverdueInvoice() throws {
-        let business = try makeBusiness()
-        let estimate = Invoice(
-            businessID: business.id,
-            invoiceNumber: "EST-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -3, to: .now)!,
-            isPaid: false,
-            documentType: "estimate",
-            items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(estimate)
-        try context.save()
+    // MARK: Overdue
 
-        XCTAssertTrue(items(for: business.id).isEmpty)
+    func testAnUnsentDraftIsNeverOverdue() throws {
+        try invoice(300, sent: false, dueInDays: -10)
+        XCTAssertTrue(items().isEmpty)
     }
 
-    func testInvoiceNotYetDueIsNotOverdue() throws {
-        let business = try makeBusiness()
-        let invoice = Invoice(
-            businessID: business.id,
-            invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: 3, to: .now)!,
-            isPaid: false,
-            items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(invoice)
-        try context.save()
-
-        XCTAssertTrue(items(for: business.id).isEmpty)
+    func testOverdueShowsWhatsStillDueWithARemindButton() throws {
+        let inv = try invoice(450, dueInDays: -12)
+        _ = try InvoicePaymentService.record(on: inv, amountCents: 20_000, paidAt: .now, method: "check", context: context)
+        let item = try XCTUnwrap(items().first)
+        XCTAssertEqual(item.severity, .critical)
+        XCTAssertEqual(item.action, .remind)
+        XCTAssertEqual(item.title, "Maria Reyes is 12 days late")
+        XCTAssertTrue(item.subtitle.contains("$250.00"), item.subtitle)
     }
 
-    func testAnotherBusinessesOverdueInvoiceDoesNotCount() throws {
-        let mine = try makeBusiness(name: "Mine")
-        let theirs = try makeBusiness(name: "Theirs")
-        let invoice = Invoice(
-            businessID: theirs.id,
-            invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -3, to: .now)!,
-            isPaid: false,
-            items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(invoice)
-        try context.save()
-
-        XCTAssertTrue(items(for: mine.id).isEmpty)
+    func testDueTodayIsNotLateYet() throws {
+        try invoice(100, dueInDays: 0)
+        XCTAssertTrue(items().isEmpty)
     }
 
-    func testMostOverdueInvoiceSortsFirstAmongInvoices() throws {
-        let business = try makeBusiness()
-        // Each invoice needs its own LineItem instance — LineItem is a SwiftData
-        // reference type, so sharing one array between two invoices silently
-        // moves it to whichever is saved last, leaving the other's items empty
-        // and filtered out as an unsendable draft.
-        let dueYesterday = Invoice(
-            businessID: business.id, invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -1, to: .now)!,
-            isPaid: false, items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        let dueLastWeek = Invoice(
-            businessID: business.id, invoiceNumber: "INV-2",
-            dueDate: Calendar.current.date(byAdding: .day, value: -7, to: .now)!,
-            isPaid: false, items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(dueYesterday)
-        context.insert(dueLastWeek)
-        try context.save()
+    // MARK: Bookings and payments
 
-        let result = items(for: business.id)
-        XCTAssertEqual(result.count, 2)
-        XCTAssertEqual(result[0].kind, .overdueInvoice(invoiceID: dueLastWeek.id), "the older miss should lead")
-        XCTAssertEqual(result[1].kind, .overdueInvoice(invoiceID: dueYesterday.id))
+    func testOneBookingRequestNamesTheClient() {
+        let feed = items(TodayRemoteState(pendingBookings: [booking("Test Four", start: "2099-10-01T14:00:00Z")]))
+        XCTAssertEqual(feed.first?.title, "Test Four wants to book")
+        XCTAssertEqual(feed.first?.action, .answer)
     }
 
-    // MARK: - Contracts awaiting signature
+    func testSeveralBookingRequestsAreOneRowStartingWithTheSoonest() {
+        let feed = items(TodayRemoteState(pendingBookings: [
+            booking("Later", start: "2099-10-09T14:00:00Z"),
+            booking("Sooner", start: "2099-10-01T14:00:00Z"),
+        ]))
+        XCTAssertEqual(feed.count, 1)
+        XCTAssertEqual(feed.first?.title, "2 booking requests")
+        if case .bookingRequests(let count, let first) = feed.first?.kind {
+            XCTAssertEqual(count, 2)
+            XCTAssertNil(first, "several open the Bookings list")
+        } else { XCTFail() }
+    }
 
-    func testSentContractIsAwaitingSignature() throws {
-        let business = try makeBusiness()
-        let contract = Contract(businessID: business.id, title: "Agreement")
-        contract.statusRaw = ContractStatus.sent.rawValue
+    func testAReportedPaymentAsksToConfirm() throws {
+        let inv = try invoice(1_200, dueInDays: 5)
+        let report = ManualPaymentReportDTO(
+            id: "r1", businessId: businessID.uuidString, invoiceId: inv.id.uuidString, method: "venmo",
+            amountCents: 120_000, payerName: "Dunn", payerEmail: nil, reference: nil, status: "pending",
+            createdAtMs: 1, resolvedAtMs: nil
+        )
+        let feed = items(TodayRemoteState(manualReports: [report]))
+        XCTAssertEqual(feed.first?.title, "Dunn says they paid by Venmo")
+        XCTAssertEqual(feed.first?.action, .confirm)
+    }
+
+    // MARK: Jobs
+
+    func testAFinishedJobWithNoInvoiceAsksToBill() throws {
+        let job = Job(businessID: businessID, title: "Fence repair", startDate: .now.addingTimeInterval(-day), endDate: .now)
+        context.insert(job)
+        JobLifecycle.complete(job)
+        try context.save()
+        XCTAssertEqual(items().first?.action, .bill)
+        XCTAssertEqual(items().first?.title, "Fence repair is done")
+    }
+
+    func testAJobWaitingForADateAsksToSchedule() throws {
+        let job = Job(businessID: businessID, title: "Deck", startDate: .now, endDate: .now)
+        job.needsScheduling = true
+        context.insert(job)
+        try context.save()
+        XCTAssertEqual(items().first?.action, .schedule)
+    }
+
+    // MARK: Contracts
+
+    func testAContractShowsOnlyAfterFourDays() throws {
+        let contract = Contract(businessID: businessID, title: "Deck agreement", statusRaw: ContractStatus.sent.rawValue)
+        contract.sentAt = .now.addingTimeInterval(-2 * day)
         context.insert(contract)
         try context.save()
+        XCTAssertTrue(items().isEmpty, "sent 2 days ago isn't something to do yet")
 
-        let result = items(for: business.id)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].severity, .warning)
-        XCTAssertEqual(result[0].kind, .unsignedContract(contractID: contract.id))
+        contract.sentAt = .now.addingTimeInterval(-5 * day)
+        XCTAssertEqual(items().first?.action, .remindContract)
+
+        contract.lastReminderAt = .now.addingTimeInterval(-1 * day)
+        XCTAssertTrue(items().isEmpty, "a reminder restarts the clock")
     }
 
-    func testDraftContractIsNotAwaitingSignature() throws {
-        let business = try makeBusiness()
-        let contract = Contract(businessID: business.id, title: "Agreement")
-        contract.statusRaw = ContractStatus.draft.rawValue
-        context.insert(contract)
+    // MARK: Recurring
+
+    func testRecurringInvoicesThatWentOutSayWhatHappened() throws {
+        let inv = try invoice(80, dueInDays: 10)
+        inv.isRecurringGenerated = true
         try context.save()
-
-        XCTAssertTrue(items(for: business.id).isEmpty)
+        let item = try XCTUnwrap(items().first)
+        XCTAssertEqual(item.title, "A recurring invoice went out")
+        XCTAssertEqual(item.action, .gotIt)
+        inv.recurringReviewedAt = .now
+        XCTAssertTrue(items().isEmpty)
     }
 
-    func testSignedContractIsNotAwaitingSignature() throws {
-        let business = try makeBusiness()
-        let contract = Contract(businessID: business.id, title: "Agreement")
-        contract.statusRaw = ContractStatus.signed.rawValue
-        context.insert(contract)
-        try context.save()
+    // MARK: Ranking
 
-        XCTAssertTrue(items(for: business.id).isEmpty)
-    }
-
-    // MARK: - Pending bookings
-
-    func testPendingBookingsProduceOneSummaryItem() throws {
-        let business = try makeBusiness()
-        let result = items(for: business.id, pendingApprovalBookingCount: 3)
-
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].kind, .pendingBookings(count: 3))
-        XCTAssertEqual(result[0].severity, .warning)
-        XCTAssertTrue(result[0].subtitle.contains("3"))
-    }
-
-    func testZeroPendingBookingsProducesNoItem() throws {
-        let business = try makeBusiness()
-        XCTAssertTrue(items(for: business.id, pendingApprovalBookingCount: 0).isEmpty)
-    }
-
-    // MARK: - Recurring invoices ready for review
-
-    func testUnreviewedRecurringGeneratedInvoiceProducesOneSummaryItem() throws {
-        let business = try makeBusiness()
-        let client = Client(businessID: business.id, name: "Ada Lovelace")
-        context.insert(client)
-        let invoice = Invoice(
-            businessID: business.id, invoiceNumber: "SI-2026-001",
-            isPaid: false, isRecurringGenerated: true,
-            client: client, items: [LineItem(itemDescription: "Retainer", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(invoice)
-        try context.save()
-
-        let result = items(for: business.id)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].kind, .recurringInvoicesReady(count: 1))
-        XCTAssertEqual(result[0].severity, .warning)
-    }
-
-    func testAReviewedRecurringInvoiceProducesNoItem() throws {
-        let business = try makeBusiness()
-        let client = Client(businessID: business.id, name: "Ada Lovelace")
-        context.insert(client)
-        let invoice = Invoice(
-            businessID: business.id, invoiceNumber: "SI-2026-001",
-            isPaid: false, isRecurringGenerated: true, recurringReviewedAt: .now,
-            client: client, items: [LineItem(itemDescription: "Retainer", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(invoice)
-        try context.save()
-
-        XCTAssertTrue(items(for: business.id).isEmpty)
-    }
-
-    func testAnOrdinaryInvoiceIsNotMistakenForARecurringOne() throws {
-        // Guards the exact bug the isRecurringGenerated flag exists to avoid:
-        // every ordinary invoice also has recurringReviewedAt == nil, since
-        // that field is never touched outside the recurring flow.
-        let business = try makeBusiness()
-        let client = Client(businessID: business.id, name: "Ada Lovelace")
-        context.insert(client)
-        let invoice = Invoice(
-            businessID: business.id, invoiceNumber: "SI-2026-001",
-            isPaid: false,
-            client: client, items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(invoice)
-        try context.save()
-
-        XCTAssertTrue(items(for: business.id).isEmpty)
-    }
-
-    func testMultipleUnreviewedRecurringInvoicesAreBundledIntoOneCard() throws {
-        let business = try makeBusiness()
-        let client = Client(businessID: business.id, name: "Ada Lovelace")
-        context.insert(client)
-        for i in 0..<3 {
-            let invoice = Invoice(
-                businessID: business.id, invoiceNumber: "SI-2026-00\(i)",
-                isPaid: false, isRecurringGenerated: true,
-                client: client, items: [LineItem(itemDescription: "Retainer", quantity: 1, unitPrice: 100)]
-            )
-            context.insert(invoice)
-        }
-        try context.save()
-
-        let result = items(for: business.id)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].kind, .recurringInvoicesReady(count: 3))
-    }
-
-    // MARK: - Setup step
-
-    func testIncompleteChecklistAddsSetupCard() throws {
-        let business = try makeBusiness()
-        let checklist = QuickStartChecklist(completed: [])
-
-        let result = items(for: business.id, checklist: checklist)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result[0].kind, .setupStep(.addClient))
-        XCTAssertEqual(result[0].severity, .info)
-    }
-
-    func testCompleteChecklistAddsNoSetupCard() throws {
-        let business = try makeBusiness()
-        XCTAssertTrue(items(for: business.id, checklist: emptyChecklist()).isEmpty)
-    }
-
-    // MARK: - Ranking across kinds
-
-    func testCriticalBeatsWarningBeatsInfo() throws {
-        let business = try makeBusiness()
-
-        let overdueInvoice = Invoice(
-            businessID: business.id, invoiceNumber: "INV-1",
-            dueDate: Calendar.current.date(byAdding: .day, value: -1, to: .now)!,
-            isPaid: false, items: [LineItem(itemDescription: "Work", quantity: 1, unitPrice: 100)]
-        )
-        context.insert(overdueInvoice)
-
-        let contract = Contract(businessID: business.id, title: "Agreement")
-        contract.statusRaw = ContractStatus.sent.rawValue
-        context.insert(contract)
-        try context.save()
-
-        let result = items(
-            for: business.id,
-            checklist: QuickStartChecklist(completed: []),
-            pendingApprovalBookingCount: 1
-        )
-
-        XCTAssertEqual(result.count, 4)
-        XCTAssertEqual(result[0].severity, .critical)
-        XCTAssertEqual(result[1].severity, .warning)
-        XCTAssertEqual(result[2].severity, .warning)
-        XCTAssertEqual(result[3].severity, .info)
+    func testOverdueComesFirst() throws {
+        let job = Job(businessID: businessID, title: "Deck", startDate: .now, endDate: .now)
+        job.needsScheduling = true
+        context.insert(job)
+        try invoice(100, dueInDays: -3)
+        let feed = items(TodayRemoteState(pendingBookings: [booking("A", start: "2099-10-01T14:00:00Z")]))
+        XCTAssertEqual(feed.map(\.action), [.remind, .answer, .schedule])
     }
 }

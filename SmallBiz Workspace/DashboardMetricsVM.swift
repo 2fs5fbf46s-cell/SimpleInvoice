@@ -9,6 +9,8 @@ final class DashboardMetricsVM: ObservableObject {
     @Published private(set) var upcomingBookingCount: Int = 0
     @Published private(set) var scheduleCount: Int = 0
     @Published private(set) var pendingApprovalBookingCount: Int = 0
+    /// Booking requests to answer and payments clients reported, for Today.
+    @Published private(set) var remote = TodayRemoteState()
 
     private struct BookingCacheEntry {
         let requests: [BookingRequestDTO]
@@ -18,7 +20,9 @@ final class DashboardMetricsVM: ObservableObject {
     private var bookingRequestsCacheByBusiness: [UUID: BookingCacheEntry] = [:]
     private var inFlightFetchByBusiness: [UUID: Task<[BookingRequestDTO], Error>] = [:]
     private var lastBusinessID: UUID?
-    private let cacheTTLSeconds: TimeInterval = 60
+    /// Short: Today is reopened right after answering a booking, and the
+    /// answered one shouldn't linger.
+    private let cacheTTLSeconds: TimeInterval = 15
 
     func refresh(
         invoices: [Invoice],
@@ -35,6 +39,7 @@ final class DashboardMetricsVM: ObservableObject {
             upcomingBookingCount = 0
             scheduleCount = 0
             pendingApprovalBookingCount = 0
+            remote = TodayRemoteState()
             return
         }
 
@@ -69,6 +74,18 @@ final class DashboardMetricsVM: ObservableObject {
                 }
             }
         }
+
+        var reports = remote.manualReports
+        if shouldFetchRemote {
+            reports = (try? await PortalPaymentsAPI.shared.fetchManualPaymentReports(businessId: businessID)) ?? reports
+        }
+        remote = TodayRemoteState(
+            pendingBookings: bookingRequests
+                .filter { $0.businessId.lowercased() == businessID.uuidString.lowercased() }
+                .map(BookingRequestItem.init(dto:))
+                .filter { $0.stage == .needsAnswer },
+            manualReports: reports
+        )
 
         let metrics = DashboardMetricsService.compute(
             invoices: invoices,
