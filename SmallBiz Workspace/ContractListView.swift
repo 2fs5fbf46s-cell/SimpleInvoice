@@ -227,6 +227,7 @@ struct ContractListView: View {
                  : "It stays in your records. You can reopen it later.")
         }
         .task { ContractTemplateSeeder.seedIfNeeded(context: modelContext) }
+        .refreshable { await ContractActivityPullService.pull(context: modelContext, businessID: businessID) }
     }
 
     @ViewBuilder

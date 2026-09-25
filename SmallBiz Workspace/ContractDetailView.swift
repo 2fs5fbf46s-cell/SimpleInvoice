@@ -82,6 +82,10 @@ struct ContractDetailView: View {
         return name.isEmpty ? "your client" : name
     }
 
+    private func checkForSignature() async {
+        await ContractActivityPullService.pull(context: modelContext, businessID: contract.businessID)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -96,8 +100,14 @@ struct ContractDetailView: View {
             .padding(.top, 12)
             .padding(.bottom, 32)
         }
+        .refreshable { await checkForSignature() }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { header }
+        // A contract out for signature may have been signed since the last
+        // launch; look now rather than waiting for the next foreground.
+        .task(id: contract.persistentModelID) {
+            if contract.status == .sent { await checkForSignature() }
+        }
         .navigationTitle("Contract")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()

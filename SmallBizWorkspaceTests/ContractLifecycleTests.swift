@@ -229,4 +229,32 @@ final class ContractLifecycleTests: XCTestCase {
         XCTAssertEqual(contract.job?.id, job.id)
         XCTAssertTrue(contract.linkedJobIDsCSV.contains(job.id.uuidString))
     }
+
+    // The PDF's client signature block: blank until signed, then the
+    // signer's name, how they signed, and the date.
+    func testTheSignatureBlockIsBlankUntilSigned() throws {
+        let contract = try makeContract()
+        XCTAssertNil(ContractPDFGenerator.clientSignature(for: contract))
+    }
+
+    func testASignedContractFillsTheClientSignatureBlock() throws {
+        let contract = try makeContract()
+        contract.markSigned(byName: "Maria Reyes", at: Date(timeIntervalSince1970: 1_790_000_000))
+        contract.signedMethod = "portal"
+        let block = try XCTUnwrap(ContractPDFGenerator.clientSignature(for: contract))
+        XCTAssertEqual(block.name, "Maria Reyes")
+        XCTAssertEqual(block.method, "Signed electronically")
+        XCTAssertFalse(block.date.isEmpty)
+
+        contract.signedMethod = "in_person"
+        XCTAssertEqual(ContractPDFGenerator.clientSignature(for: contract)?.method, "Signed in person")
+    }
+
+    func testTheContractPDFFitsOnePageWithoutAFooterPage() throws {
+        let contract = try makeContract()
+        contract.markSigned(byName: "Maria Reyes")
+        let data = ContractPDFGenerator.makePDFData(contract: contract, business: nil)
+        let doc = try XCTUnwrap(CGPDFDocument(CGDataProvider(data: data as CFData)!))
+        XCTAssertEqual(doc.numberOfPages, 1)
+    }
 }
