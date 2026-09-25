@@ -113,6 +113,9 @@ enum RecurringInvoicePullService {
             items: lineItems
         )
         invoice.id = invoiceUUID
+        // The server generated and published it (cron/notify); it's already
+        // in the client's portal.
+        invoice.sentAt = .now
 
         context.insert(invoice)
         return true

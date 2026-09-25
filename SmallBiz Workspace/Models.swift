@@ -305,6 +305,18 @@ final class Invoice {
     // cascaded — it lives in the folder workspace and other records may use it.
     @Relationship(deleteRule: .cascade, inverse: \InvoiceAttachment.invoice)
     var attachments: [InvoiceAttachment]? = nil
+
+    // MARK: - Invoice lifecycle
+    /// When the owner sent it (Send Invoice), or when the app first saw it
+    /// was already in the client's portal. See `wasSent`.
+    var sentAt: Date? = nil
+    /// First time the client opened it in the portal (reported by the
+    /// backend's invoice activity feed).
+    var viewedAt: Date? = nil
+    var lastReminderAt: Date? = nil
+
+    @Relationship(deleteRule: .cascade, inverse: \InvoicePayment.invoice)
+    var payments: [InvoicePayment]? = nil
     
     
     // MARK: - Estimate workflow
@@ -520,6 +532,29 @@ final class Invoice {
         max(totalCents - bookingDepositCents, 0)
     }
 
+    /// Everything paid toward this invoice: recorded payments plus a booking
+    /// deposit. An invoice marked paid the old way (no payment rows) counts
+    /// as paid in full.
+    var paidCents: Int {
+        let recorded = (payments ?? []).reduce(0) { $0 + max(0, $1.amountCents) }
+        if isPaid && recorded == 0 { return totalCents }
+        return recorded + bookingDepositCents
+    }
+
+    var balanceDueCents: Int {
+        isPaid ? 0 : max(totalCents - paidCents, 0)
+    }
+
+    /// In front of the client: sent from the app, already published to the
+    /// portal by an older build, or paid.
+    var wasSent: Bool {
+        sentAt != nil || portalLastUploadedAtMs != nil || isPaid
+    }
+
+    var isOverdue: Bool {
+        wasSent && !isPaid && balanceDueCents > 0 && dueDate < Calendar.current.startOfDay(for: .now)
+    }
+
     var overpaidCents: Int {
         max(bookingDepositCents - totalCents, 0)
     }
@@ -602,6 +637,13 @@ extension Invoice {
         guard documentType == "estimate" else { return false }
         let status = estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return !["sent", "accepted", "declined"].contains(status)
+    }
+
+    /// A document that must not reach the client's portal yet: an estimate
+    /// that wasn't sent, or an invoice that wasn't. Every portal write checks
+    /// this; Send (EstimateSendService / InvoiceSendService) is the way in.
+    var isUnsentDocument: Bool {
+        documentType == "estimate" ? isUnsentEstimate : !wasSent
     }
 
     var isFinalized: Bool {

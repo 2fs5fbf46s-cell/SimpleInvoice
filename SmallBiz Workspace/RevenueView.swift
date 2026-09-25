@@ -123,7 +123,7 @@ struct RevenueView: View {
                     label: "Outstanding total",
                     value: Self.currencyString(fromCents: stats.outstandingCents, currencyCode: displayCurrencyCode)
                 ) {
-                    invoiceListDestination = .unpaid
+                    invoiceListDestination = .open
                 }
 
                 Divider().opacity(0.35)

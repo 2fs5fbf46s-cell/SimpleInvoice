@@ -886,8 +886,9 @@ final class PortalBackend {
         
         // This seed also files the document in the client's portal, so a
         // draft estimate must never get here.
-        if invoice.isUnsentEstimate {
-            throw NSError(domain: "Portal", code: 409, userInfo: [NSLocalizedDescriptionKey: "Send this estimate before opening it in the client portal."])
+        if invoice.isUnsentDocument {
+            let noun = invoice.documentType == "estimate" ? "estimate" : "invoice"
+            throw NSError(domain: "Portal", code: 409, userInfo: [NSLocalizedDescriptionKey: "Send this \(noun) before opening it in the client portal."])
         }
 
         let lineItems = buildPortalLineItems(invoice: invoice)
@@ -918,6 +919,9 @@ final class PortalBackend {
         // Without these the backend guessed the type from an "EST-" number
         // prefix, so a named estimate ("TF Estimate") was filed as an unpaid
         // invoice — listed under Invoices, and its estimate link unavailable.
+        if invoice.documentType != "estimate" {
+            body.merge(Self.invoiceBalanceFields(invoice)) { _, new in new }
+        }
         if invoice.documentType == "estimate" {
             let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             body["documentType"] = "estimate"
@@ -1369,8 +1373,27 @@ final class PortalBackend {
         if let sourceContractId = invoice.sourceContractId, !sourceContractId.isEmpty {
             body["sourceContractId"] = sourceContractId
         }
+        body.merge(Self.invoiceBalanceFields(invoice)) { _, new in new }
 
         _ = try await seedToken(payload: body)
+    }
+
+    /// What's been paid and what's still owed, so the portal shows the
+    /// balance and checkout charges it — not the original total — after a
+    /// part payment recorded in the app.
+    static func invoiceBalanceFields(_ invoice: Invoice) -> [String: Any] {
+        var fields: [String: Any] = [
+            "paidCents": invoice.paidCents,
+            "balanceDueCents": invoice.balanceDueCents,
+        ]
+        if invoice.balanceDueCents == 0 {
+            fields["paid"] = true
+            fields["status"] = "paid"
+        }
+        if let sentAt = invoice.sentAt {
+            fields["sentAtMs"] = Int((sentAt.timeIntervalSince1970 * 1000).rounded())
+        }
+        return fields
     }
 
     /// A contract only belongs in the client-facing directory once it's been
@@ -1953,6 +1976,101 @@ final class PortalBackend {
 
         let decoded = try decoder().decode(PullEstimateDecisionsResponseDTO.self, from: data)
         return decoded.decisions
+    }
+
+    // MARK: - Invoice lifecycle
+
+    /// Emails the client a link to view and pay an invoice that's already
+    /// in their portal (kind "send"), or a reminder (kind "reminder"). The
+    /// server refuses drafts, paid invoices and estimates.
+    func sendInvoiceEmail(
+        invoiceId: String,
+        clientEmail: String,
+        businessName: String?,
+        kind: String
+    ) async throws -> EstimateEmailOutcome {
+        let adminKey = try requireAdminKey()
+
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/portal/invoice/send-email"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        var payload: [String: Any] = [
+            "invoiceId": invoiceId,
+            "clientEmail": clientEmail,
+            "kind": kind,
+            // So the email prints the due date on the owner's calendar day.
+            "timeZone": TimeZone.current.identifier
+        ]
+        if let businessName, !businessName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["businessName"] = businessName
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        let decoded = try? decoder().decode(SendLinkResponseDTO.self, from: data)
+        if http.statusCode == 502, let link = decoded?.link, !link.isEmpty {
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let reason = (json?["errorCode"] as? String) ?? decoded?.error ?? "email_failed"
+            return .emailFailed(link: link, reason: reason)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: decoded?.error ?? raw)
+        }
+        guard let link = decoded?.link, !link.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return .emailed(link: link)
+    }
+
+    struct InvoiceActivityDTO: Decodable {
+        let invoiceId: String
+        let paid: Bool?
+        let paidAtMs: Double?
+        let paidOnlineCents: Int?
+        let provider: String?
+        let viewedAtMs: Double?
+        let sentAtMs: Double?
+        let lastReminderAtMs: Double?
+        let updatedAtMs: Double
+    }
+
+    struct InvoiceActivityPage: Decodable {
+        let ok: Bool?
+        let items: [InvoiceActivityDTO]
+        let hasMore: Bool?
+    }
+
+    /// Payments and views the portal saw since `since` — the feed behind
+    /// InvoiceActivityPullService.
+    func pullInvoiceActivity(since: Date) async throws -> InvoiceActivityPage {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/invoices/activity/pull"),
+            resolvingAgainstBaseURL: false
+        )!
+        let sinceMs = Int((since.timeIntervalSince1970 * 1000).rounded())
+        comps.queryItems = [URLQueryItem(name: "since", value: String(sinceMs))]
+
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+        return try decoder().decode(InvoiceActivityPage.self, from: data)
     }
 
     // MARK: - Payment status

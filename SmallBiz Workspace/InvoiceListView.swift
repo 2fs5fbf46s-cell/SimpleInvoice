@@ -51,12 +51,14 @@ private struct InvoiceListInvoiceRouteView: View {
     }
 }
 
-enum InvoiceListFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case draft = "Draft"
-    case unpaid = "Unpaid"
-    case paid = "Paid"
+/// Which invoices the list shows. The old filters didn't mean what they
+/// said — "Draft" was "has no line items", "Overdue" included empty drafts.
+enum InvoiceListFilter: String, CaseIterable, Identifiable, Hashable {
+    case open = "Open"
     case overdue = "Overdue"
+    case drafts = "Drafts"
+    case paid = "Paid"
+    case all = "All"
 
     var id: String { rawValue }
 }
@@ -73,12 +75,53 @@ private enum InvoiceListToolbarRoute: Hashable, Identifiable {
     }
 }
 
+/// Where an invoice is, for the list: the same stages as the invoice screen.
+private enum InvoiceListStage {
+    case draft, sent, overdue, partPaid, paid
+
+    init(_ invoice: Invoice) {
+        if invoice.isPaid || (invoice.wasSent && invoice.totalCents > 0 && invoice.balanceDueCents == 0) {
+            self = .paid
+        } else if !invoice.wasSent {
+            self = .draft
+        } else if invoice.isOverdue {
+            self = .overdue
+        } else if (invoice.payments ?? []).contains(where: { $0.amountCents > 0 }) {
+            self = .partPaid
+        } else {
+            self = .sent
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .draft: return "Draft"
+        case .sent: return "Sent"
+        case .overdue: return "Overdue"
+        case .partPaid: return "Part paid"
+        case .paid: return "Paid"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .draft: return .secondary
+        case .sent: return SBWTheme.brandBlue
+        case .overdue: return .red
+        case .partPaid: return .orange
+        case .paid: return SBWTheme.brandGreen
+        }
+    }
+}
+
+/// The invoice list, grouped by what needs doing: overdue first, then what
+/// you're waiting on, then drafts, then what's paid — with the money owed
+/// and overdue totals on top.
 struct InvoiceListView: View {
     @Environment(\.modelContext) private var modelContext
     private let businessID: UUID?
 
     @Query private var invoices: [Invoice]
-
     @Query private var profiles: [BusinessProfile]
 
     @State private var showingNewInvoice = false
@@ -87,41 +130,101 @@ struct InvoiceListView: View {
     @State private var showingRecurringSchedules = false
     @State private var toolbarRoute: InvoiceListToolbarRoute?
 
-    // Navigate to the invoice created from a template
-    @State private var navigateToInvoice: InvoiceListSelection? = nil
     @State private var selectedInvoice: InvoiceListSelection? = nil
-
-    // MARK: - Filters
     @State private var filter: InvoiceListFilter
     @State private var searchText: String = ""
-    @State private var visibleInvoices: [Invoice] = []
-    @State private var visibleInvoiceRows: [InvoiceListRowModel] = []
+
+    @State private var pendingDelete: Invoice? = nil
+    @State private var paymentInvoice: Invoice? = nil
+    @State private var reminderInvoice: Invoice? = nil
+    @State private var listNotice: String? = nil
 
     init(businessID: UUID? = nil, initialFilter: InvoiceListFilter? = nil) {
         self.businessID = businessID
-        _filter = State(initialValue: initialFilter ?? .all)
+        _filter = State(initialValue: initialFilter ?? .open)
         if let businessID {
             _invoices = Query(
                 filter: #Predicate<Invoice> { invoice in
-                    invoice.businessID == businessID
+                    invoice.businessID == businessID && invoice.documentType != "estimate"
                 },
                 sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
             )
+            _profiles = Query(filter: #Predicate<BusinessProfile> { $0.businessID == businessID })
         } else {
-            _invoices = Query(sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)])
+            _invoices = Query(
+                filter: #Predicate<Invoice> { $0.documentType != "estimate" },
+                sort: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
+            )
+            _profiles = Query()
         }
     }
 
-    private var effectiveBusinessID: UUID? {
-        businessID
+    private struct InvoiceGroup: Identifiable {
+        let title: String
+        let invoices: [Invoice]
+        var id: String { title }
+    }
+
+    private var scoped: [Invoice] {
+        invoices.scoped(to: businessID)
+    }
+
+    private var searched: [Invoice] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return scoped }
+        return scoped.filter { invoice in
+            invoice.invoiceNumber.localizedCaseInsensitiveContains(q)
+                || invoice.displayClientName.localizedCaseInsensitiveContains(q)
+                || (invoice.job?.title.localizedCaseInsensitiveContains(q) ?? false)
+                || invoice.notes.localizedCaseInsensitiveContains(q)
+                || (invoice.items ?? []).contains { $0.itemDescription.localizedCaseInsensitiveContains(q) }
+        }
+    }
+
+    private var outstandingCents: Int {
+        scoped.filter { $0.wasSent }.reduce(0) { $0 + $1.balanceDueCents }
+    }
+
+    private var overdueCents: Int {
+        scoped.filter { $0.isOverdue }.reduce(0) { $0 + $1.balanceDueCents }
+    }
+
+    private var groups: [InvoiceGroup] {
+        let all = searched
+        func stage(_ invoice: Invoice) -> InvoiceListStage { InvoiceListStage(invoice) }
+        let overdue = all.filter { stage($0) == .overdue }.sorted { $0.dueDate < $1.dueDate }
+        let waiting = all.filter { [.sent, .partPaid].contains(stage($0)) }.sorted { $0.dueDate < $1.dueDate }
+        let drafts = all.filter { stage($0) == .draft }
+        let paid = all.filter { stage($0) == .paid }.sorted { paidDate($0) > paidDate($1) }
+
+        let result: [InvoiceGroup]
+        switch filter {
+        case .open:
+            result = [InvoiceGroup(title: "Overdue", invoices: overdue), InvoiceGroup(title: "Waiting on payment", invoices: waiting)]
+        case .overdue:
+            result = [InvoiceGroup(title: "Overdue", invoices: overdue)]
+        case .drafts:
+            result = [InvoiceGroup(title: "Drafts", invoices: drafts)]
+        case .paid:
+            result = [InvoiceGroup(title: "Paid", invoices: paid)]
+        case .all:
+            result = [
+                InvoiceGroup(title: "Overdue", invoices: overdue),
+                InvoiceGroup(title: "Waiting on payment", invoices: waiting),
+                InvoiceGroup(title: "Drafts", invoices: drafts),
+                InvoiceGroup(title: "Paid", invoices: paid),
+            ]
+        }
+        return result.filter { !$0.invoices.isEmpty }
+    }
+
+    private func paidDate(_ invoice: Invoice) -> Date {
+        (invoice.payments ?? []).map(\.paidAt).max() ?? invoice.issueDate
     }
 
     var body: some View {
         ZStack {
-            // Background
             Color(.systemGroupedBackground).ignoresSafeArea()
-
-            // Subtle header wash (Option A)
             SBWTheme.headerWash()
 
             List {
@@ -129,9 +232,8 @@ struct InvoiceListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search invoices", text: $searchText)
+                        TextField("Search invoices, clients, items", text: $searchText)
                             .textInputAutocapitalization(.never)
-
                         Button {
                             Haptics.lightTap()
                             showingNewInvoice = true
@@ -141,130 +243,97 @@ struct InvoiceListView: View {
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("New Invoice")
+                    }
+                    .padding(.vertical, 4)
+
+                    HStack(spacing: 10) {
+                        metricTile("Outstanding", cents: outstandingCents, color: .primary) { filter = .open }
+                        metricTile("Overdue", cents: overdueCents, color: overdueCents > 0 ? .red : .primary) { filter = .overdue }
+                    }
+                    .buttonStyle(.plain)
+
+                    SBWFilterChips(
+                        options: InvoiceListFilter.allCases,
+                        title: { $0.rawValue },
+                        selection: $filter
+                    )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                }
+
+                if let listNotice {
+                    Section {
+                        Text(listNotice)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(InvoiceListFilter.allCases) { f in
-                                Button {
-                                    filter = f
-                                } label: {
-                                    Text(f.rawValue)
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            Capsule()
-                                                .fill(filter == f ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - Content
-                if effectiveBusinessID == nil {
+                if businessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
                         description: Text("Select a business to view invoices.")
                     )
-                } else if visibleInvoices.isEmpty {
-                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || filter != .all
-                    SBWEmptyState(
-                        title: "No Invoices",
-                        // Said "try changing the filter" even with All selected
-                        // and nothing to find.
-                        message: SBWEmptyStateCopy.message(
-                            noun: "invoice",
-                            pluralNoun: "invoices",
-                            isFiltered: isFiltered
-                        ),
-                        systemImage: "doc.text",
-                        actionTitle: "Create Invoice",
-                        action: { showingNewInvoice = true },
-                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
-                        secondaryAction: isFiltered ? {
-                            searchText = ""
-                            filter = .all
-                        } : nil
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                } else if groups.isEmpty {
+                    Section { emptyState }
                 } else {
-                    ForEach(visibleInvoiceRows) { rowModel in
-                        Button {
-                            selectedInvoice = InvoiceListSelection(id: rowModel.invoice.id)
-                        } label: {
-                            row(rowModel)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button {
-                                duplicateAndOpen(rowModel.invoice)
-                            } label: {
-                                Label("Duplicate Invoice", systemImage: "doc.on.doc")
+                    ForEach(groups) { group in
+                        Section {
+                            ForEach(group.invoices) { invoice in
+                                Button {
+                                    selectedInvoice = InvoiceListSelection(id: invoice.id)
+                                } label: {
+                                    InvoiceListRow(invoice: invoice)
+                                }
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    leadingSwipe(for: invoice)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        pendingDelete = invoice
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    .tint(.red)
+                                }
+                                .contextMenu {
+                                    Button { duplicateAndOpen(invoice) } label: {
+                                        Label("Duplicate Invoice", systemImage: "doc.on.doc")
+                                    }
+                                }
                             }
+                        } header: {
+                            Text(group.title)
                         }
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
-                    .onDelete(perform: deleteInvoices)
                 }
             }
             .scrollContentBackground(.hidden)
         }
-        .task(id: effectiveBusinessID) {
-            recomputeVisibleInvoices()
-        }
-        .onChange(of: filter) {
-            recomputeVisibleInvoices()
-        }
-        .onChange(of: searchText) {
-            recomputeVisibleInvoices()
-        }
-        .onChange(of: invoices.count) {
-            recomputeVisibleInvoices()
-        }
         .navigationTitle("Invoices")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
-        
-
-        // MARK: - Toolbar
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
-                    Button {
-                        toolbarRoute = .businessProfile
-                    } label: {
-                        Label("Business Profile", systemImage: "gearshape")
+                    Button { showingRecurringSchedules = true } label: {
+                        Label("Recurring Invoices", systemImage: "arrow.triangle.2.circlepath")
                     }
-
-                    Button {
-                        toolbarRoute = .savedItems
-                    } label: {
+                    Button { showingTemplates = true } label: {
+                        Label("Invoice Templates", systemImage: "square.grid.2x2")
+                    }
+                    Button { toolbarRoute = .savedItems } label: {
                         Label("Saved Items", systemImage: "tray")
                     }
-
-                    Button { showingTemplates = true } label: {
-                        Label("Templates", systemImage: "square.grid.2x2")
+                    Divider()
+                    Button { showingInvoiceSettings = true } label: {
+                        Label("Invoice Settings", systemImage: "slider.horizontal.3")
                     }
-
-                    Button {
-                        showingInvoiceSettings = true
-                    } label: {
-                        Label("Invoice Settings", systemImage: "gearshape")
-                    }
-
-                    Button {
-                        showingRecurringSchedules = true
-                    } label: {
-                        Label("Recurring Invoices", systemImage: "arrow.triangle.2.circlepath")
+                    Button { toolbarRoute = .businessProfile } label: {
+                        Label("Business Profile", systemImage: "building.2")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -272,10 +341,39 @@ struct InvoiceListView: View {
                 .accessibilityLabel("Invoice Menu")
             }
         }
-
-        // MARK: - Sheets
+        .confirmationDialog(
+            "Delete invoice \(pendingDelete?.invoiceNumber ?? "")?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Invoice", role: .destructive) {
+                if let invoice = pendingDelete { delete(invoice) }
+                pendingDelete = nil
+            }
+            Button("Keep Invoice", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text(pendingDelete?.wasSent == true
+                 ? "Your client already has this invoice; it stays in their portal. This can't be undone."
+                 : "This can't be undone.")
+        }
+        .confirmationDialog(
+            "Send a reminder?",
+            isPresented: Binding(get: { reminderInvoice != nil }, set: { if !$0 { reminderInvoice = nil } }),
+            titleVisibility: .visible,
+            presenting: reminderInvoice
+        ) { invoice in
+            Button("Send Reminder") { remind(invoice) }
+            Button("Cancel", role: .cancel) {}
+        } message: { invoice in
+            Text(InvoiceSendService.confirmationMessage(for: invoice, kind: .reminder))
+        }
+        .sheet(item: $paymentInvoice) { invoice in
+            RecordPaymentSheet(invoice: invoice)
+        }
         .sheet(isPresented: $showingNewInvoice) {
-            NewInvoiceView(businessID: effectiveBusinessID)
+            NewInvoiceView(businessID: businessID) { invoice in
+                selectedInvoice = InvoiceListSelection(id: invoice.id)
+            }
         }
         .sheet(isPresented: $showingTemplates) {
             NavigationStack {
@@ -307,18 +405,13 @@ struct InvoiceListView: View {
         }
         .sheet(isPresented: $showingRecurringSchedules) {
             NavigationStack {
-                RecurringInvoiceScheduleListView(businessID: effectiveBusinessID)
+                RecurringInvoiceScheduleListView(businessID: businessID)
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") { showingRecurringSchedules = false }
                         }
                     }
             }
-        }
-
-        // Navigate to created invoice after template selection
-        .navigationDestination(item: $navigateToInvoice) { selection in
-            InvoiceListInvoiceRouteView(invoiceID: selection.id)
         }
         .navigationDestination(item: $selectedInvoice) { selection in
             InvoiceListInvoiceRouteView(invoiceID: selection.id)
@@ -331,109 +424,101 @@ struct InvoiceListView: View {
                 CatalogItemListView()
             }
         }
-
-        // Manual Test Steps:
-        // 1) Switch business and verify only scoped invoices render with no mixed data flash.
-        // 2) Create, cancel, create, save from list entry points and confirm numbering/order remain correct.
-        // 3) Scroll large invoice list and confirm smooth row rendering/performance.
     }
 
-
-    // MARK: - Filtered data (✅ excludes estimates)
-
-    private func recomputeVisibleInvoices() {
-        let scopedInvoices: [Invoice]
-        scopedInvoices = invoices.scoped(to: effectiveBusinessID)
-
-        let nonEstimates = scopedInvoices.filter { $0.documentType != "estimate" }
-
-        let base: [Invoice]
-        switch filter {
-        case .all:
-            base = nonEstimates
-        case .draft:
-            base = nonEstimates.filter { !($0.isPaid) && ($0.items ?? []).isEmpty }
-        case .unpaid:
-            base = nonEstimates.filter { !($0.isPaid) && !($0.items ?? []).isEmpty }
-        case .paid:
-            base = nonEstimates.filter { $0.isPaid }
-        case .overdue:
-            base = nonEstimates.filter { !$0.isPaid && $0.dueDate < Date() }
+    private func metricTile(_ title: String, cents: Int, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(color == .red ? Color.red : Color.secondary)
+                Text(InvoicePaymentService.currency(cents))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(color)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
         }
+    }
 
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let filtered: [Invoice]
-        if q.isEmpty {
-            filtered = base
-        } else {
-            filtered = base.filter { invoice in
-                if invoice.invoiceNumber.localizedCaseInsensitiveContains(q) { return true }
-                if invoice.displayClientName.localizedCaseInsensitiveContains(q) { return true }
-                if (invoice.notes).localizedCaseInsensitiveContains(q) { return true }
-                if (invoice.sourceBookingRequestId ?? "").localizedCaseInsensitiveContains(q) { return true }
-
-                // Convenience: allow searching "final" to find booking-created final drafts
-                if q.lowercased().contains("final"), isFinalDraft(invoice) { return true }
-
-                return false
+    @ViewBuilder
+    private var emptyState: some View {
+        let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        VStack(spacing: 8) {
+            Image(systemName: "doc.plaintext")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(isSearching ? "No invoices match \"\(searchText)\"" : emptyTitle)
+                .font(.headline)
+            if !isSearching && (filter == .open || filter == .all) {
+                Text(filter == .open ? "Invoices you've sent and not been paid for show up here." : "Create your first invoice.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button { showingNewInvoice = true } label: { Label("New Invoice", systemImage: "plus") }
+                    .sbwProminentButton()
+                    .padding(.top, 4)
             }
         }
-
-        visibleInvoices = filtered
-        visibleInvoiceRows = filtered.map(makeRowModel(for:))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 
-    private func isFinalDraft(_ invoice: Invoice) -> Bool {
-        // We create these from booking approval; they are normal-numbered invoices.
-        // Detection is based on linkage + the note prefix we add.
-        let hasBookingLink = (invoice.sourceBookingRequestId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        let notes = (invoice.notes).lowercased()
-        let isFinalNote = notes.contains("final invoice draft created")
-        return hasBookingLink && isFinalNote
-    }
-
-    // MARK: - Row UI (Option A polish: icon chip + content)
-
-    private func row(_ rowModel: InvoiceListRowModel) -> some View {
-        InvoiceRowView(
-            invoiceTitle: rowModel.invoiceTitle,
-            statusText: rowModel.statusText,
-            subtitle: rowModel.subtitle
-        )
-    }
-
-    private func makeRowModel(for invoice: Invoice) -> InvoiceListRowModel {
-        let statusText = invoice.isPaid ? "PAID" : "UNPAID"
-        let isFinal = isFinalDraft(invoice)
-        // Not the live relationship: the delete confirmation promises these rows
-        // keep the name they were sent with, and the snapshot is what delivers it.
-        let clientName = invoice.displayClientName
-        let date = invoice.issueDate.formatted(date: .abbreviated, time: .omitted)
-        let total = invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-        let finalBadge = isFinal ? "FINAL • " : ""
-        let subtitle = "\(finalBadge)\(statusText) • \(clientName) • \(date) • \(total)"
-        let baseTitle = isFinal ? "Final Invoice" : "Invoice"
-
-        return InvoiceListRowModel(
-            invoice: invoice,
-            invoiceTitle: invoice.invoiceNumber.isEmpty ? baseTitle : "\(baseTitle) \(invoice.invoiceNumber)",
-            statusText: statusText,
-            subtitle: subtitle.replacingOccurrences(of: "\(statusText) • ", with: "")
-        )
-    }
-
-    // MARK: - Deletes
-
-    private func deleteInvoices(at offsets: IndexSet) {
-        for index in offsets.sorted(by: >) {
-            modelContext.delete(visibleInvoices[index])
+    private var emptyTitle: String {
+        switch filter {
+        case .open: return "Nothing waiting on payment"
+        case .overdue: return "Nothing overdue"
+        case .drafts: return "No drafts"
+        case .paid: return "No paid invoices yet"
+        case .all: return "No invoices yet"
         }
+    }
+
+    @ViewBuilder
+    private func leadingSwipe(for invoice: Invoice) -> some View {
+        switch InvoiceListStage(invoice) {
+        case .overdue:
+            Button { reminderInvoice = invoice } label: { Label("Remind", systemImage: "bell") }
+                .tint(.red)
+            Button { paymentInvoice = invoice } label: { Label("Payment", systemImage: "banknote") }
+                .tint(SBWTheme.brandGreen)
+        case .sent, .partPaid, .draft:
+            if invoice.totalCents > 0 {
+                Button { paymentInvoice = invoice } label: { Label("Payment", systemImage: "banknote") }
+                    .tint(SBWTheme.brandGreen)
+            }
+        case .paid:
+            EmptyView()
+        }
+    }
+
+    private func remind(_ invoice: Invoice) {
+        let businessName = profiles.first?.name
+        Task {
+            do {
+                switch try await InvoiceSendService.send(invoice, kind: .reminder, context: modelContext, businessName: businessName) {
+                case .emailed(let email):
+                    Haptics.success()
+                    listNotice = "Reminder sent to \(email)."
+                case .publishedNotEmailed:
+                    listNotice = "The reminder didn't send. Open the invoice to try again."
+                }
+            } catch {
+                listNotice = error.localizedDescription
+            }
+        }
+    }
+
+    private func delete(_ invoice: Invoice) {
+        modelContext.delete(invoice)
         do {
             try modelContext.save()
             Haptics.success()
         } catch {
             Haptics.error()
-            SBWLog.ui.problem("Failed to save deletes: \(error)")
+            SBWLog.ui.problem("Failed to delete invoice: \(error)")
         }
     }
 
@@ -445,8 +530,7 @@ struct InvoiceListView: View {
                 context: modelContext
             )
             Haptics.success()
-            recomputeVisibleInvoices()
-            navigateToInvoice = InvoiceListSelection(id: copy.id)
+            selectedInvoice = InvoiceListSelection(id: copy.id)
         } catch {
             Haptics.error()
             SBWLog.ui.problem("Failed to duplicate invoice: \(error)")
@@ -454,48 +538,67 @@ struct InvoiceListView: View {
     }
 }
 
-private struct InvoiceRowView: View {
-    let invoiceTitle: String
-    let statusText: String
-    let subtitle: String
+/// Who it's for, what it is and when it's due, with the amount and status.
+private struct InvoiceListRow: View {
+    let invoice: Invoice
+
+    private var stage: InvoiceListStage { InvoiceListStage(invoice) }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Invoices"))
-                Image(systemName: "doc.plaintext")
-                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-            }
-            .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(invoiceTitle)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    SBWStatusPill(text: statusText)
-                }
+                    .lineLimit(1)
                 Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .font(.caption)
+                    .foregroundStyle(stage == .overdue ? Color.red : Color.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(InvoicePaymentService.currency(stage == .paid ? invoice.totalCents : invoice.balanceDueCents))
+                    .font(.body.weight(.semibold))
+                    .monospacedDigit()
+                Text(stage.label)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 7)
+                    .background(Capsule().fill(stage.color.opacity(0.15)))
+                    .foregroundStyle(stage.color)
             }
         }
         .padding(.vertical, 4)
-        .frame(minHeight: 56, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
-}
 
-private struct InvoiceListRowModel: Identifiable {
-    let invoice: Invoice
-    let invoiceTitle: String
-    let statusText: String
-    let subtitle: String
-    var id: Invoice.ID { invoice.id }
+    private var title: String {
+        let client = invoice.displayClientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !client.isEmpty, client != "No Client" { return client }
+        return invoice.invoiceNumber.isEmpty ? "Invoice" : "Invoice \(invoice.invoiceNumber)"
+    }
+
+    private var subtitle: String {
+        let number = invoice.invoiceNumber.isEmpty ? nil : invoice.invoiceNumber
+        let job = invoice.job?.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let when: String
+        let calendar = Calendar.current
+        switch stage {
+        case .paid:
+            let paid = (invoice.payments ?? []).map(\.paidAt).max()
+            when = paid.map { "paid \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "paid"
+        case .overdue:
+            let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: invoice.dueDate), to: calendar.startOfDay(for: .now)).day ?? 0
+            when = "\(days) day\(days == 1 ? "" : "s") late"
+        case .draft:
+            when = "not sent"
+        case .sent, .partPaid:
+            when = "due \(invoice.dueDate.formatted(date: .abbreviated, time: .omitted))" + (invoice.viewedAt != nil ? " · viewed" : "")
+        }
+        return [number, (job?.isEmpty == false ? job : nil), when].compactMap { $0 }.joined(separator: " · ")
+    }
 }
 
 // MARK: - Templates (unchanged)
@@ -531,7 +634,7 @@ private extension InvoiceListView {
 
     func createInvoiceFromTemplate(_ template: InvoiceTemplate) {
         do {
-            guard let bizID = effectiveBusinessID else {
+            guard let bizID = businessID else {
                 SBWLog.ui.problem("❌ No active business selected")
                 return
             }
@@ -577,7 +680,7 @@ private extension InvoiceListView {
 
             showingTemplates = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                navigateToInvoice = InvoiceListSelection(id: invoice.id)
+                selectedInvoice = InvoiceListSelection(id: invoice.id)
             }
         } catch {
             Haptics.error()

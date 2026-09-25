@@ -55,9 +55,6 @@ struct InvoiceDetailView: View {
     @State private var includeNotes = false
     @State private var includeThankYou = false
     @State private var showTotalsBreakdown = false
-    @State private var showAdvancedOptions = false
-    @State private var showMarkPaidConfirm = false
-    @State private var showMarkUnpaidConfirm = false
     @State private var manualReports: [ManualPaymentReportDTO] = []
     @State private var loadingManualReports = false
     @State private var resolvingManualReportId: String? = nil
@@ -79,6 +76,17 @@ struct InvoiceDetailView: View {
     @State private var showRenameEstimate = false
     @State private var renameEstimateText = ""
     @State private var estimateJobRoute: Job? = nil
+
+    // Invoice layout
+    @State private var pricingUnlocked = false
+    @State private var confirmUnlockPricing = false
+    @State private var showRecordPayment = false
+    @State private var invoiceSendKind: InvoiceSendService.Kind? = nil
+    @State private var sendingInvoice = false
+    @State private var showInvoiceDetails = false
+    @State private var showInvoiceNotes = false
+    @State private var showInvoiceAttachments = false
+    @State private var showInvoiceActivity = false
     @State private var uploadingPortalPDF = false
     @State private var portalPDFNotice: String? = nil
     @State private var navigateToClientSettings: Client? = nil
@@ -144,6 +152,11 @@ struct InvoiceDetailView: View {
         // Kept off mainView's chain, which is already at the edge of what
         // the type checker will take.
         mainView
+            // Here, not on a List row: a sheet attached inside a row
+            // didn't present.
+            .sheet(isPresented: $showRecordPayment) {
+                RecordPaymentSheet(invoice: invoice)
+            }
             .navigationDestination(item: $estimateJobRoute) { job in
                 JobSummaryView(job: job)
             }
@@ -172,13 +185,16 @@ struct InvoiceDetailView: View {
                 EstimateContractSection
                 EstimateMoreSections
             } else {
-                InvoiceEssentialsSection
+                // Same shape as the estimate: next step, then the money,
+                // then the details. See "Invoice layout" below.
+                InvoiceNextStepSection
+                if hasPendingPaymentReports {
+                    PaymentReportsSection
+                }
+                InvoicePaymentsSection
                 LineItemsSection
                 TotalsDisclosureSection
-                ClientPortalSection
-                StatusSection
-                PaymentReportsSection
-                AdvancedOptionsSection
+                InvoiceMoreSections
             }
         }
         .listStyle(.plain)
@@ -258,6 +274,12 @@ struct InvoiceDetailView: View {
             EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             await refreshEstimateStatusFromPortal(estimate: invoice)
             await refreshManualReports()
+            // The Today "ready to review" card is for a server-generated
+            // invoice nobody has looked at; opening it is the review.
+            if invoice.isRecurringGenerated, invoice.recurringReviewedAt == nil {
+                invoice.recurringReviewedAt = .now
+                try? modelContext.save()
+            }
         }
         .onChange(of: invoice.estimateStatus) { oldValue, newValue in
             let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -508,9 +530,11 @@ struct InvoiceDetailView: View {
 
     private var navigationTitleText: String {
         let num = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The header right below already names it.
         if invoice.documentType == "estimate" {
-            // The header right below already names it.
             return "Estimate"
+        } else if invoice.documentType == "invoice" {
+            return "Invoice"
         } else {
             return num.isEmpty ? "Invoice" : "Invoice \(num)"
         }
@@ -574,14 +598,13 @@ struct InvoiceDetailView: View {
                     Text(invoiceDisplayTitle)
                         .font(.headline)
 
-                    if invoice.documentType == "estimate" {
-                        Text(invoice.clientForRendering?.name ?? "No client yet")
+                    Text(invoice.clientForRendering?.name ?? "No client yet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if invoice.documentType != "estimate" {
+                        Text(invoiceDueText)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Due \(invoice.dueDate.formatted(date: .abbreviated, time: .omitted))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(invoiceStage == .overdue ? Color.red : Color.primary)
                     }
                 }
 
@@ -593,16 +616,13 @@ struct InvoiceDetailView: View {
 
                     statusPill(text: invoiceStatusText)
 
-                    if invoice.documentType != "estimate", let lockText = invoice.businessInfoLockStatusText {
-                        Text(lockText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
 
             if invoice.documentType == "estimate" {
                 estimateStatusTrack
+            } else {
+                invoiceStatusTrack
             }
         }
         .accessibilityElement(children: .combine)
@@ -719,18 +739,30 @@ struct InvoiceDetailView: View {
 
     private var LineItemsSection: some View {
         Section {
+            // Locked pricing hides the add buttons rather than greying them:
+            // a disabled button still reads as something to tap.
             VStack(alignment: .leading, spacing: 10) {
-                Text("Line Items")
-                    .font(.headline)
-
-                Button { showingItemPicker = true } label: {
-                    Label("Add From Saved Items", systemImage: "tray.and.arrow.down")
+                HStack {
+                    Text("Line Items")
+                        .font(.headline)
+                    Spacer()
+                    if isPricingLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Locked")
+                    }
                 }
-                .buttonStyle(.bordered)
-                .tint(.secondary)
+
+                if !isPricingLocked {
+                    Button { showingItemPicker = true } label: {
+                        Label("Add From Saved Items", systemImage: "tray.and.arrow.down")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+                }
             }
             .sbwCardRow()
-            .disabled(isEstimatePricingLocked)
 
             ForEach(invoice.items ?? []) { item in
                 Button {
@@ -740,19 +772,20 @@ struct InvoiceDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .sbwCardRow()
-                .disabled(isEstimatePricingLocked)
+                .disabled(isPricingLocked)
+                .deleteDisabled(isPricingLocked)
             }
             .onDelete(perform: deleteItems)
 
-            Button { addItem() } label: {
-                Label("Add Line Item", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity)
+            if !isPricingLocked {
+                Button { addItem() } label: {
+                    Label("Add Line Item", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .sbwProminentButton()
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 12, trailing: 16))
+                .listRowBackground(Color.clear)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(SBWTheme.brandBlue)
-            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 12, trailing: 16))
-            .listRowBackground(Color.clear)
-            .disabled(isEstimatePricingLocked)
         }
     }
 
@@ -848,334 +881,7 @@ struct InvoiceDetailView: View {
                 }
             }
             .sbwCardRow()
-            .disabled(isEstimatePricingLocked)
-        }
-    }
-
-    private var ClientPortalSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 10) {
-                if invoice.client == nil {
-                    portalNoticeRow(
-                        icon: "person.crop.circle.badge.xmark",
-                        title: "No client selected.",
-                        detail: "Assign a client to enable portal access."
-                    )
-                }
-
-                if !isClientPortalEnabled {
-                    portalNoticeRow(
-                        icon: "nosign",
-                        title: "Client portal is disabled for this client.",
-                        detail: "Enable it in the client’s settings to generate a new portal link."
-                    )
-                }
-
-                if isPortalExpiredForThisInvoice {
-                    portalNoticeRow(
-                        icon: "clock.arrow.circlepath",
-                        title: "This client link has expired.",
-                        detail: "Regenerate from the menu to issue a new link."
-                    )
-                }
-
-                let canOpenPortal = (invoice.client != nil) && isClientPortalEnabled
-
-                HStack(spacing: 8) {
-                    Text(portalSyncStatusText)
-                        .font(.caption)
-                        .foregroundStyle(invoice.portalLastUploadError == nil ? Color.secondary : Color.red)
-                    Spacer()
-                    if shouldShowPortalRetryButton && canOpenPortal {
-                        Button("Retry") {
-                            triggerInvoicePortalAutoSync()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(invoice.portalUploadInFlight)
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        Task {
-                            openingPortal = true
-                            portalError = nil
-                            portalNotice = nil
-
-                            do {
-                                let url = try await buildPortalLink(mode: nil)
-                                portalURL = url
-                                showPortal = true
-                            } catch {
-                                portalURL = nil
-                                SBWLog.ui.problem("Portal open failed: \(error)")
-                                portalError = error.localizedDescription
-                            }
-
-                            openingPortal = false
-                        }
-                    } label: {
-                        if openingPortal {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text("Opening secure portal…")
-                            }
-                        } else {
-                            if invoice.isPaid {
-                                Label("View Client Portal (Paid)", systemImage: "checkmark.seal")
-                            } else {
-                                Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(SBWTheme.brandBlue)
-                    .disabled(openingPortal || !canOpenPortal)
-                    .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
-
-                    Spacer()
-
-                    Menu {
-                        Button {
-                            Task {
-                                openingPortal = true
-                                portalError = nil
-                                portalNotice = nil
-
-                                do {
-                                    let url = try await buildPortalLink(mode: nil)
-                                    UIPasteboard.general.string = url.absoluteString
-                                    showNotice("Client link copied")
-                                } catch {
-                                    SBWLog.ui.problem("Copy link failed: \(error)")
-                                    portalError = error.localizedDescription
-                                }
-
-                                openingPortal = false
-                            }
-                        } label: {
-                            Label("Copy Client Link", systemImage: "doc.on.doc")
-                        }
-
-                        Button {
-                            Task {
-                                openingPortal = true
-                                portalError = nil
-                                portalNotice = nil
-
-                                do {
-                                    let url = try await buildPortalLink(mode: nil)
-                                    shareItems = [url]
-                                    showNotice("Sharing link…")
-                                } catch {
-                                    SBWLog.ui.problem("Share link failed: \(error)")
-                                    portalError = error.localizedDescription
-                                }
-
-                                openingPortal = false
-                            }
-                        } label: {
-                            Label("Share Client Link", systemImage: "square.and.arrow.up")
-                        }
-
-                        if isPortalExpiredForThisInvoice {
-                            Button {
-                                Task {
-                                    openingPortal = true
-                                    portalError = nil
-                                    portalNotice = nil
-
-                                    do {
-                                        let url = try await buildPortalLink(mode: nil)
-                                        portalURL = url
-                                        showPortal = true
-                                        portalReturn.expiredInvoiceID = nil
-                                    } catch {
-                                        portalError = error.localizedDescription
-                                    }
-
-                                    openingPortal = false
-                                }
-                            } label: {
-                                Label("Regenerate Link", systemImage: "arrow.clockwise")
-                            }
-                        }
-
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .imageScale(.large)
-                            .padding(.vertical, 6)
-                    }
-                    .disabled(openingPortal || !canOpenPortal)
-                    .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
-                }
-
-                if canOpenPortal {
-                    Button {
-                        Task {
-                            openingPortal = true
-                            portalError = nil
-                            portalNotice = nil
-
-                            do {
-                                let url = try await buildPortalLink(mode: nil)
-                                portalURL = url
-                                showPortal = true
-                            } catch {
-                                portalURL = nil
-                                portalError = error.localizedDescription
-                            }
-
-                            openingPortal = false
-                        }
-                    } label: {
-                        Label("Open Client Payment Page", systemImage: "creditcard")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(openingPortal)
-                    .opacity(openingPortal ? 0.6 : 1)
-                }
-
-                if let client = invoice.client, !isClientPortalEnabled {
-                    Button {
-                        navigateToClientSettings = client
-                    } label: {
-                        Label("Enable Client Portal", systemImage: "togglepower")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(SBWTheme.brandBlue)
-                }
-
-                if PortalAutoSyncService.isEligible(invoice: invoice) {
-                    if invoice.portalUploadInFlight {
-                        Text("Uploading latest changes in the background…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if invoice.portalNeedsUpload {
-                        Text("Pending upload—tap Done to sync latest changes.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let portalNotice {
-                    Text(portalNotice)
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-
-                if let message = invoice.portalLastUploadError?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !message.isEmpty {
-                    Text(message)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                }
-
-                if let issuerName = resolvedPortalBusinessName() {
-                    Text("Issued by: \(issuerName)")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-
-                if let portalErrorMessage = portalError {
-                    portalErrorRow(portalErrorMessage)
-                }
-            }
-            .sbwCardRow()
-        }
-    }
-
-    private var StatusSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Status")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    statusPill(text: invoiceStatusText)
-                    Spacer()
-                }
-
-                if invoice.canRefreshBusinessInfo {
-                    Button("Refresh Business Info") {
-                        Task { await refreshBusinessSnapshotIfAllowed() }
-                    }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                } else if let lockText = invoice.businessInfoLockStatusText {
-                    Text(lockText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let businessInfoNotice {
-                    Text(businessInfoNotice)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if invoice.documentType == "estimate" {
-                    if let timestamp = estimateStatusTimestampText {
-                        Text(timestamp)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "declined" {
-                        Label("This estimate was declined in the portal.", systemImage: "xmark.octagon.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    if invoice.isPaid {
-                        HStack(spacing: 8) {
-                            Label("Paid", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Mark as Unpaid") { showMarkUnpaidConfirm = true }
-                                .buttonStyle(.bordered)
-                        }
-                    } else {
-                        Button("Mark as Paid") { showMarkPaidConfirm = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(SBWTheme.brandGreen)
-                    }
-                }
-            }
-            .sbwCardRow()
-            .confirmationDialog(
-                "Mark this invoice as paid?",
-                isPresented: $showMarkPaidConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Mark as Paid", role: .destructive) {
-                    _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
-                        invoice: invoice,
-                        profiles: profiles,
-                        context: modelContext,
-                        reason: .paid,
-                        replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
-                    )
-                    invoice.isPaid = true
-                    try? modelContext.save()
-                }
-                Button("Cancel", role: .cancel) { }
-            }
-            .confirmationDialog(
-                "Mark this invoice as unpaid?",
-                isPresented: $showMarkUnpaidConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Mark as Unpaid", role: .destructive) {
-                    invoice.isPaid = false
-                    try? modelContext.save()
-                }
-                Button("Cancel", role: .cancel) { }
-            }
+            .disabled(isPricingLocked)
         }
     }
 
@@ -1252,6 +958,496 @@ struct InvoiceDetailView: View {
                 }
             }
             .sbwCardRow()
+        }
+    }
+
+    // MARK: - Invoice layout
+    //
+    // The invoice's own lifecycle: Draft → Sent (maybe Viewed) → Overdue /
+    // Part paid → Paid. The Next step card offers what moves it forward —
+    // send it, see it, remind, record a payment — then the payments and
+    // balance, the line items (locked once sent), and details collapsed.
+    // It replaced a summary page plus an edit page where status, portal and
+    // payment controls were scattered across five cards.
+
+    enum InvoiceStage { case draft, sent, overdue, partPaid, paid }
+
+    private var invoiceStage: InvoiceStage {
+        if invoice.isPaid || (invoice.wasSent && invoice.totalCents > 0 && invoice.balanceDueCents == 0) { return .paid }
+        guard invoice.wasSent else { return .draft }
+        if invoice.isOverdue { return .overdue }
+        let recorded = (invoice.payments ?? []).reduce(0) { $0 + $1.amountCents }
+        return recorded > 0 ? .partPaid : .sent
+    }
+
+    private var invoiceDueText: String {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let due = calendar.startOfDay(for: invoice.dueDate)
+        let days = calendar.dateComponents([.day], from: today, to: due).day ?? 0
+        let dateText = invoice.dueDate.formatted(date: .abbreviated, time: .omitted)
+        switch invoiceStage {
+        case .paid:
+            let paidAt = (invoice.payments ?? []).map(\.paidAt).max()
+            return paidAt.map { "Paid \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "Paid"
+        case .overdue:
+            return "Was due \(dateText) · \(-days) day\(days == -1 ? "" : "s") late"
+        default:
+            if days == 0 { return "Due today" }
+            if days > 0 { return "Due \(dateText) · in \(days) day\(days == 1 ? "" : "s")" }
+            return "Due \(dateText)"
+        }
+    }
+
+    private var invoiceStatusTrack: some View {
+        let stage = invoiceStage
+        let reached = stage == .draft ? 1 : stage == .paid ? 3 : 2
+        let middle: Color = stage == .overdue ? .red : (stage == .partPaid ? .orange : SBWTheme.brandBlue)
+        let last: Color = SBWTheme.brandGreen
+        return VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule()
+                        .fill(index < reached ? (index == 2 ? last : (index == 1 ? middle : SBWTheme.brandBlue)) : Color.secondary.opacity(0.25))
+                        .frame(height: 4)
+                }
+            }
+            HStack {
+                Text("Draft")
+                Spacer()
+                Text(stage == .overdue ? "Overdue" : (stage == .partPaid ? "Part paid" : "Sent"))
+                Spacer()
+                Text("Paid")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Status: \(invoiceStatusText.capitalized)")
+    }
+
+    private var hasPendingPaymentReports: Bool {
+        manualReports.contains { $0.invoiceId == invoice.id.uuidString && $0.status == "pending" }
+    }
+
+    private var invoiceClientName: String {
+        let name = (invoice.clientForRendering?.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "your client" : name
+    }
+
+    private var InvoiceNextStepSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Next step")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(invoiceStage == .overdue ? Color.red : SBWTheme.brandBlue)
+
+                switch invoiceStage {
+                case .draft: invoiceDraftStep
+                case .sent: invoiceWaitingStep
+                case .overdue: invoiceOverdueStep
+                case .partPaid: invoicePartPaidStep
+                case .paid: invoicePaidStep
+                }
+
+                if let portalNotice {
+                    Text(portalNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let portalErrorMessage = portalError {
+                    portalErrorRow(portalErrorMessage)
+                }
+            }
+            .sbwCardRow()
+            .confirmationDialog(
+                invoiceSendKind == .reminder ? "Send a reminder?" : (invoice.sentAt == nil ? "Send this invoice?" : "Resend this invoice?"),
+                isPresented: Binding(get: { invoiceSendKind != nil }, set: { if !$0 { invoiceSendKind = nil } }),
+                titleVisibility: .visible,
+                presenting: invoiceSendKind
+            ) { kind in
+                Button(kind == .reminder ? "Send Reminder" : (invoice.sentAt == nil ? "Send Invoice" : "Resend Invoice")) {
+                    sendInvoice(kind)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { kind in
+                Text(InvoiceSendService.confirmationMessage(for: invoice, kind: kind))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var invoiceDraftStep: some View {
+        let email = (invoice.client?.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if invoice.client == nil {
+            estimateStepTitle("Choose a client", detail: "Pick who this invoice is for in Details below.")
+            Button { showInvoiceDetails = true } label: { Label("Choose Client", systemImage: "person.crop.circle") }
+                .buttonStyle(.bordered)
+        } else if invoice.cannotBeSentReason != nil {
+            estimateStepTitle(
+                "Add what you're charging for",
+                detail: invoice.totalCents == 0 && !(invoice.items ?? []).isEmpty
+                    ? "Your line items add up to $0.00. Set their prices, then send it."
+                    : "Add a line item below, then send it."
+            )
+        } else if email.isEmpty {
+            estimateStepTitle("Add an email for \(invoiceClientName)", detail: "The invoice is emailed with a link to pay online.")
+            Button { navigateToClientSettings = invoice.client } label: { Label("Edit Client", systemImage: "person.crop.circle") }
+                .buttonStyle(.bordered)
+        } else if !isClientPortalEnabled {
+            estimateStepTitle("Turn on the client portal", detail: "\(invoiceClientName) views and pays invoices in their client portal.")
+            Button { navigateToClientSettings = invoice.client } label: { Label("Enable Client Portal", systemImage: "togglepower") }
+                .buttonStyle(.bordered)
+        } else {
+            estimateStepTitle(
+                "Send it to \(invoiceClientName)",
+                detail: "Emails \(email) a link to view and pay online."
+            )
+            HStack(spacing: 10) {
+                Button { invoiceSendKind = .send } label: { sendingLabel("Send Invoice", icon: "paperplane.fill") }
+                    .sbwProminentButton()
+                    .disabled(sendingInvoice)
+                Button { previewPDF() } label: { Label("Preview", systemImage: "doc.richtext") }
+                    .buttonStyle(.bordered)
+            }
+        }
+        if invoice.totalCents > 0 {
+            Button("Paid already? Record a payment") { showRecordPayment = true }
+                .font(.caption)
+                .buttonStyle(.borderless)
+                .foregroundStyle(SBWTheme.brandBlue)
+        }
+    }
+
+    @ViewBuilder
+    private var invoiceWaitingStep: some View {
+        estimateStepTitle(
+            "Waiting on payment",
+            detail: invoice.viewedAt.map { "Viewed \($0.formatted(date: .abbreviated, time: .omitted)). You'll get a notification when it's paid." }
+                ?? "You'll get a notification when it's paid."
+        )
+        HStack(spacing: 10) {
+            Button { openClientPortal() } label: {
+                if openingPortal { ProgressView() } else { Label("View in Portal", systemImage: "rectangle.and.hand.point.up.left") }
+            }
+            .buttonStyle(.bordered)
+            .disabled(openingPortal)
+            Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
+                .buttonStyle(.bordered)
+        }
+        HStack(spacing: 10) {
+            Button { invoiceSendKind = .send } label: { sendingLabel("Resend", icon: "paperplane") }
+                .buttonStyle(.bordered)
+                .disabled(sendingInvoice)
+            Button { copyClientLink() } label: { Label("Copy Link", systemImage: "doc.on.doc") }
+                .buttonStyle(.bordered)
+                .disabled(openingPortal)
+        }
+    }
+
+    @ViewBuilder
+    private var invoiceOverdueStep: some View {
+        let days = max(Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: invoice.dueDate), to: Calendar.current.startOfDay(for: .now)).day ?? 0, 1)
+        estimateStepTitle(
+            "\(currencyString(fromCents: invoice.balanceDueCents)) is \(days) day\(days == 1 ? "" : "s") overdue",
+            detail: invoice.lastReminderAt.map { "Last reminder sent \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "No reminder sent yet."
+        )
+        HStack(spacing: 10) {
+            Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind Client", icon: "bell.fill") }
+                .sbwProminentButton(.red)
+                .disabled(sendingInvoice)
+            Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    @ViewBuilder
+    private var invoicePartPaidStep: some View {
+        let lastPayment = (invoice.payments ?? []).max { $0.paidAt < $1.paidAt }
+        estimateStepTitle(
+            "\(currencyString(fromCents: invoice.balanceDueCents)) still owed",
+            detail: lastPayment.map { "Paid \(currencyString(fromCents: $0.amountCents)) by \($0.methodLabel.lowercased()) on \($0.paidAt.formatted(date: .abbreviated, time: .omitted))." } ?? ""
+        )
+        HStack(spacing: 10) {
+            Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
+                .sbwProminentButton()
+            Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind", icon: "bell") }
+                .buttonStyle(.bordered)
+                .disabled(sendingInvoice)
+        }
+    }
+
+    @ViewBuilder
+    private var invoicePaidStep: some View {
+        let online = (invoice.payments ?? []).contains { $0.source == "portal" }
+        estimateStepTitle(
+            "Paid in full",
+            detail: online ? "Paid through the client portal." : "Nothing left to collect."
+        )
+        HStack(spacing: 10) {
+            Button { sharePDFOnly() } label: { Label("Share Receipt", systemImage: "doc.text") }
+                .buttonStyle(.bordered)
+            Button { duplicateInvoice() } label: { Label(duplicateActionTitle, systemImage: "doc.on.doc") }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    @ViewBuilder
+    private func sendingLabel(_ title: String, icon: String) -> some View {
+        if sendingInvoice {
+            HStack(spacing: 8) { ProgressView(); Text("Sending…") }
+        } else {
+            Label(title, systemImage: icon)
+        }
+    }
+
+    private func sendInvoice(_ kind: InvoiceSendService.Kind) {
+        guard !sendingInvoice else { return }
+        sendingInvoice = true
+        portalError = nil
+        portalNotice = nil
+        forceSaveNow()
+        Task {
+            defer { sendingInvoice = false }
+            do {
+                switch try await InvoiceSendService.send(
+                    invoice,
+                    kind: kind,
+                    context: modelContext,
+                    businessName: resolvedPortalBusinessName()
+                ) {
+                case .emailed(let email):
+                    Haptics.success()
+                    pricingUnlocked = false
+                    showNotice(kind == .reminder ? "Reminder sent to \(email)" : "Invoice sent to \(email)")
+                case .publishedNotEmailed(let link, _):
+                    if let link { UIPasteboard.general.string = link }
+                    portalError = link == nil
+                        ? "The invoice is in your client's portal, but the email didn't go out. Try again in a moment."
+                        : "The invoice is in your client's portal, but the email didn't go out. Its link is copied — paste it to your client."
+                }
+            } catch {
+                portalError = error.localizedDescription
+            }
+        }
+    }
+
+    private var InvoicePaymentsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Payments")
+                        .font(.headline)
+                    Spacer()
+                    if invoiceStage != .paid && invoice.totalCents > 0 {
+                        Button { showRecordPayment = true } label: { Label("Record", systemImage: "plus") }
+                            .font(.subheadline)
+                            .buttonStyle(.borderless)
+                    }
+                }
+
+                let payments = (invoice.payments ?? []).sorted { $0.paidAt < $1.paidAt }
+                if invoice.bookingDepositCents > 0 {
+                    paymentRow(title: "Booking deposit", detail: invoice.sourceBookingDepositPaidAtMs.map {
+                        Date(timeIntervalSince1970: TimeInterval($0) / 1000).formatted(date: .abbreviated, time: .omitted)
+                    } ?? "", amountCents: invoice.bookingDepositCents)
+                }
+                if payments.isEmpty && invoice.bookingDepositCents == 0 {
+                    Text(invoice.isPaid ? "Marked paid." : "No payments yet.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(payments) { payment in
+                    paymentRow(
+                        title: payment.methodLabel,
+                        detail: [payment.paidAt.formatted(date: .abbreviated, time: .omitted), payment.note]
+                            .filter { !$0.isEmpty }.joined(separator: " · "),
+                        amountCents: payment.amountCents
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            InvoicePaymentService.remove(payment, from: invoice, context: modelContext)
+                            Task { await InvoicePaymentService.publishIfSent(invoice, context: modelContext) }
+                        } label: {
+                            Label("Remove Payment", systemImage: "trash")
+                        }
+                    }
+                }
+
+                Divider()
+                HStack {
+                    Text("Total").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(currencyString(fromCents: invoice.totalCents))
+                }
+                .font(.subheadline)
+                HStack {
+                    Text("Balance due").font(.headline)
+                    Spacer()
+                    Text(currencyString(fromCents: invoice.balanceDueCents))
+                        .font(.headline)
+                        .foregroundStyle(invoiceStage == .overdue ? Color.red : Color.primary)
+                }
+            }
+            .sbwCardRow()
+        }
+    }
+
+    private func paymentRow(title: String, detail: String, amountCents: Int) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text(currencyString(fromCents: amountCents))
+        }
+        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private var InvoiceMoreSections: some View {
+        if isPricingLocked {
+            Section {
+                Label(
+                    invoice.isPaid ? "Paid invoices are locked." : "Sent invoices lock pricing. Unlock it from the ••• menu to correct and resend.",
+                    systemImage: "lock"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .listRowBackground(Color.clear)
+            }
+        }
+
+        Section {
+            DisclosureGroup(isExpanded: $showInvoiceDetails) {
+                InvoiceEssentialsSection
+            } label: {
+                Label("Details", systemImage: "square.and.pencil").font(.headline)
+            }
+            .sbwCardRow()
+        }
+
+        Section {
+            DisclosureGroup(isExpanded: $showInvoiceNotes) {
+                advancedPaymentCard
+                advancedNotesCard
+                advancedThankYouCard
+                advancedTermsCard
+            } label: {
+                Label("Notes and Terms", systemImage: "note.text").font(.headline)
+            }
+            .sbwCardRow()
+        }
+
+        Section {
+            DisclosureGroup(isExpanded: $showInvoiceAttachments) {
+                advancedAttachmentsHeaderCard
+                attachmentRows
+            } label: {
+                HStack {
+                    Label("Attachments", systemImage: "paperclip").font(.headline)
+                    Spacer()
+                    Text("\(attachments.count)").foregroundStyle(.secondary)
+                }
+            }
+            .sbwCardRow()
+        }
+
+        Section {
+            DisclosureGroup(isExpanded: $showInvoiceActivity) {
+                invoiceActivityCard
+                advancedAuditCard
+                advancedPortalDetailsCard
+            } label: {
+                Label("Activity and Portal", systemImage: "clock.arrow.circlepath").font(.headline)
+            }
+            .sbwCardRow()
+        }
+    }
+
+    private var invoiceActivityCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            activityLine("Created", invoice.issueDate)
+            if let sentAt = invoice.sentAt { activityLine("Sent", sentAt) }
+            if let viewedAt = invoice.viewedAt { activityLine("Viewed by client", viewedAt) }
+            if let reminded = invoice.lastReminderAt { activityLine("Last reminder", reminded) }
+            ForEach((invoice.payments ?? []).sorted { $0.paidAt < $1.paidAt }) { payment in
+                activityLine("Paid \(currencyString(fromCents: payment.amountCents))", payment.paidAt)
+            }
+            if invoice.wasSent {
+                Text(portalSyncStatusText)
+                    .font(.caption)
+                    .foregroundStyle(invoice.portalLastUploadError == nil ? Color.secondary : Color.red)
+            }
+        }
+        .sbwCardRow()
+    }
+
+    private func activityLine(_ label: String, _ date: Date) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(date.formatted(date: .abbreviated, time: .shortened))
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
+    }
+
+    @ViewBuilder
+    private var invoiceToolbarButtons: some View {
+        Button {
+            handleDoneTapped()
+        } label: {
+            Image(systemName: "checkmark")
+        }
+        .accessibilityLabel("Done")
+
+        Button { previewPDF() } label: { Image(systemName: "doc.richtext") }
+            .accessibilityLabel("Preview PDF")
+
+        Menu {
+            if invoice.wasSent && !invoice.isPaid {
+                Button { invoiceSendKind = .reminder } label: { Label("Send Reminder", systemImage: "bell") }
+                Button { copyClientLink() } label: { Label("Copy Client Link", systemImage: "doc.on.doc") }
+            }
+            if invoiceStage != .paid && invoice.totalCents > 0 {
+                Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
+            }
+            if isPricingLocked && !invoice.isPaid {
+                Button { confirmUnlockPricing = true } label: { Label("Unlock Pricing", systemImage: "lock.open") }
+            }
+
+            Divider()
+
+            Menu {
+                Button("PDF Only") { sharePDFOnly() }
+                Button("PDF + Attachments") { sharePDFWithAttachments() }
+                Button("ZIP Package (PDF + Attachments)") { shareZIPPackage() }
+                Button("Attachments ZIP") { shareAttachmentsZIPOnly() }
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            Button { emailPDF() } label: { Label("Email PDF", systemImage: "envelope") }
+            Button { duplicateInvoice() } label: { Label(duplicateActionTitle, systemImage: "doc.on.doc") }
+            if invoice.client?.portalEnabled == true {
+                Button { makeRecurring() } label: { Label("Make Recurring", systemImage: "arrow.triangle.2.circlepath") }
+            }
+            Button { showTemplatePicker = true } label: { Label("Change Template", systemImage: "paintpalette") }
+            Button { openJobWorkspaceFolder() } label: { Label("Job Files", systemImage: "folder") }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More")
+        .confirmationDialog("Unlock pricing?", isPresented: $confirmUnlockPricing, titleVisibility: .visible) {
+            Button("Unlock Pricing") { pricingUnlocked = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(invoiceClientName) already has this invoice. After you change it, resend it so they see the new amount — their portal updates when you tap Done.")
         }
     }
 
@@ -1667,49 +1863,6 @@ struct InvoiceDetailView: View {
         }
     }
 
-    private var AdvancedOptionsSection: some View {
-        Section {
-            DisclosureGroup(isExpanded: $showAdvancedOptions) {
-                advancedPaymentCard
-                    .disabled(isEstimateLocked)
-
-                advancedNotesCard
-                    .disabled(isEstimateLocked)
-
-                advancedThankYouCard
-                    .disabled(isEstimateLocked)
-
-                advancedTermsCard
-                    .disabled(isEstimateLocked)
-
-                advancedAttachmentsHeaderCard
-
-                attachmentRows
-
-                advancedAuditCard
-
-                advancedPortalDetailsCard
-
-                if invoice.documentType == "estimate" {
-                    advancedEstimateWorkflowCard
-                    advancedContractCard
-                    advancedLinkedContractsCard
-
-                    if invoice.estimateStatus == "accepted" {
-                        advancedConvertCard
-                    }
-                }
-            } label: {
-                HStack {
-                    Text("Advanced Options")
-                        .font(.headline)
-                    Spacer()
-                }
-            }
-            .sbwCardRow()
-        }
-    }
-
     private var invoiceDisplayTitle: String {
         let num = invoice.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = invoice.documentType == "estimate" ? "Estimate" : "Invoice"
@@ -1724,7 +1877,13 @@ struct InvoiceDetailView: View {
         if invoice.documentType == "estimate" {
             return estimateStatusText
         }
-        return invoice.isPaid ? "PAID" : "UNPAID"
+        switch invoiceStage {
+        case .draft: return "DRAFT"
+        case .sent: return "SENT"
+        case .overdue: return "OVERDUE"
+        case .partPaid: return "PART PAID"
+        case .paid: return "PAID"
+        }
     }
 
     private var estimateStatusText: String {
@@ -2012,67 +2171,6 @@ struct InvoiceDetailView: View {
         .sbwCardRow()
     }
 
-    private var advancedEstimateWorkflowCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Estimate Workflow")
-                .font(.headline)
-
-            Picker("Status", selection: $invoice.estimateStatus) {
-                Text("Draft").tag("draft")
-                Text("Sent").tag("sent")
-                Text("Accepted").tag("accepted")
-                Text("Declined").tag("declined")
-            }
-
-            if let timestamp = estimateStatusTimestampText {
-                Text(timestamp)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if invoice.estimateStatus == "accepted" {
-                if let job = invoice.job {
-                    HStack {
-                        Text("Job Linked")
-                        Spacer()
-                        Text(job.title.isEmpty ? "Job" : job.title)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Button {
-                        acceptEstimateAndCreateJob()
-                    } label: {
-                        Label("Create Job from Accepted Estimate", systemImage: "hammer.fill")
-                    }
-                    .buttonStyle(.bordered)
-                }
-            } else {
-                Button {
-                    invoice.estimateStatus = "accepted"
-                    invoice.estimateAcceptedAt = Date()
-                    invoice.estimateDeclinedAt = nil
-                    acceptEstimateAndCreateJob()
-                } label: {
-                    Label("Accept & Create Job", systemImage: "checkmark.seal.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(invoice.client == nil)
-            }
-
-            if invoice.client == nil {
-                Text("Select a customer first to create the Job.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .sbwCardRow()
-    }
-
-    /// Contracts already linked to this estimate — old data may point via
-    /// `Contract.estimate` (the legacy `createContractFromEstimate()` path),
-    /// new data via `Contract.invoice` (the bundled-drafting path below,
-    /// `ContractCreation.create`). Union both so neither install generation
-    /// silently disappears from this card.
     private var linkedEstimateContracts: [Contract] {
         var seen = Set<UUID>()
         var result: [Contract] = []
@@ -2173,26 +2271,6 @@ struct InvoiceDetailView: View {
                     }
                     .buttonStyle(.plain)
                 }
-            }
-        }
-        .sbwCardRow()
-    }
-
-    private var advancedConvertCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Estimate")
-                .font(.headline)
-
-            if invoice.estimateStatus != "accepted" {
-                Text("Accept this estimate before converting to an invoice.")
-                    .foregroundStyle(.secondary)
-            } else {
-                Button {
-                    convertEstimateToInvoice()
-                } label: {
-                    Label("Convert to Invoice", systemImage: "arrow.right.doc.on.clipboard")
-                }
-                .buttonStyle(.borderedProminent)
             }
         }
         .sbwCardRow()
@@ -2336,90 +2414,24 @@ struct InvoiceDetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
 
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                dismissToDashboard?()
-            } label: {
-                Image(systemName: "house")
+        // Only where something provides it; elsewhere it was a button that
+        // did nothing.
+        if dismissToDashboard != nil {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismissToDashboard?()
+                } label: {
+                    Image(systemName: "house")
+                }
+                .accessibilityLabel("Home")
             }
-            .accessibilityLabel("Home")
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
             if invoice.documentType == "estimate" {
                 estimateToolbarButtons
             } else {
-
-                Button {
-                    handleDoneTapped()
-                } label: {
-                    Image(systemName: "checkmark")
-                }
-                .accessibilityLabel("Done")
-
-                // ✅ Open Job workspace folder
-                Button { openJobWorkspaceFolder() } label: { Image(systemName: "folder") }.accessibilityLabel("Open job files")
-
-                Button { previewPDF() } label: { Image(systemName: "doc.richtext") }.accessibilityLabel("Preview PDF")
-                Button { showTemplatePicker = true } label: { Image(systemName: "paintpalette") }
-                    .accessibilityLabel("Change template")
-
-                Menu {
-                    // A draft's PDF has no business in the client's portal.
-                    if !invoice.isUnsentEstimate {
-                        Button {
-                            Task { @MainActor in
-                                uploadingPortalPDF = true
-                                portalPDFNotice = nil
-                                do {
-                                    let pdfData = await InvoicePDFService.makePDFDataOffMainThread(
-                                        invoice: invoice,
-                                        profiles: profiles,
-                                        context: modelContext,
-                                        businesses: businesses,
-                                        lockBusinessSnapshot: true,
-                                        lockReason: .portal
-                                    )
-                                    let pdfFileName = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
-
-                                    _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
-                                        businessId: invoice.businessID.uuidString,
-                                        invoiceId: String(describing: invoice.id),
-                                        fileName: pdfFileName,
-                                        pdfData: pdfData
-                                    )
-                                    portalPDFNotice = "Portal PDF uploaded"
-                                } catch {
-                                    exportError = error.localizedDescription
-                                }
-                                uploadingPortalPDF = false
-                            }
-                        } label: {
-                            if uploadingPortalPDF {
-                                Label("Uploading Portal PDF…", systemImage: "arrow.up.doc")
-                            } else {
-                                Label("Upload PDF to Client Portal", systemImage: "arrow.up.doc")
-                            }
-                        }
-
-                        Divider()
-                    }
-                    Button("Share PDF Only") { sharePDFOnly() }
-                    Button("Share PDF + Attachments") { sharePDFWithAttachments() }
-                    Button("Share ZIP Package (PDF + Attachments)") { shareZIPPackage() }
-                    Button("Share Attachments ZIP") { shareAttachmentsZIPOnly() }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-
-                Button { emailPDF() } label: { Image(systemName: "envelope") }.accessibilityLabel("Email invoice")
-                Button { duplicateInvoice() } label: { Image(systemName: "doc.on.doc") }
-                    .accessibilityLabel(duplicateActionTitle)
-
-                if invoice.documentType != "estimate", invoice.client?.portalEnabled == true {
-                    Button { makeRecurring() } label: { Image(systemName: "arrow.triangle.2.circlepath") }
-                        .accessibilityLabel("Make Recurring")
-                }
+                invoiceToolbarButtons
             }
         }
     }
@@ -2689,6 +2701,14 @@ struct InvoiceDetailView: View {
 
     private var isEstimatePricingLocked: Bool {
         isEstimateLocked || isEstimateAcceptedLocked
+    }
+
+    /// Estimates lock once accepted or their contract is signed; invoices
+    /// once sent — the client may already have paid against those numbers —
+    /// unless the owner unlocked pricing from the menu to correct and resend.
+    private var isPricingLocked: Bool {
+        if invoice.documentType == "estimate" { return isEstimatePricingLocked }
+        return (invoice.wasSent || invoice.isPaid) && !pricingUnlocked
     }
 
     private var isConvertedFromEstimate: Bool {
@@ -3045,6 +3065,21 @@ struct InvoiceDetailView: View {
 
         do {
             try await PortalPaymentsAPI.shared.resolveManualPaymentReport(reportId: reportId, action: action)
+            // Approving settles it on the server; record what the client said
+            // they paid so the payments list and balance match.
+            if action == "approve",
+               let report = manualReports.first(where: { $0.id == reportId }),
+               !(invoice.payments ?? []).contains(where: { $0.source == "portal" }) {
+                _ = try? InvoicePaymentService.record(
+                    on: invoice,
+                    amountCents: report.amountCents,
+                    paidAt: Date(timeIntervalSince1970: TimeInterval(report.createdAtMs) / 1000),
+                    method: report.method.lowercased(),
+                    note: report.reference.map { "Ref \($0)" } ?? "Reported by client",
+                    source: "portal",
+                    context: modelContext
+                )
+            }
             await refreshInvoicePortalState()
         } catch {
             portalError = error.localizedDescription

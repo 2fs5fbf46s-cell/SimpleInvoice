@@ -30,8 +30,13 @@ struct NewInvoiceView: View {
     @State private var itemDescription: String = ""
     @State private var itemAmountText: String = ""
 
-    init(businessID: UUID? = nil) {
+    /// Called with the new invoice so the list can open it — the sheet used
+    /// to close back to the list, leaving you to find what you just made.
+    private let onCreated: ((Invoice) -> Void)?
+
+    init(businessID: UUID? = nil, onCreated: ((Invoice) -> Void)? = nil) {
         self.businessID = businessID
+        self.onCreated = onCreated
         if let businessID {
             _clients = Query(
                 filter: #Predicate<Client> { client in
@@ -282,6 +287,7 @@ struct NewInvoiceView: View {
         do {
             try modelContext.save()
             dismiss()
+            onCreated?(invoice)
         } catch {
             SBWLog.ui.problem("Failed to save invoice: \(error)")
         }

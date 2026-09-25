@@ -138,6 +138,10 @@ extension SBWTheme {
             return (brandGreen, brandGreen.opacity(0.12))
         case "CANCELED":
             return (Color.red, Color.red.opacity(0.12))
+        case "OVERDUE":
+            return (Color.red, Color.red.opacity(0.12))
+        case "PART PAID":
+            return (Color.orange, Color.orange.opacity(0.14))
 
 
         default:

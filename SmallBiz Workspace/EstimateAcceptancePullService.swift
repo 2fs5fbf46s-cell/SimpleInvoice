@@ -214,6 +214,9 @@ enum EstimateAcceptancePullService {
         )
         deposit.sourceContractId = contract.id.uuidString
         deposit.portalNeedsUpload = true
+        // Goes straight to the client's portal with the accepted estimate —
+        // there's no draft stage for a deposit.
+        deposit.sentAt = .now
 
         context.insert(deposit)
 

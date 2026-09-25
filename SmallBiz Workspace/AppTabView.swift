@@ -481,6 +481,11 @@ struct AppTabView: View {
             return
         }
 
+        // Bring the payment in before the invoice opens, so it shows Paid.
+        if eventKey.contains("invoice"), eventKey.contains("paid") {
+            Task { await InvoiceActivityPullService.pull(context: modelContext, businessID: activeBiz.activeBusinessID) }
+        }
+
         if eventKey.contains("estimate"), eventKey.contains("accepted") {
             tab = .today
             notificationRouter.consumePendingPayload()

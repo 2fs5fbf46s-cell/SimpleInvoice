@@ -225,6 +225,7 @@ enum AppModelContainerFactory {
             FileItem.self,
 
             InvoiceAttachment.self,
+            InvoicePayment.self,
             ContractAttachment.self,
 
             Job.self,

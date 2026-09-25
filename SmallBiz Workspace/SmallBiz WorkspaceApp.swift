@@ -110,6 +110,7 @@ struct SmallBizWorkspaceApp: App {
             await BusinessRegistrationService.ensureRegistered(businessID: businessID)
         }
         await EstimateAcceptancePullService.pullAndMaterialize(context: context, businessID: businessID)
+        await InvoiceActivityPullService.pull(context: context, businessID: businessID)
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: businessID)
         await DepositStatusSyncService.refreshPendingDeposits(context: context, businessID: businessID)
         await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: businessID)
@@ -143,6 +144,7 @@ struct SmallBizWorkspaceApp: App {
         // the fallback leg — and the only one, now that per-estimate status
         // polling is gone.
         await EstimateAcceptancePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
+        await InvoiceActivityPullService.pull(context: context, businessID: activeBiz.activeBusinessID)
         // Deposits are a soft reminder, not a gate, so a plain periodic
         // poll of each pending deposit's own payment status is enough —
         // no push/pull pair needed here.

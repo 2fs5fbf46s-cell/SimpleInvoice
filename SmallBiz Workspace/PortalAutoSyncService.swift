@@ -215,7 +215,7 @@ enum PortalAutoSyncService {
     static func isEligible(invoice: Invoice) -> Bool {
         // Checked before the PDF upload, which otherwise put a draft's PDF
         // in the portal even though its listing was skipped.
-        guard !invoice.isUnsentEstimate else { return false }
+        guard !invoice.isUnsentDocument else { return false }
         guard let client = invoice.client else { return false }
         return client.portalEnabled
     }
@@ -242,6 +242,8 @@ enum PortalAutoSyncService {
         pieces.append("taxAmount=\(invoice.taxAmount)")
         pieces.append("total=\(invoice.total)")
         pieces.append("paid=\(invoice.isPaid)")
+        pieces.append("paidCents=\(invoice.paidCents)")
+        pieces.append("sentAt=\(invoice.sentAt?.timeIntervalSince1970 ?? 0)")
         pieces.append("status=\(invoice.estimateStatus)")
         pieces.append("notes=\(invoice.notes)")
         pieces.append("thankYou=\(invoice.thankYou)")
