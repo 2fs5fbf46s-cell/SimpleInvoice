@@ -456,3 +456,19 @@ struct AttachmentsManagerView: View {
         return formatter.string(from: date)
     }
 }
+
+// SwiftUI decides whether to re-render a view by comparing its stored
+// inputs. `entity` is an enum mixing model-object and String/UUID payloads,
+// which SwiftUI can't compare field-by-field, so every parent render counted
+// as "changed" and re-rendered this screen. As a navigation destination,
+// re-rendering it re-invalidates the screen that pushed it — which rebuilt
+// this destination again, forever (~200 renders/sec), freezing the app on
+// "Manage Attachments" from every entry point. The @Query/@State properties
+// drive their own updates, so which record is shown is the only input that
+// matters.
+extension AttachmentsManagerView: Equatable {
+    static func == (lhs: AttachmentsManagerView, rhs: AttachmentsManagerView) -> Bool {
+        lhs.entity.entityTypeKey == rhs.entity.entityTypeKey
+            && lhs.entity.entityKey == rhs.entity.entityKey
+    }
+}
