@@ -139,8 +139,12 @@ struct InvoiceListView: View {
     @State private var reminderInvoice: Invoice? = nil
     @State private var listNotice: String? = nil
 
-    init(businessID: UUID? = nil, initialFilter: InvoiceListFilter? = nil) {
+    /// Set by the Money tiles ("Overdue" opens the Overdue filter).
+    private var requestedFilter: InvoiceListFilter?
+
+    init(businessID: UUID? = nil, initialFilter: InvoiceListFilter? = nil, requestedFilter: InvoiceListFilter? = nil) {
         self.businessID = businessID
+        self.requestedFilter = requestedFilter
         _filter = State(initialValue: initialFilter ?? .open)
         if let businessID {
             _invoices = Query(
@@ -179,14 +183,6 @@ struct InvoiceListView: View {
                 || invoice.notes.localizedCaseInsensitiveContains(q)
                 || (invoice.items ?? []).contains { $0.itemDescription.localizedCaseInsensitiveContains(q) }
         }
-    }
-
-    private var outstandingCents: Int {
-        scoped.filter { $0.wasSent }.reduce(0) { $0 + $1.balanceDueCents }
-    }
-
-    private var overdueCents: Int {
-        scoped.filter { $0.isOverdue }.reduce(0) { $0 + $1.balanceDueCents }
     }
 
     private var groups: [InvoiceGroup] {
@@ -248,12 +244,6 @@ struct InvoiceListView: View {
                     }
                     .padding(.vertical, 4)
 
-                    HStack(spacing: 10) {
-                        metricTile("Outstanding", cents: outstandingCents, color: .primary) { filter = .open }
-                        metricTile("Overdue", cents: overdueCents, color: overdueCents > 0 ? .red : .primary) { filter = .overdue }
-                    }
-                    .buttonStyle(.plain)
-
                     SBWFilterChips(
                         options: InvoiceListFilter.allCases,
                         title: { $0.rawValue },
@@ -314,6 +304,10 @@ struct InvoiceListView: View {
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Invoices")
+        .onChange(of: requestedFilter) { _, requested in
+            if let requested { filter = requested }
+        }
+        .onAppear { if let requestedFilter { filter = requestedFilter } }
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .toolbar {
@@ -423,23 +417,6 @@ struct InvoiceListView: View {
             case .savedItems:
                 CatalogItemListView()
             }
-        }
-    }
-
-    private func metricTile(_ title: String, cents: Int, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(color == .red ? Color.red : Color.secondary)
-                Text(InvoicePaymentService.currency(cents))
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(color)
-                    .monospacedDigit()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
         }
     }
 

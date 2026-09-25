@@ -400,8 +400,11 @@ struct TodayView: View {
             forceRemote: false
         )
 
+        // Same money-in rules as the Money tab (MoneyMath).
+        let received = MoneyMath.received(invoices: scopedInvoices, jobs: scopedJobs)
+        let lastWeek = MoneyMath.tally(received, in: MoneyMath.lastDays(7))
         weeklyPaidText = Self.currencyFormatter.string(
-            from: NSNumber(value: Double(metricsVM.weeklyPaidCents) / 100.0)
+            from: NSNumber(value: Double(lastWeek.cents) / 100.0)
         ) ?? "$0.00"
         scheduleCount = metricsVM.scheduleCount
     }

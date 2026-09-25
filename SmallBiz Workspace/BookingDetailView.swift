@@ -325,9 +325,25 @@ struct BookingDetailView: View {
                 // Nothing is owed on a booking that won't happen. A paid
                 // deposit isn't refunded automatically, so say so.
                 if booking.depositPaid, let deposit = booking.depositAmountCents, deposit > 0 {
-                    Text("The \(InvoicePaymentService.currency(deposit)) deposit isn't refunded automatically. Refund it yourself if you owe it back.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if let refunded = job?.depositRefundedAt {
+                        row("Refunded", refunded.formatted(date: .abbreviated, time: .omitted))
+                        Button("Undo Refund") { setRefunded(false) }
+                            .font(.subheadline)
+                            .buttonStyle(.borderless)
+                    } else {
+                        // Deposits are non-refundable unless the business
+                        // cancels; then it's the owner's call.
+                        Text(booking.stage == .canceled
+                             ? "Deposits are usually kept, but you canceled this one. If you give the \(InvoicePaymentService.currency(deposit)) back, mark it refunded so it stops counting as money in."
+                             : "The \(InvoicePaymentService.currency(deposit)) deposit counts as money in.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if booking.stage == .canceled, job != nil {
+                            Button("Mark Refunded") { setRefunded(true) }
+                                .font(.subheadline)
+                                .buttonStyle(.borderless)
+                        }
+                    }
                 }
             } else if let total = booking.bookingTotalAmountCents, total > 0 {
                 let paid = booking.depositPaid ? (booking.depositAmountCents ?? 0) : 0
@@ -390,6 +406,11 @@ struct BookingDetailView: View {
     static func jobNote(_ job: Job?, calendar: String, otherwise: String = "is set up") -> String {
         guard let job else { return "" }
         return ", and the job " + (job.calendarEventId == nil ? otherwise : calendar)
+    }
+
+    private func setRefunded(_ refunded: Bool) {
+        job?.depositRefundedAt = refunded ? .now : nil
+        try? modelContext.save()
     }
 
     private func decline() {

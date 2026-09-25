@@ -40,6 +40,7 @@
 		B7A00000000000000000004E /* BookingLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000004F /* BookingLifecycleTests.swift */; };
 		B7A000000000000000000050 /* APIRouteContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000051 /* APIRouteContractTests.swift */; };
 		B7A000000000000000000052 /* BusinessSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000053 /* BusinessSettingsTests.swift */; };
+		B7A000000000000000000054 /* MoneyMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000055 /* MoneyMathTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -87,6 +88,7 @@
 		B7A00000000000000000004F /* BookingLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookingLifecycleTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000051 /* APIRouteContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIRouteContractTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000053 /* BusinessSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessSettingsTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000055 /* MoneyMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyMathTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -163,6 +165,7 @@
 				B7A00000000000000000004F /* BookingLifecycleTests.swift */,
 				B7A000000000000000000051 /* APIRouteContractTests.swift */,
 				B7A000000000000000000053 /* BusinessSettingsTests.swift */,
+				B7A000000000000000000055 /* MoneyMathTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -324,6 +327,7 @@
 				B7A00000000000000000004E /* BookingLifecycleTests.swift in Sources */,
 				B7A000000000000000000050 /* APIRouteContractTests.swift in Sources */,
 				B7A000000000000000000052 /* BusinessSettingsTests.swift in Sources */,
+				B7A000000000000000000054 /* MoneyMathTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

@@ -3031,7 +3031,7 @@ struct InvoiceDetailView: View {
                     reason: .paid,
                     replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
                 )
-                invoice.isPaid = true
+                InvoicePaymentService.markPaidOnline(invoice, context: modelContext)
                 try? modelContext.save()
             }
         } catch {

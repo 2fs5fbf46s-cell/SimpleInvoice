@@ -27,6 +27,19 @@ enum InvoicePaymentService {
     }
 
     @discardableResult
+    /// The portal says an invoice is paid: record what was still due as an
+    /// online payment today, then mark it paid. Marking paid without a
+    /// payment left money-in dated by the invoice's issue date.
+    static func markPaidOnline(_ invoice: Invoice, method: String = "card", context: ModelContext) {
+        guard !invoice.isPaid else { return }
+        let balance = invoice.balanceDueCents
+        if balance > 0, !(invoice.payments ?? []).contains(where: { $0.source == "portal" }) {
+            _ = try? record(on: invoice, amountCents: balance, paidAt: .now, method: method,
+                            note: "Paid in the client portal", source: "portal", context: context)
+        }
+        invoice.isPaid = true
+    }
+
     static func record(
         on invoice: Invoice,
         amountCents: Int,

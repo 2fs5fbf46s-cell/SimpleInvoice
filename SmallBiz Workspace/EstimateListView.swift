@@ -70,13 +70,9 @@ struct EstimateListView: View {
     @Query private var invoices: [Invoice]
 
 
-    // Navigate to the estimate we just created
-    @State private var navigateToEstimate: EstimateListSelection? = nil
     @State private var selectedEstimate: EstimateListSelection? = nil
 
-    // MARK: - Rename
-    @State private var renamingEstimate: Invoice? = nil
-    @State private var renameText: String = ""
+    @State private var pendingDelete: Invoice? = nil
 
     // Open detail after creation
     @State private var showingNewEstimate = false
@@ -91,20 +87,17 @@ struct EstimateListView: View {
 
     // MARK: - Filters
     private enum Filter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case draft = "Draft"
-        case sent = "Sent"
+        case open = "Open"
         case accepted = "Accepted"
         case declined = "Declined"
+        case all = "All"
 
         var id: String { rawValue }
     }
 
-    @State private var filter: Filter = .all
+    @State private var filter: Filter = .open
     @State private var searchText: String = ""
     @State private var isRefreshingFromPortal = false
-    @State private var loadGeneration = UUID()
-    @State private var refreshTask: Task<Void, Never>? = nil
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
@@ -155,25 +148,18 @@ struct EstimateListView: View {
                 }
 
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Filter.allCases) { f in
-                                Button {
-                                    filter = f
-                                } label: {
-                                    Text(f.rawValue)
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            Capsule()
-                                                .fill(filter == f ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    estimateTiles
+                        .buttonStyle(.plain)
+
+                    SBWFilterChips(
+                        options: Filter.allCases,
+                        title: { option in
+                            let n = count(option)
+                            return option == .all || n == 0 ? option.rawValue : "\(option.rawValue) \(n)"
+                        },
+                        selection: $filter
+                    )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 }
 
                 // MARK: - Content
@@ -183,11 +169,11 @@ struct EstimateListView: View {
                         systemImage: "building.2",
                         description: Text("Select a business to view estimates.")
                     )
-                } else if filteredEstimates.isEmpty {
+                } else if groups.isEmpty {
                     let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || filter != .all
                     SBWEmptyState(
-                        title: "No Estimates",
+                        title: filter == .open && searchText.isEmpty ? "Nothing waiting on a client" : "No Estimates",
                         message: SBWEmptyStateCopy.message(
                             noun: "estimate",
                             pluralNoun: "estimates",
@@ -200,7 +186,7 @@ struct EstimateListView: View {
                             draftClient = nil
                             showingCreateEstimate = true
                         },
-                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
+                        secondaryTitle: isFiltered ? "Show All" : nil,
                         secondaryAction: isFiltered ? {
                             searchText = ""
                             filter = .all
@@ -209,38 +195,30 @@ struct EstimateListView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 } else {
-                    ForEach(filteredEstimates) { estimate in
-                        Button {
-                            selectedEstimate = EstimateListSelection(id: estimate.id)
-                        } label: {
-                            row(estimate)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-
-                            Button {
-                                renamingEstimate = estimate
-                                renameText = estimate.invoiceNumber
-                            } label: {
-                                Label("Rename", systemImage: "pencil")
-                            }
-
-                            Button(role: .destructive) {
-                                modelContext.delete(estimate)
-                                do { try modelContext.save() }
-                                catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                    ForEach(groups) { group in
+                        Section(group.title) {
+                            ForEach(group.estimates) { estimate in
+                                Button {
+                                    selectedEstimate = EstimateListSelection(id: estimate.id)
+                                } label: {
+                                    EstimateListRow(estimate: estimate)
+                                }
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        pendingDelete = estimate
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                     }
-                    .onDelete(perform: deleteEstimates)
                 }
             }
             .scrollContentBackground(.hidden)
             .refreshable {
-                await guardedRefreshFilteredEstimatesFromPortal(generation: loadGeneration)
+                await EstimateAcceptancePullService.pullAndMaterialize(context: modelContext, businessID: effectiveBusinessID)
                 EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             }
         }
@@ -276,10 +254,6 @@ struct EstimateListView: View {
             }
         }
 
-        // Navigate to created estimate (template-style navigation)
-        .navigationDestination(item: $navigateToEstimate) { selection in
-            EstimateListInvoiceRouteView(invoiceID: selection.id)
-        }
         .navigationDestination(item: $selectedEstimate) { selection in
             EstimateListInvoiceRouteView(invoiceID: selection.id)
         }
@@ -292,32 +266,23 @@ struct EstimateListView: View {
             }
         }
 
-        // MARK: - Rename Alert
-        .alert("Rename Estimate", isPresented: Binding(
-            get: { renamingEstimate != nil },
-            set: { if !$0 { renamingEstimate = nil } }
-        )) {
-            TextField("Name", text: $renameText)
-
-            Button("Save") {
-                guard let est = renamingEstimate else { return }
-                let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
-
-                est.invoiceNumber = trimmed
-
+        .confirmationDialog(
+            "Delete this estimate?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { estimate in
+            Button("Delete Estimate", role: .destructive) {
+                modelContext.delete(estimate)
                 do { try modelContext.save() }
-                catch { SBWLog.ui.problem("Failed to save rename: \(error)") }
-                Haptics.success()
-
-                renamingEstimate = nil
+                catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
+                pendingDelete = nil
             }
-
-            Button("Cancel", role: .cancel) {
-                renamingEstimate = nil
-            }
-        } message: {
-            Text("This changes the estimate label shown in the list.")
+            Button("Keep It", role: .cancel) { pendingDelete = nil }
+        } message: { estimate in
+            Text(estimate.wasSent
+                 ? "The client already has it. Their link stops working."
+                 : "It was never sent.")
         }
 
         // MARK: - Create sheet (name + client)
@@ -385,25 +350,13 @@ struct EstimateListView: View {
                 }
             }
         }
+        // One batched pull for every estimate's decision. This used to ask
+        // the server about each estimate in turn, every time the Estimates
+        // tab was opened.
         .task(id: effectiveBusinessID) {
-            loadGeneration = UUID()
-            refreshTask?.cancel()
             EstimateDecisionSync.applyPendingDecisions(in: modelContext)
-            let generation = loadGeneration
-            refreshTask = Task {
-                await guardedRefreshFilteredEstimatesFromPortal(generation: generation)
-            }
-            await refreshTask?.value
+            await EstimateAcceptancePullService.pullAndMaterialize(context: modelContext, businessID: effectiveBusinessID)
         }
-        .onDisappear {
-            refreshTask?.cancel()
-            refreshTask = nil
-        }
-
-        // Manual Test Steps:
-        // 1) Switch business during refresh and verify stale status responses do not overwrite current list.
-        // 2) Open estimate, close, reopen, and ensure sheet/navigation selection remains stable.
-        // 3) Scroll long estimate list and confirm smooth interactions.
     }
 
     // MARK: - Data (scoped + filtered)
@@ -412,116 +365,78 @@ struct EstimateListView: View {
         invoices.scoped(to: effectiveBusinessID)
     }
 
-    @MainActor
-    private func guardedRefreshFilteredEstimatesFromPortal(generation: UUID) async {
-        guard isRefreshingFromPortal == false else { return }
-        isRefreshingFromPortal = true
-        defer { isRefreshingFromPortal = false }
-        await refreshFilteredEstimatesFromPortal(generation: generation)
+    private var estimates: [Invoice] {
+        scopedInvoices.filter { $0.documentType == "estimate" }
     }
 
-    private var filteredEstimates: [Invoice] {
-        let estimatesOnly = scopedInvoices.filter { $0.documentType == "estimate" }
+    private var searched: [Invoice] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return estimates }
+        return estimates.filter {
+            $0.invoiceNumber.localizedCaseInsensitiveContains(q)
+                || $0.displayClientName.localizedCaseInsensitiveContains(q)
+                || ($0.job?.title.localizedCaseInsensitiveContains(q) ?? false)
+                || ($0.items ?? []).contains { $0.itemDescription.localizedCaseInsensitiveContains(q) }
+        }
+    }
 
-        let base: [Invoice]
+    private struct EstimateGroup: Identifiable {
+        let title: String
+        let estimates: [Invoice]
+        var id: String { title }
+    }
+
+    private var groups: [EstimateGroup] {
+        let all = searched
+        let waiting = all.filter { EstimateStage($0) == .waiting }
+            .sorted { ($0.sentAt ?? $0.issueDate) < ($1.sentAt ?? $1.issueDate) }
+        let drafts = all.filter { EstimateStage($0) == .draft }
+        let accepted = all.filter { EstimateStage($0) == .accepted }
+            .sorted { ($0.estimateAcceptedAt ?? $0.issueDate) > ($1.estimateAcceptedAt ?? $1.issueDate) }
+        let declined = all.filter { EstimateStage($0) == .declined }
+        let result: [EstimateGroup]
         switch filter {
-        case .all:
-            base = estimatesOnly
-        case .draft:
-            base = estimatesOnly.filter { normalizedStatus($0.estimateStatus) == "draft" }
-        case .sent:
-            base = estimatesOnly.filter { normalizedStatus($0.estimateStatus) == "sent" }
+        case .open:
+            result = [.init(title: "Waiting on the client", estimates: waiting), .init(title: "Not sent yet", estimates: drafts)]
         case .accepted:
-            base = estimatesOnly.filter { normalizedStatus($0.estimateStatus) == "accepted" }
+            result = [.init(title: "Accepted", estimates: accepted)]
         case .declined:
-            base = estimatesOnly.filter { normalizedStatus($0.estimateStatus) == "declined" }
+            result = [.init(title: "Declined", estimates: declined)]
+        case .all:
+            result = [
+                .init(title: "Waiting on the client", estimates: waiting),
+                .init(title: "Not sent yet", estimates: drafts),
+                .init(title: "Accepted", estimates: accepted),
+                .init(title: "Declined", estimates: declined),
+            ]
         }
-
-        guard !searchText.isEmpty else { return base }
-
-        return base.filter {
-            $0.invoiceNumber.localizedCaseInsensitiveContains(searchText) ||
-            ($0.client?.name ?? "").localizedCaseInsensitiveContains(searchText)
-        }
+        return result.filter { !$0.estimates.isEmpty }
     }
 
-    // MARK: - Row UI (Option A chip styling)
-
-    private func row(_ estimate: Invoice) -> some View {
-        let statusText = estimatePillText(for: estimate)
-        // See InvoiceListView: the snapshot, not the relationship.
-        let clientName = estimate.displayClientName
-        let date = estimate.issueDate.formatted(date: .abbreviated, time: .omitted)
-        let total = estimate.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-        let subtitle = "\(statusText) • \(clientName) • \(date) • \(total)"
-
-        return HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Estimates"))
-                Image(systemName: "doc.text.magnifyingglass")
-                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
-                    .foregroundStyle(.primary)
-            }
-            .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Estimate \(estimate.invoiceNumber)")
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer()
-                    SBWStatusPill(text: statusText)
-                }
-                Text(subtitle.replacingOccurrences(of: "\(statusText) • ", with: ""))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.vertical, 4)
-        .frame(minHeight: 56, alignment: .topLeading)
-    }
-
-    private func estimatePillText(for estimate: Invoice) -> String {
-        switch normalizedStatus(estimate.estimateStatus) {
-        case "draft": return "DRAFT"
-        case "sent": return "SENT"
-        case "accepted": return "ACCEPTED"
-        case "declined": return "DECLINED"
-        default: return "DRAFT"
+    private func count(_ option: Filter) -> Int {
+        switch option {
+        case .open: return estimates.filter { [.waiting, .draft].contains(EstimateStage($0)) }.count
+        default: return 0
         }
     }
 
-    private func normalizedStatus(_ raw: String) -> String {
-        raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    private var estimateTiles: some View {
+        let waiting = estimates.filter { EstimateStage($0) == .waiting }
+        let since = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
+        let accepted = estimates.filter { EstimateStage($0) == .accepted && ($0.estimateAcceptedAt ?? .distantPast) >= since }
+        let drafts = estimates.filter { EstimateStage($0) == .draft }
+        return HStack(spacing: 8) {
+            EstimateTile(title: "Waiting",
+                         value: InvoicePaymentService.currency(waiting.reduce(0) { $0 + $1.totalCents }),
+                         detail: "\(waiting.count) estimate\(waiting.count == 1 ? "" : "s")") { filter = .open }
+            EstimateTile(title: "Accepted",
+                         value: InvoicePaymentService.currency(accepted.reduce(0) { $0 + $1.totalCents }),
+                         detail: "last 30 days") { filter = .accepted }
+            EstimateTile(title: "Not sent", value: "\(drafts.count)",
+                         detail: drafts.count == 1 ? "draft" : "drafts") { filter = .open }
+        }
     }
 
-    @MainActor
-    private func refreshFilteredEstimatesFromPortal(generation: UUID) async {
-        for estimate in filteredEstimates {
-            if generation != loadGeneration || Task.isCancelled { return }
-            do {
-                let remote = try await PortalBackend.shared.fetchEstimateStatus(
-                    businessId: estimate.businessID.uuidString,
-                    estimateId: estimate.id.uuidString
-                )
-                if generation != loadGeneration || Task.isCancelled { return }
-                let local = normalizedStatus(estimate.estimateStatus)
-                if local != remote.status {
-                    EstimateDecisionSync.setEstimateDecision(
-                        estimate: estimate,
-                        status: remote.status,
-                        decidedAt: remote.decidedAt ?? .now
-                    )
-                }
-            } catch {
-                continue
-            }
-        }
-        guard generation == loadGeneration, !Task.isCancelled else { return }
-        try? modelContext.save()
-    }
 
     // MARK: - Create
 
@@ -557,7 +472,7 @@ struct EstimateListView: View {
         let hasNotes = !inv.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasItems = !((inv.items ?? []).isEmpty)
         let hasMoney = inv.total != 0
-        let statusNotDraft = normalizedStatus(inv.estimateStatus) != "draft"
+        let statusNotDraft = EstimateStage(inv) != .draft
 
         let isEmptyDraft = !(hasClient || hasNotes || hasItems || hasMoney || statusNotDraft)
 
@@ -570,15 +485,6 @@ struct EstimateListView: View {
         newEstimate = nil
     }
 
-    // MARK: - Deletes
-
-    private func deleteEstimates(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(filteredEstimates[index])
-        }
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
-    }
 }
 
 // Pushed onto a NavigationStack and not comparable field-by-field, so it
@@ -586,5 +492,122 @@ struct EstimateListView: View {
 extension EstimateListView: Equatable {
     static func == (lhs: EstimateListView, rhs: EstimateListView) -> Bool {
         lhs.businessID == rhs.businessID
+    }
+}
+
+/// Where an estimate stands, from the client's side: not sent, waiting on
+/// them, or decided. The list used to show "SENT"/"DRAFT" in capitals while
+/// every other list says "Sent"/"Draft".
+enum EstimateStage: Equatable {
+    case draft, waiting, accepted, declined
+
+    init(_ estimate: Invoice) {
+        switch estimate.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "accepted": self = .accepted
+        case "declined": self = .declined
+        case "sent": self = .waiting
+        default: self = estimate.wasSent ? .waiting : .draft
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .draft: return "Draft"
+        case .waiting: return "Waiting"
+        case .accepted: return "Accepted"
+        case .declined: return "Declined"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .draft: return .secondary
+        case .waiting: return .orange
+        case .accepted: return .green
+        case .declined: return .red
+        }
+    }
+}
+
+private struct EstimateListRow: View {
+    let estimate: Invoice
+
+    private var title: String {
+        let job = (estimate.job?.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstItem = (estimate.items ?? []).first?.itemDescription.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let what = job.isEmpty ? firstItem : job
+        let client = estimate.displayClientName
+        if what.isEmpty { return client }
+        return client.isEmpty ? what : "\(what) · \(client)"
+    }
+
+    private var detail: String {
+        var parts = [ClientWorkItem.documentName(estimate)]
+        switch EstimateStage(estimate) {
+        case .draft:
+            parts.append("not sent")
+        case .waiting:
+            if let sent = estimate.sentAt {
+                let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: sent), to: Calendar.current.startOfDay(for: .now)).day ?? 0
+                parts.append(days <= 0 ? "sent today" : "sent \(days) day\(days == 1 ? "" : "s") ago")
+            } else {
+                parts.append("sent")
+            }
+            if estimate.viewedAt != nil { parts.append("viewed") }
+        case .accepted:
+            if let at = estimate.estimateAcceptedAt { parts.append("accepted \(at.formatted(date: .abbreviated, time: .omitted))") }
+        case .declined:
+            if let at = estimate.estimateDeclinedAt { parts.append("declined \(at.formatted(date: .abbreviated, time: .omitted))") }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        let stage = EstimateStage(estimate)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(InvoicePaymentService.currency(estimate.totalCents))
+                    .font(.body.weight(.semibold))
+                    .monospacedDigit()
+                Text(stage.label)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 7)
+                    .background(Capsule().fill(stage.color.opacity(0.15)))
+                    .foregroundStyle(stage.color)
+            }
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct EstimateTile: View {
+    let title: String
+    let value: String
+    let detail: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(value).font(.headline).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                Text(detail).font(.caption2).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
+        }
     }
 }

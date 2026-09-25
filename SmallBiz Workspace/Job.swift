@@ -59,6 +59,9 @@ final class Job {
     var quotedTotalCents: Int? = nil
     var depositInvoiceId: String? = nil
     var depositPaidAtMs: Int64? = nil
+    /// A booking deposit the owner gave back (they canceled the booking).
+    /// Deposits are non-refundable otherwise, so they count as money in.
+    var depositRefundedAt: Date? = nil
 
     /// No real date yet. A job made from an accepted estimate used to borrow
     /// the estimate's issue/due dates — in the past — and show as

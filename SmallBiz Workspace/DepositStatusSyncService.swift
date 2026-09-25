@@ -40,7 +40,7 @@ enum DepositStatusSyncService {
                    let invoice = (try? context.fetch(
                        FetchDescriptor<Invoice>(predicate: #Predicate<Invoice> { $0.id == invoiceUUID })
                    ))?.first {
-                    invoice.isPaid = true
+                    InvoicePaymentService.markPaidOnline(invoice, context: context)
                 }
             } catch {
                 SBWLog.ui.problem("[DepositStatus] payment-status check failed for job \(job.id): \(error)")

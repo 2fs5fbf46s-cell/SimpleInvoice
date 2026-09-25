@@ -52,6 +52,16 @@ struct ExpenseFormView: View {
         )
     }
 
+    /// The business's currency, not always "$" (the list already used it).
+    private var currencySymbol: String {
+        let id = expense.businessID
+        let code = (try? modelContext.fetch(FetchDescriptor<Business>(predicate: #Predicate { $0.id == id })).first)?.currencyCode ?? "USD"
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = code
+        return formatter.currencySymbol ?? "$"
+    }
+
     private var isValid: Bool {
         expense.amountCents > 0
     }
@@ -60,7 +70,7 @@ struct ExpenseFormView: View {
         Form {
             Section("Amount") {
                 HStack {
-                    Text("$")
+                    Text(currencySymbol)
                         .foregroundStyle(.secondary)
                     TextField("0.00", value: $expense.amountDollars, format: .number)
                         .keyboardType(.decimalPad)

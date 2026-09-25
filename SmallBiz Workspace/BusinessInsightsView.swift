@@ -1,637 +1,187 @@
-import OSLog
 import SwiftUI
 import SwiftData
 import Charts
 
-struct WeeklyPaidPoint: Identifiable {
-    let id = UUID()
-    let weekStart: Date
-    let paidCents: Int
-    let expenseCents: Int
-
-    var profitCents: Int { paidCents - expenseCents }
-}
-
-struct ExpenseCategoryTotal: Identifiable {
-    let category: ExpenseCategory
-    let cents: Int
-    var id: String { category.rawValue }
-}
-
+/// How money is moving: money in per week, this month against expenses, and
+/// who owes you.
+///
+/// Every number comes from MoneyMath, the same as the Money tiles, Today and
+/// each client. This screen used to count its own way: "Paid this week" was
+/// dated by the invoice's issue date (the paid date it looked for didn't
+/// exist), part payments never counted, drafts the client never saw were
+/// "outstanding", and the Unknown Client row opened an empty screen.
 struct BusinessInsightsView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Query private var invoices: [Invoice]
+    @Query private var jobs: [Job]
+    @Query private var expenses: [Expense]
 
-    private let businessID: UUID?
-    @Query private var businesses: [Business]
+    @State private var showNoClient = false
 
-    @State private var cashInWeekCents: Int = 0
-    @State private var cashInMonthCents: Int = 0
-    @State private var outstandingTotalCents: Int = 0
-    @State private var overdueTotalCents: Int = 0
-    @State private var draftCount: Int = 0
-    @State private var sentUnpaidCount: Int = 0
-    @State private var estimateCount: Int = 0
-    @State private var weeklyPaidTrend: [WeeklyPaidPoint] = []
-    @State private var expenseMonthCents: Int = 0
-    @State private var categoryBreakdown: [ExpenseCategoryTotal] = []
-    @State private var isLoadingInsights = false
-    @State private var hasAnyRecords = false
-    @State private var loadGeneration = UUID()
-
-    init(businessID: UUID? = nil) {
-        self.businessID = businessID
-        if let businessID {
-            _businesses = Query(
-                filter: #Predicate<Business> { business in
-                    business.id == businessID
-                }
-            )
-        } else {
-            _businesses = Query()
-        }
-    }
-
-    private var effectiveBusinessID: UUID? {
-        businessID
-    }
-
-    private var currentBusiness: Business? {
-        guard let bizID = effectiveBusinessID else { return nil }
-        return businesses.first(where: { $0.id == bizID })
-    }
-
-    private var currencyCode: String {
-        InsightsCurrency.normalizedCode(currentBusiness?.currencyCode) ?? "USD"
+    init(businessID: UUID?) {
+        let scoped = BusinessScoped.queryBusinessID(businessID)
+        _invoices = Query(filter: #Predicate<Invoice> { $0.businessID == scoped })
+        _jobs = Query(filter: #Predicate<Job> { $0.businessID == scoped })
+        _expenses = Query(filter: #Predicate<Expense> { $0.businessID == scoped })
     }
 
     var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            SBWTheme.headerWash()
+        let received = MoneyMath.received(invoices: invoices, jobs: jobs)
+        let weeks = MoneyMath.weekly(received, weeks: 8)
+        let month = MoneyMath.thisMonth()
+        let inThisMonth = MoneyMath.tally(received, in: month)
+        let spent = MoneyMath.spent(expenses, in: month)
+        let balances = MoneyMath.byClient(invoices)
 
-            if effectiveBusinessID == nil {
-                ContentUnavailableView(
-                    "No Business Selected",
-                    systemImage: "building.2",
-                    description: Text("Select a business to view insights.")
-                )
-            } else if let bizID = effectiveBusinessID {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        if isLoadingInsights {
-                            loadingCard
-                        } else if !hasAnyRecords {
-                            emptyInsightsCard
-                        } else {
-                            trendCard
-                            cashInCard
-                            expensesCard
-                            outstandingCard(businessID: bizID)
-                            pipelineCard
-                        }
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Money in, last 8 weeks").font(.headline)
+                        Spacer()
+                        Text("by payment date").font(.caption).foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 24)
-                }
-            }
-        }
-        .navigationTitle("Business Insights")
-        .navigationBarTitleDisplayMode(.large)
-        .sbwNavigationBarBackdrop()
-        .task(id: effectiveBusinessID?.uuidString ?? "none") {
-            guard let bizID = effectiveBusinessID else {
-                resetState()
-                return
-            }
-            await loadInsights(for: bizID)
-        }
-    }
-
-    private var loadingCard: some View {
-        SBWCardContainer {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Loading insights...")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var emptyInsightsCard: some View {
-        SBWCardContainer {
-            ContentUnavailableView(
-                "No insights yet",
-                systemImage: "chart.bar.xaxis",
-                description: Text("Create your first invoice or expense to start tracking revenue, spending, and balances.")
-            )
-        }
-    }
-
-    private var trendCard: some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Paid Per Week")
-                    .font(.headline)
-
-                if weeklyPaidTrend.allSatisfy({ $0.paidCents == 0 && $0.expenseCents == 0 }) {
-                    Text("Nothing paid or spent in the last \(weeklyPaidTrend.count) weeks.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(height: 120, alignment: .center)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Chart(weeklyPaidTrend) { point in
-                        LineMark(
-                            x: .value("Week", point.weekStart),
-                            y: .value("Paid", Double(point.paidCents) / 100.0)
+                    Chart(weeks, id: \.start) { week in
+                        BarMark(
+                            x: .value("Week", week.start, unit: .weekOfYear),
+                            y: .value("Money in", Double(week.cents) / 100)
                         )
-                        .foregroundStyle(by: .value("Series", "Paid"))
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .interpolationMethod(.catmullRom)
-
-                        AreaMark(
-                            x: .value("Week", point.weekStart),
-                            y: .value("Paid", Double(point.paidCents) / 100.0)
-                        )
-                        .foregroundStyle(SBWTheme.brandBlue.opacity(0.16))
-                        .interpolationMethod(.catmullRom)
-
-                        PointMark(
-                            x: .value("Week", point.weekStart),
-                            y: .value("Paid", Double(point.paidCents) / 100.0)
-                        )
-                        .foregroundStyle(SBWTheme.brandBlue)
-                        .symbolSize(point.weekStart == weeklyPaidTrend.last?.weekStart ? 60 : 0)
-
-                        LineMark(
-                            x: .value("Week", point.weekStart),
-                            y: .value("Profit", Double(point.profitCents) / 100.0)
-                        )
-                        .foregroundStyle(by: .value("Series", "Profit"))
-                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 3]))
-                        .interpolationMethod(.catmullRom)
-                    }
-                    .chartForegroundStyleScale([
-                        "Paid": SBWTheme.brandBlue,
-                        "Profit": Color.orange
-                    ])
-                    .chartLegend(position: .top, alignment: .trailing)
-                    .frame(height: 120)
-                    .chartXAxis {
-                        AxisMarks(values: .stride(by: .weekOfYear, count: 2)) { _ in
-                            AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        }
+                        .foregroundStyle(week.start == weeks.last?.start ? Color.accentColor : Color.accentColor.opacity(0.35))
+                        .cornerRadius(3)
                     }
                     .chartYAxis {
                         AxisMarks(position: .leading) { value in
                             AxisGridLine()
-                            if let dollars = value.as(Double.self) {
-                                // Profit can go negative in a loss week — unlike the rest
-                                // of Insights, this axis can't clamp to zero via
-                                // InsightsCurrency.string or a real loss reads as "$0.00".
-                                AxisValueLabel(signedCurrencyString(dollars: dollars))
+                            AxisValueLabel {
+                                if let dollars = value.as(Double.self) { Text(Self.shortCurrency(dollars)) }
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-
-    private func signedCurrencyString(dollars: Double) -> String {
-        dollars.formatted(.currency(code: currencyCode))
-    }
-
-    private var cashInCard: some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Cash In")
-                    .font(.headline)
-
-                valueRow(
-                    label: "Paid this week",
-                    value: currencyString(from: cashInWeekCents)
-                )
-
-                Divider().opacity(0.35)
-
-                valueRow(
-                    label: "Paid this month",
-                    value: currencyString(from: cashInMonthCents)
-                )
-            }
-        }
-    }
-
-    private var expensesCard: some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Expenses")
-                    .font(.headline)
-
-                if expenseMonthCents == 0 && categoryBreakdown.isEmpty {
-                    Text("No expenses logged this month.")
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: .weekOfYear, count: 2)) {
+                            AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                        }
+                    }
+                    .frame(height: 160)
+                    Text("This week: \(InvoicePaymentService.currency(weeks.last?.cents ?? 0))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                LabeledContent("Money in", value: InvoicePaymentService.currency(inThisMonth.cents))
+                LabeledContent("Spent", value: InvoicePaymentService.currency(spent.cents))
+                LabeledContent {
+                    Text(InvoicePaymentService.currency(inThisMonth.cents - spent.cents))
+                        .foregroundStyle(inThisMonth.cents - spent.cents < 0 ? .red : .primary)
+                        .fontWeight(.semibold)
+                } label: {
+                    Text("Profit")
+                }
+            } header: {
+                Text(month.start.formatted(.dateTime.month(.wide)))
+            } footer: {
+                Text("Profit is money in less expenses this month, before tax.")
+            }
+            .monospacedDigit()
+
+            Section {
+                if balances.isEmpty {
+                    Text("Nobody owes you anything right now.")
+                        .foregroundStyle(.secondary)
                 } else {
-                    valueRow(
-                        label: "This month",
-                        value: currencyString(from: expenseMonthCents)
-                    )
-
-                    if !categoryBreakdown.isEmpty {
-                        Divider().opacity(0.35)
-
-                        ForEach(Array(categoryBreakdown.enumerated()), id: \.element.id) { index, entry in
-                            if index > 0 {
-                                Divider().opacity(0.35)
-                            }
-                            valueRow(
-                                label: entry.category.displayName,
-                                value: currencyString(from: entry.cents)
-                            )
+                    ForEach(balances) { balance in
+                        if let clientID = balance.clientID, let client = client(clientID) {
+                            NavigationLink { ClientDetailView(client: client) } label: { balanceRow(balance) }
+                        } else {
+                            Button { showNoClient = true } label: { balanceRow(balance) }
+                                .buttonStyle(.plain)
                         }
                     }
                 }
+            } header: {
+                Text("Who owes you")
+            }
+
+            Section("Pipeline") {
+                LabeledContent("Invoices not sent yet", value: "\(draftCount)")
+                LabeledContent("Invoices waiting on payment", value: "\(MoneyMath.open(invoices).count)")
+                LabeledContent("Estimates waiting on the client", value: "\(estimatesWaiting)")
             }
         }
+        .navigationTitle("Insights")
+        .navigationDestination(isPresented: $showNoClient) { NoClientInvoicesView(invoices: noClientInvoices) }
     }
 
-    private func outstandingCard(businessID: UUID) -> some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Outstanding")
-                    .font(.headline)
-
-                NavigationLink {
-                    OutstandingBalancesView(
-                        businessID: businessID,
-                        mode: .outstandingAll,
-                        currencyCode: currencyCode
-                    )
-                } label: {
-                    navigationValueRow(
-                        label: "Outstanding total",
-                        value: currencyString(from: outstandingTotalCents)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                Divider().opacity(0.35)
-
-                NavigationLink {
-                    OutstandingBalancesView(
-                        businessID: businessID,
-                        mode: .overdueOnly,
-                        currencyCode: currencyCode
-                    )
-                } label: {
-                    navigationValueRow(
-                        label: "Overdue total",
-                        value: currencyString(from: overdueTotalCents)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var pipelineCard: some View {
-        SBWCardContainer {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Pipeline")
-                    .font(.headline)
-
-                valueRow(label: "Draft count", value: "\(draftCount)")
-                Divider().opacity(0.35)
-                valueRow(label: "Sent/unpaid count", value: "\(sentUnpaidCount)")
-                Divider().opacity(0.35)
-                valueRow(label: "Estimates", value: "\(estimateCount)")
-            }
-        }
-    }
-
-    private func valueRow(label: String, value: String) -> some View {
+    private func balanceRow(_ balance: MoneyMath.ClientBalance) -> some View {
         HStack {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-        }
-        .frame(minHeight: 28)
-    }
-
-    private func navigationValueRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 6) {
-                Text(value)
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(balance.name)
                     .foregroundStyle(.primary)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                Text(balance.overdueCount > 0
+                     ? "\(balance.overdueCount) overdue"
+                     : "\(balance.invoiceCount) invoice\(balance.invoiceCount == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(balance.overdueCount > 0 ? .red : .secondary)
             }
+            Spacer()
+            Text(InvoicePaymentService.currency(balance.owedCents))
+                .monospacedDigit()
+                .foregroundStyle(balance.overdueCount > 0 ? .red : .primary)
         }
-        .frame(minHeight: 28)
+        .contentShape(Rectangle())
     }
 
-    private func currencyString(from cents: Int) -> String {
-        InsightsCurrency.string(cents: cents, code: currencyCode)
+    private func client(_ id: UUID) -> Client? {
+        invoices.first { $0.client?.id == id }?.client
     }
 
-    private func resetState() {
-        cashInWeekCents = 0
-        cashInMonthCents = 0
-        outstandingTotalCents = 0
-        overdueTotalCents = 0
-        draftCount = 0
-        sentUnpaidCount = 0
-        estimateCount = 0
-        weeklyPaidTrend = []
-        expenseMonthCents = 0
-        categoryBreakdown = []
-        hasAnyRecords = false
-        isLoadingInsights = false
-        loadGeneration = UUID()
+    private var noClientInvoices: [Invoice] {
+        MoneyMath.open(invoices).filter { $0.client == nil && $0.clientID == nil }
     }
 
-    @MainActor
-    private func loadInsights(for businessID: UUID) async {
-        let token = UUID()
-        loadGeneration = token
-        isLoadingInsights = true
-        hasAnyRecords = false
-
-        let startedAt = Date()
-        #if DEBUG
-        SBWLog.ui.note("[BusinessInsights] load start business=\(businessID.uuidString)")
-        #endif
-
-        do {
-            let now = Date()
-            var fd = FetchDescriptor<Invoice>(
-                predicate: #Predicate<Invoice> { invoice in
-                    invoice.businessID == businessID
-                },
-                sortBy: [SortDescriptor(\Invoice.issueDate, order: .reverse)]
-            )
-            fd.fetchLimit = 3000
-
-            let invoices = try modelContext.fetch(fd)
-            guard loadGeneration == token else { return }
-
-            var expenseFd = FetchDescriptor<Expense>(
-                predicate: #Predicate<Expense> { expense in
-                    expense.businessID == businessID
-                },
-                sortBy: [SortDescriptor(\Expense.date, order: .reverse)]
-            )
-            expenseFd.fetchLimit = 3000
-
-            let expenses = try modelContext.fetch(expenseFd)
-            guard loadGeneration == token else { return }
-
-            let snapshot = computeSnapshot(from: invoices, expenses: expenses, now: now)
-            guard loadGeneration == token else { return }
-
-            hasAnyRecords = !snapshot.records.isEmpty || !expenses.isEmpty
-            cashInWeekCents = snapshot.paidWeekCents
-            cashInMonthCents = snapshot.paidMonthCents
-            outstandingTotalCents = snapshot.outstandingCents
-            overdueTotalCents = snapshot.overdueCents
-            draftCount = snapshot.draftCount
-            sentUnpaidCount = snapshot.sentUnpaidCount
-            estimateCount = snapshot.estimateCount
-            weeklyPaidTrend = snapshot.weeklyPaidTrend
-            expenseMonthCents = snapshot.expenseMonthCents
-            categoryBreakdown = snapshot.categoryBreakdown
-            isLoadingInsights = false
-
-            #if DEBUG
-            let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            SBWLog.ui.note("[BusinessInsights] load done rows=\(snapshot.records.count) loadMs=\(loadMs)")
-            #endif
-        } catch {
-            guard loadGeneration == token else { return }
-            isLoadingInsights = false
-            hasAnyRecords = false
-
-            #if DEBUG
-            let loadMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            SBWLog.ui.problem("[BusinessInsights] load failed loadMs=\(loadMs) error=\(error)")
-            #endif
-        }
+    private var draftCount: Int {
+        MoneyMath.billed(invoices).filter { !$0.wasSent && !$0.isPaid }.count
     }
 
-    private func computeSnapshot(from invoices: [Invoice], expenses: [Expense], now: Date) -> InsightsSnapshot {
-        let nonEstimates = invoices.filter { inv in
-            inv.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "estimate"
-        }
-        let estimates = invoices.filter { inv in
-            inv.documentType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "estimate"
-        }
-
-        let sentUnpaid = nonEstimates.filter { inv in
-            !inv.isPaid && !(inv.items ?? []).isEmpty
-        }
-        let draftUnpaid = nonEstimates.filter { inv in
-            !inv.isPaid && (inv.items ?? []).isEmpty
-        }
-        let overdue = sentUnpaid.filter { $0.dueDate < now }
-
-        let weekInterval = InsightsDateSupport.calendar.dateInterval(of: .weekOfYear, for: now)
-        let monthInterval = InsightsDateSupport.calendar.dateInterval(of: .month, for: now)
-
-        var paidWeekCents = 0
-        var paidMonthCents = 0
-
-        for invoice in nonEstimates where invoice.isPaid {
-            guard let paidDate = InsightsDateSupport.resolvedPaidDate(for: invoice) else {
-                continue
-            }
-            let amount = max(0, invoice.totalCents)
-            if let weekInterval, weekInterval.contains(paidDate) {
-                paidWeekCents += amount
-            }
-            if let monthInterval, monthInterval.contains(paidDate) {
-                paidMonthCents += amount
-            }
-        }
-
-        let outstandingCents = sentUnpaid.reduce(0) { $0 + max(0, $1.remainingDueCents) }
-        let overdueCents = overdue.reduce(0) { $0 + max(0, $1.remainingDueCents) }
-
-        var expenseMonthCents = 0
-        var categoryTotals: [ExpenseCategory: Int] = [:]
-        for expense in expenses {
-            let amount = max(0, expense.amountCents)
-            if let monthInterval, monthInterval.contains(expense.date) {
-                expenseMonthCents += amount
-                categoryTotals[expense.category, default: 0] += amount
-            }
-        }
-        let categoryBreakdown = ExpenseCategory.allCases.compactMap { category -> ExpenseCategoryTotal? in
-            guard let cents = categoryTotals[category], cents > 0 else { return nil }
-            return ExpenseCategoryTotal(category: category, cents: cents)
-        }
-        .sorted { $0.cents > $1.cents }
-
-        let weeklyTrend = weeklyPaidTrend(from: nonEstimates, expenses: expenses, now: now, weekCount: 8)
-
-        return InsightsSnapshot(
-            paidWeekCents: paidWeekCents,
-            paidMonthCents: paidMonthCents,
-            outstandingCents: outstandingCents,
-            overdueCents: overdueCents,
-            draftCount: draftUnpaid.count,
-            sentUnpaidCount: sentUnpaid.count,
-            estimateCount: estimates.count,
-            weeklyPaidTrend: weeklyTrend,
-            expenseMonthCents: expenseMonthCents,
-            categoryBreakdown: categoryBreakdown,
-            records: invoices
-        )
+    private var estimatesWaiting: Int {
+        invoices.filter { $0.documentType == "estimate" && $0.estimateStatus == "sent" }.count
     }
 
-    private func weeklyPaidTrend(from invoices: [Invoice], expenses: [Expense], now: Date, weekCount: Int) -> [WeeklyPaidPoint] {
-        let calendar = InsightsDateSupport.calendar
-        guard let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start else {
-            return []
-        }
-
-        let weekStarts: [Date] = (0..<weekCount).reversed().compactMap { offset in
-            calendar.date(byAdding: .weekOfYear, value: -offset, to: currentWeekStart)
-        }
-
-        var expenseTotalsByWeekStart: [Date: Int] = [:]
-        for expense in expenses {
-            guard let weekStart = calendar.dateInterval(of: .weekOfYear, for: expense.date)?.start else {
-                continue
-            }
-            expenseTotalsByWeekStart[weekStart, default: 0] += max(0, expense.amountCents)
-        }
-
-        var totalsByWeekStart: [Date: Int] = [:]
-        for invoice in invoices where invoice.isPaid {
-            guard let paidDate = InsightsDateSupport.resolvedPaidDate(for: invoice),
-                  let weekStart = calendar.dateInterval(of: .weekOfYear, for: paidDate)?.start else {
-                continue
-            }
-            totalsByWeekStart[weekStart, default: 0] += max(0, invoice.totalCents)
-        }
-
-        return weekStarts.map { weekStart in
-            WeeklyPaidPoint(
-                weekStart: weekStart,
-                paidCents: totalsByWeekStart[weekStart] ?? 0,
-                expenseCents: expenseTotalsByWeekStart[weekStart] ?? 0
-            )
-        }
+    static func shortCurrency(_ dollars: Double) -> String {
+        if dollars >= 1000 { return "$\(Int((dollars / 1000).rounded()))k" }
+        return "$\(Int(dollars.rounded()))"
     }
 }
 
-private struct InsightsSnapshot {
-    let paidWeekCents: Int
-    let paidMonthCents: Int
-    let outstandingCents: Int
-    let overdueCents: Int
-    let draftCount: Int
-    let sentUnpaidCount: Int
-    let estimateCount: Int
-    let weeklyPaidTrend: [WeeklyPaidPoint]
-    let expenseMonthCents: Int
-    let categoryBreakdown: [ExpenseCategoryTotal]
-    let records: [Invoice]
+/// Invoices with no client that are still owed.
+private struct NoClientInvoicesView: View {
+    let invoices: [Invoice]
+    @State private var selected: Invoice?
+
+    var body: some View {
+        List(invoices) { invoice in
+            Button { selected = invoice } label: {
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(invoice.invoiceNumber.isEmpty ? "Invoice" : invoice.invoiceNumber)
+                        Text("Due \(invoice.dueDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption)
+                            .foregroundStyle(invoice.isOverdue ? .red : .secondary)
+                    }
+                    Spacer()
+                    Text(InvoicePaymentService.currency(invoice.balanceDueCents)).monospacedDigit()
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .navigationTitle("No Client")
+        .navigationDestination(item: $selected) { InvoiceOverviewView(invoice: $0) }
+    }
 }
 
-private enum InsightsDateSupport {
-    static let calendar: Calendar = .autoupdatingCurrent
-
-    static func resolvedPaidDate(for invoice: Invoice) -> Date? {
-        guard invoice.isPaid else { return nil }
-
-        if let paidAt = readDate(from: invoice, key: "paidAt") {
-            return paidAt
-        }
-        if let paidDate = readDate(from: invoice, key: "paidDate") {
-            return paidDate
-        }
-        if let paidAtMs = readInt(from: invoice, key: "paidAtMs"), paidAtMs > 0 {
-            return Date(timeIntervalSince1970: Double(paidAtMs) / 1000.0)
-        }
-        return invoice.issueDate
-    }
-
-    private static func readDate(from invoice: Invoice, key: String) -> Date? {
-        let mirror = Mirror(reflecting: invoice)
-        guard let raw = mirror.children.first(where: { $0.label == key })?.value else {
-            return nil
-        }
-        let unwrapped = unwrap(raw)
-        if let date = unwrapped as? Date {
-            return date
-        }
-        if let string = unwrapped as? String {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            return dateParsers.iso8601WithFractional.date(from: trimmed)
-                ?? dateParsers.iso8601Plain.date(from: trimmed)
-        }
-        return nil
-    }
-
-    private static func readInt(from invoice: Invoice, key: String) -> Int? {
-        let mirror = Mirror(reflecting: invoice)
-        guard let raw = mirror.children.first(where: { $0.label == key })?.value else {
-            return nil
-        }
-        let unwrapped = unwrap(raw)
-        if let intValue = unwrapped as? Int {
-            return intValue
-        }
-        if let int64Value = unwrapped as? Int64 {
-            return Int(int64Value)
-        }
-        if let doubleValue = unwrapped as? Double {
-            return Int(doubleValue)
-        }
-        if let string = unwrapped as? String {
-            return Int(string.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-        return nil
-    }
-
-    private static func unwrap(_ value: Any) -> Any {
-        let mirror = Mirror(reflecting: value)
-        guard mirror.displayStyle == .optional else { return value }
-        return mirror.children.first?.value as Any
-    }
-
-    private enum dateParsers {
-        static let iso8601WithFractional: ISO8601DateFormatter = {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return formatter
-        }()
-
-        static let iso8601Plain: ISO8601DateFormatter = {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter
-        }()
-    }
+// Pushed onto a NavigationStack; see InvoiceDetailView's Equatable conformance.
+extension BusinessInsightsView: Equatable {
+    static func == (_: BusinessInsightsView, _: BusinessInsightsView) -> Bool { true }
 }

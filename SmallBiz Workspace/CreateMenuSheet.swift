@@ -34,6 +34,7 @@ struct CreateMenuSheet: View {
 
     // New Contract
     @State private var showNewContractSheet = false
+    @State private var newExpense: Expense? = nil
 
     var body: some View {
         NavigationStack {
@@ -86,6 +87,17 @@ struct CreateMenuSheet: View {
                                 chipFill: SBWTheme.chipFill(for: "Contracts")
                             ) {
                                 showNewContractSheet = true
+                            }
+
+                            Divider().opacity(0.6)
+
+                            CreateActionRow(
+                                title: "New Expense",
+                                subtitle: "Log money you spent",
+                                systemImage: "creditcard",
+                                chipFill: SBWTheme.chipFill(for: "Expenses")
+                            ) {
+                                startExpense()
                             }
                         }
 
@@ -186,6 +198,21 @@ struct CreateMenuSheet: View {
                 }
             }
 
+            .sheet(item: $newExpense) { expense in
+                NavigationStack {
+                    ExpenseFormView(expense: expense, isDraft: true) {
+                        newExpense = nil
+                        dismiss()
+                    } onCancel: {
+                        if expense.amountCents <= 0 {
+                            modelContext.delete(expense)
+                            try? modelContext.save()
+                        }
+                        newExpense = nil
+                    }
+                }
+            }
+
             // New job flow (uses JobDetailView)
             .sheet(isPresented: $showNewJobSheet, onDismiss: {
                 newJobDraft = nil
@@ -248,6 +275,14 @@ struct CreateMenuSheet: View {
     }
 
     // MARK: - Profile defaults (scoped)
+
+    private func startExpense() {
+        guard let businessID = activeBiz.activeBusinessID else { return }
+        let expense = Expense(businessID: businessID, date: .now)
+        modelContext.insert(expense)
+        try? modelContext.save()
+        newExpense = expense
+    }
 
     private func getOrCreateProfileForActiveBusiness() -> BusinessProfile? {
         guard let bizID = activeBiz.activeBusinessID else { return nil }
