@@ -1,13 +1,18 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
-/// What "More" used to be, behind the business avatar instead of a fifth tab.
+/// Everything configured once about the business, behind the avatar.
 ///
-/// Invoices, Estimates and Insights moved to Money; Jobs, Bookings and
-/// Contracts moved to Work; Clients already had its own tab. What's left here
-/// is genuinely settings-shaped — things configured once, not visited daily.
+/// One row per setting, each with its current state underneath ("Next:
+/// SI-2026-042", "Card, Venmo", "Taking bookings"), and a Next step card on
+/// top — the same pattern as a record's screen. It used to be a menu of
+/// plain rows, several of which led to the same settings as another row
+/// (payments and the business switcher were each reachable twice), and whose
+/// destinations were rebuilt with fresh ids on every render.
 struct BusinessSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     /// Passed in directly rather than resolved via `@EnvironmentObject`: this
     /// sheet's `.onAppear` is the only place that reads it, and an
@@ -18,232 +23,375 @@ struct BusinessSettingsSheet: View {
     /// `.onAppear` can fire before the presentation's environment is fully
     /// attached.
     let presenter: BusinessSettingsPresenter
-    @Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]) private var profiles: [BusinessProfile]
 
-    @State private var searchText = ""
-    @State private var selectedItem: SettingsItem?
-    @State private var pushSetupPaymentsNow = false
+    @Query private var profiles: [BusinessProfile]
+    @Query private var businesses: [Business]
+    @Query private var catalogItems: [CatalogItem]
+    @Query private var sites: [PublishedBusinessSite]
+    @Query private var clients: [Client]
 
-    private struct SettingsItem: Identifiable, Hashable {
-        let id = UUID()
-        let title: String
-        let subtitle: String
-        let systemImage: String
-        let keyword: String
-        let destination: AnyView
+    @State private var route: Route?
+    @State private var notificationsAllowed: Bool? = nil
 
-        static func == (lhs: SettingsItem, rhs: SettingsItem) -> Bool { lhs.id == rhs.id }
-        func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    }
-
-    private struct SettingsGroup: Identifiable {
-        let id = UUID()
-        let title: String
-        let items: [SettingsItem]
-    }
-
-    private var activeBusinessName: String {
-        let name = profiles.first(where: { $0.businessID == activeBiz.activeBusinessID })?.name
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return name.isEmpty ? "Your Business" : name
-    }
-
-    private var groups: [SettingsGroup] {
-        var base: [SettingsGroup] = [
-            SettingsGroup(title: "Business", items: [
-                SettingsItem(
-                    title: "Business Profile",
-                    subtitle: "Letterhead, branding, and setup",
-                    systemImage: "building.2",
-                    keyword: "Business Profile",
-                    destination: AnyView(BusinessProfileView())
-                ),
-                SettingsItem(
-                    title: "Website",
-                    subtitle: "Your public booking page",
-                    systemImage: "globe",
-                    keyword: "Website",
-                    destination: AnyView(WebsiteCustomizationView())
-                ),
-                SettingsItem(
-                    title: "Notifications",
-                    subtitle: "Alerts and reminders",
-                    systemImage: "bell.badge",
-                    keyword: "Notifications",
-                    destination: AnyView(NotificationsView())
-                )
-            ]),
-            SettingsGroup(title: "Billing Setup", items: [
-                SettingsItem(
-                    title: "Saved Items",
-                    subtitle: "Services and materials you sell",
-                    systemImage: "tray",
-                    keyword: "Saved Items",
-                    destination: AnyView(SavedItemsView(businessID: activeBiz.activeBusinessID))
-                ),
-                SettingsItem(
-                    title: "Setup Payments",
-                    subtitle: "Choose how you get paid",
-                    systemImage: "creditcard.fill",
-                    keyword: "Payments",
-                    destination: AnyView(SetupPaymentsView())
-                ),
-                SettingsItem(
-                    title: "Payment Reminders",
-                    subtitle: "Automatic emails for overdue invoices",
-                    systemImage: "bell.badge.fill",
-                    keyword: "Reminders",
-                    destination: AnyView(OverdueReminderSettingsView())
-                )
-            ]),
-            SettingsGroup(title: "Customers", items: [
-                SettingsItem(
-                    title: "Client Portal",
-                    subtitle: "Share files with clients",
-                    systemImage: "person.2.badge.gearshape",
-                    keyword: "Client Portal",
-                    destination: AnyView(PortalDirectoryLauncherView())
-                ),
-                SettingsItem(
-                    title: "Booking Portal",
-                    subtitle: "Manage booking requests",
-                    systemImage: "calendar.badge.clock",
-                    keyword: "Booking Portal",
-                    destination: AnyView(BookingPortalView())
-                )
-            ]),
-            SettingsGroup(title: "Support", items: [
-                SettingsItem(
-                    title: "Help & About",
-                    subtitle: "Tutorials and contact support",
-                    systemImage: "questionmark.circle",
-                    keyword: "Help",
-                    destination: AnyView(HelpCenterView())
-                )
-            ])
-        ]
-
+    enum Route: Hashable {
+        case switcher, profile, invoiceNumbers, savedItems
+        case payments, reminders
+        case booking, website, clientPortal
+        case notifications, help
         #if DEBUG
-        base.append(SettingsGroup(title: "Developer", items: [
-            SettingsItem(
-                title: "Portal Preview",
-                subtitle: "Preview the client portal",
-                systemImage: "person.crop.rectangle",
-                keyword: "Client Portal",
-                destination: AnyView(PortalPreviewView())
-            ),
-            SettingsItem(
-                title: "Developer Tools",
-                subtitle: "Reset onboarding for local testing",
-                systemImage: "wrench.and.screwdriver",
-                keyword: "Settings",
-                destination: AnyView(OnboardingDebugToolsView())
-            )
-        ]))
+        case portalPreview, developer
         #endif
-
-        return base
     }
 
-    private var filteredGroups: [SettingsGroup] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return groups }
-        return groups.compactMap { group in
-            let items = group.items.filter { $0.title.lowercased().contains(q) || $0.subtitle.lowercased().contains(q) }
-            return items.isEmpty ? nil : SettingsGroup(title: group.title, items: items)
-        }
+    private var businessID: UUID? { activeBiz.activeBusinessID }
+    private var profile: BusinessProfile? { profiles.first { $0.businessID == businessID } }
+    private var business: Business? { businesses.first { $0.id == businessID } }
+    private var setup: BusinessSetup { BusinessSetup(profile: profile, business: business) }
+
+    private var displayName: String {
+        let name = (profile?.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Your Business" : name
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                SBWTheme.headerWash()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    if let step = setup.nextStep { nextStepCard(step) }
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        switchBusinessHeader
-
-                        ForEach(filteredGroups) { group in
-                            CreateSectionCard(title: group.title) {
-                                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                                    if index > 0 {
-                                        Divider().opacity(0.6)
-                                    }
-                                    CreateActionRow(
-                                        title: item.title,
-                                        subtitle: item.subtitle,
-                                        systemImage: item.systemImage,
-                                        chipFill: SBWTheme.chipFill(for: item.keyword)
-                                    ) {
-                                        selectedItem = item
-                                    }
-                                    .modifier(SetupPaymentsCoachMarkModifier(shouldMark: item.title == "Setup Payments"))
-                                }
-                            }
-                        }
-
-                        if filteredGroups.isEmpty {
-                            ContentUnavailableView(
-                                "No Results",
-                                systemImage: "magnifyingglass",
-                                description: Text("Try a different search.")
-                            )
-                            .padding(.top, 12)
-                        }
+                    section("Your Business") {
+                        row(.profile, "Profile and Logo", profileSubtitle, "building.2")
+                        row(.invoiceNumbers, "Invoice Numbers", invoiceNumberSubtitle, "number")
+                        row(.savedItems, "Saved Items", savedItemsSubtitle, "tray.full")
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 24)
+                    section("Getting Paid") {
+                        row(.payments, "Payment Methods", paymentsSubtitle, "creditcard",
+                            badge: paymentsBadge)
+                            .coachMark(id: "walkthrough.more.setup-payments")
+                        row(.reminders, "Overdue Reminders", remindersSubtitle, "bell.badge")
+                    }
+                    section("What Clients See") {
+                        row(.booking, "Booking Page", bookingSubtitle, "calendar.badge.clock", badge: bookingBadge)
+                        row(.website, "Website", websiteSubtitle, "globe", badge: websiteBadge)
+                        row(.clientPortal, "Client Portal", clientPortalSubtitle, "person.2")
+                    }
+                    section("Alerts and Help") {
+                        row(.notifications, "Notifications", notificationsSubtitle, "bell")
+                        row(.help, "Help and About", "Guides, questions and support", "questionmark.circle")
+                    }
+                    #if DEBUG
+                    section("Developer") {
+                        row(.portalPreview, "Portal Preview", "See the client portal", "person.crop.rectangle")
+                        row(.developer, "Developer Tools", "IDs, onboarding reset", "wrench.and.screwdriver")
+                    }
+                    #endif
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Business")
             .navigationBarTitleDisplayMode(.large)
-            .sbwNavigationBarBackdrop()
-            .searchable(text: $searchText, prompt: "Search")
-            .navigationDestination(item: $selectedItem) { $0.destination }
-            .navigationDestination(isPresented: $pushSetupPaymentsNow) { SetupPaymentsView() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
             }
+            .navigationDestination(item: $route) { destination($0) }
             .onAppear {
                 if presenter.pendingDestination == .setupPayments {
                     presenter.pendingDestination = nil
-                    pushSetupPaymentsNow = true
+                    route = .payments
                 }
             }
+            .task { await refreshNotificationStatus() }
         }
     }
 
-    private var switchBusinessHeader: some View {
-        NavigationLink {
-            BusinessSwitcherView()
-        } label: {
-            HStack(spacing: 12) {
-                Text(initials)
-                    .font(.scaledSystem(size: 16, weight: .bold, relativeTo: .body))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(SBWTheme.brandGradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    // MARK: - Header and next step
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(activeBusinessName)
-                        .font(.scaledSystem(size: 15, weight: .semibold, relativeTo: .body))
-                        .foregroundStyle(.primary)
-                    Text("Switch business")
-                        .font(.scaledSystem(size: 12, relativeTo: .caption))
-                        .foregroundStyle(.secondary)
+    private var header: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let data = profile?.logoData, let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Text(BusinessIdentity.initials(for: profile?.name ?? ""))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(SBWTheme.brandGradient)
                 }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
 
-                Spacer()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(contactLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if businesses.count > 1 {
+                Button("Switch") { route = .switcher }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            } else {
+                Menu {
+                    Button { route = .switcher } label: { Label("Add a Business", systemImage: "plus") }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                }
+                .accessibilityLabel("More")
+            }
+        }
+        .settingsCard()
+    }
 
+    private var contactLine: String {
+        let parts = [profile?.email, profile?.phone]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? "No contact details yet" : parts.joined(separator: " · ")
+    }
+
+    private func nextStepCard(_ step: BusinessSetup.Step) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Next step · \(setup.doneCount) of \(setup.totalCount) set up")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+            Text(step.title)
+                .font(.headline)
+            Text(step.detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button(step.action) { act(on: step) }
+                .sbwProminentButton()
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .settingsCard()
+    }
+
+    private func act(on step: BusinessSetup.Step) {
+        switch step {
+        case .contact, .logo: route = .profile
+        case .payments: route = .payments
+        case .reminders: route = .reminders
+        }
+    }
+
+    // MARK: - Rows
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.6)
+                .padding(.leading, 4)
+            VStack(spacing: 0) {
+                _VariadicView.Tree(DividedRows()) { content() }
+            }
+            .settingsCard(padding: 0)
+        }
+    }
+
+    private func row(
+        _ target: Route,
+        _ title: String,
+        _ subtitle: String,
+        _ icon: String,
+        badge: SettingsBadge? = nil
+    ) -> some View {
+        Button { route = target } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.body)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if let badge {
+                    Text(badge.text)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8)
+                        .background(Capsule().fill(badge.color.opacity(0.15)))
+                        .foregroundStyle(badge.color)
+                        .fixedSize()
+                }
                 Image(systemName: "chevron.right")
-                    .font(.scaledSystem(size: 13, weight: .semibold, relativeTo: .footnote))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func destination(_ route: Route) -> some View {
+        switch route {
+        case .switcher: BusinessSwitcherView()
+        case .profile: BusinessProfileView()
+        case .invoiceNumbers: InvoiceNumbersView()
+        case .savedItems: SavedItemsView(businessID: businessID)
+        case .payments: SetupPaymentsView()
+        case .reminders: OverdueReminderSettingsView()
+        case .booking: BookingPageView()
+        case .website: WebsiteCustomizationView()
+        case .clientPortal: PortalDirectoryLauncherView()
+        case .notifications: NotificationSettingsView()
+        case .help: HelpCenterView()
+        #if DEBUG
+        case .portalPreview: PortalPreviewView()
+        case .developer: DeveloperToolsView()
+        #endif
+        }
+    }
+
+    // MARK: - Row states
+
+    private var profileSubtitle: String {
+        guard let profile else { return "Name, contact details and logo" }
+        if !setup.done.contains(.contact) { return "Add your email so clients can reach you" }
+        return profile.logoData == nil ? "No logo yet" : "Name, contact details and logo"
+    }
+
+    private var invoiceNumberSubtitle: String {
+        guard let profile else { return "How invoices are numbered" }
+        return "Next: \(InvoiceNumberGenerator.peekNextNumber(profile: profile))"
+    }
+
+    private var savedItemsSubtitle: String {
+        let count = catalogItems.filter { $0.businessID == businessID }.count
+        switch count {
+        case 0: return "Services and materials you sell"
+        case 1: return "1 item"
+        default: return "\(count) items"
+        }
+    }
+
+    private var paymentsSubtitle: String {
+        guard let business else { return "How clients pay you" }
+        return PaymentMethodSummary(business: business).text
+    }
+
+    private var paymentsBadge: SettingsBadge? {
+        guard let business else { return nil }
+        return PaymentMethodSummary(business: business).offered.isEmpty
+            ? SettingsBadge(text: "Not set up", color: .orange) : nil
+    }
+
+    private var remindersSubtitle: String {
+        guard let profile, profile.overdueReminderEnabled else { return "Off" }
+        let days = profile.overdueReminderCadenceDays
+        return "On · \(days) day\(days == 1 ? "" : "s") after the due date"
+    }
+
+    private var bookingSubtitle: String {
+        let slug = (profile?.bookingSlug ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return slug.isEmpty ? "Let clients request a time" : "Link ends in /\(slug)"
+    }
+
+    private var bookingBadge: SettingsBadge? {
+        let slug = (profile?.bookingSlug ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !slug.isEmpty else { return nil }
+        return profile?.bookingEnabled == false
+            ? SettingsBadge(text: "Paused", color: .secondary)
+            : SettingsBadge(text: "Taking bookings", color: .green)
+    }
+
+    private var site: PublishedBusinessSite? { sites.first { $0.businessID == businessID } }
+
+    private var websiteSubtitle: String {
+        guard let site else { return "A simple site for your business" }
+        switch site.status {
+        case .published:
+            if let date = site.lastPublishedAt {
+                return "Published \(date.formatted(date: .abbreviated, time: .omitted))"
+            }
+            return "Published"
+        case .queued, .publishing: return "Publishing…"
+        case .error: return "Couldn't publish. Open it to try again."
+        case .draft: return "Not published yet"
+        }
+    }
+
+    private var websiteBadge: SettingsBadge? {
+        switch site?.status {
+        case .published: return SettingsBadge(text: "Live", color: .green)
+        case .error: return SettingsBadge(text: "Needs attention", color: .orange)
+        default: return nil
+        }
+    }
+
+    private var clientPortalSubtitle: String {
+        let count = clients.filter { $0.businessID == businessID && $0.portalEnabled }.count
+        switch count {
+        case 0: return "Where clients see and pay their invoices"
+        case 1: return "1 client can use it"
+        default: return "\(count) clients can use it"
+        }
+    }
+
+    private var notificationsSubtitle: String {
+        switch notificationsAllowed {
+        case .some(true): return "On · choose what you're told about"
+        case .some(false): return "Off in iPhone Settings"
+        case .none: return "Choose what you're told about"
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: notificationsAllowed = true
+        case .denied: notificationsAllowed = false
+        default: notificationsAllowed = nil
+        }
+    }
+}
+
+struct SettingsBadge {
+    let text: String
+    let color: Color
+}
+
+/// Rows in a card with hairlines between them.
+private struct DividedRows: _VariadicView_MultiViewRoot {
+    func body(children: _VariadicView.Children) -> some View {
+        let last = children.last?.id
+        ForEach(children) { child in
+            child
+            if child.id != last {
+                Divider().padding(.leading, 54)
+            }
+        }
+    }
+}
+
+private extension View {
+    func settingsCard(padding: CGFloat = 14) -> some View {
+        self
+            .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color(.secondarySystemGroupedBackground))
@@ -252,75 +400,41 @@ struct BusinessSettingsSheet: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(SBWTheme.cardStroke, lineWidth: 1)
             )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var initials: String {
-        let name = activeBusinessName
-        let parts = name.split(separator: " ")
-        if parts.count >= 2 {
-            return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
-        }
-        return String(name.prefix(2)).uppercased()
-    }
-}
-
-private struct SetupPaymentsCoachMarkModifier: ViewModifier {
-    let shouldMark: Bool
-
-    func body(content: Content) -> some View {
-        if shouldMark {
-            content.coachMark(id: "walkthrough.more.setup-payments")
-        } else {
-            content
-        }
     }
 }
 
 #if DEBUG
-private struct OnboardingDebugToolsView: View {
+/// IDs and onboarding resets for local testing. The IDs used to be a
+/// "Debug / Metadata" card on Business Profile, visible to every user.
+private struct DeveloperToolsView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @Query private var businesses: [Business]
+    @Query private var sites: [PublishedBusinessSite]
 
     var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            SBWTheme.headerWash()
-            ScrollView {
-                VStack(spacing: 12) {
-                    SBWCardContainer {
-                        Text("Developer")
-                            .font(.headline)
-                        Text("Reset onboarding and walkthrough state for local testing.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        Button {
-                            WalkthroughState.requestRun()
-                        } label: {
-                            Label("Run Walkthrough", systemImage: "sparkles")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button(role: .destructive) {
-                            OnboardingState.reset()
-                            WalkthroughState.reset()
-                            activeBiz.clearActiveBusiness()
-                        } label: {
-                            Label("Reset Onboarding + Walkthrough", systemImage: "trash")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+        let business = businesses.first { $0.id == activeBiz.activeBusinessID }
+        let site = sites.first { $0.businessID == activeBiz.activeBusinessID }
+        Form {
+            Section("This Business") {
+                LabeledContent("Business ID", value: activeBiz.activeBusinessID?.uuidString ?? "—")
+                    .textSelection(.enabled)
+                LabeledContent("Stripe account", value: business?.stripeAccountId ?? "—")
+                LabeledContent("Stripe status", value: business?.stripeOnboardingStatus ?? "—")
+                LabeledContent("PayPal merchant", value: business?.paypalMerchantId ?? "—")
+                LabeledContent("Website handle", value: site?.handle ?? "—")
+            }
+            .font(.footnote)
+            Section("Onboarding") {
+                Button("Run Walkthrough") { WalkthroughState.requestRun() }
+                Button("Reset Onboarding and Walkthrough", role: .destructive) {
+                    OnboardingState.reset()
+                    WalkthroughState.reset()
+                    activeBiz.clearActiveBusiness()
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
             }
         }
         .navigationTitle("Developer Tools")
         .navigationBarTitleDisplayMode(.inline)
-        .sbwNavigationBarBackdrop()
     }
 }
 #endif

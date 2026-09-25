@@ -64,7 +64,7 @@ struct OverdueReminderSettingsView: View {
                 }
             }
         }
-        .navigationTitle("Payment Reminders")
+        .navigationTitle("Overdue Reminders")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .onAppear { resolveProfile() }

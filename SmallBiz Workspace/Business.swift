@@ -24,6 +24,9 @@ final class Business {
     var stripeOnboardingStatus: String? = nil
     var stripeChargesEnabled: Bool = false
     var stripePayoutsEnabled: Bool = false
+    /// The owner's "Card" switch in Payment methods. Off hides "Pay by card"
+    /// on invoices without disconnecting Stripe.
+    var stripeOffered: Bool = true
     var squareEnabled: Bool = false
     var squareLink: String? = nil
     var cashAppEnabled: Bool = false

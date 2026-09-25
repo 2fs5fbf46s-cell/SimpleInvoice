@@ -29,9 +29,9 @@ struct NotificationsView: View {
 
                 if scopedNotifications.isEmpty {
                     ContentUnavailableView(
-                        "No Notifications",
+                        "No Notifications Yet",
                         systemImage: "bell",
-                        description: Text("New alerts will appear here.")
+                        description: Text("Payments, signatures and booking requests show up here.")
                     )
                     .listRowBackground(Color.clear)
                 } else {
@@ -189,27 +189,12 @@ private struct NotificationDetailView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Title") {
-                    Text(item.title)
-                }
-                Section("Message") {
+                Section {
+                    Text(item.title).font(.headline)
                     Text(item.body)
-                }
-                Section("Event") {
-                    Text(item.eventType)
-                }
-                if let deepLink = item.deepLink, !deepLink.isEmpty {
-                    Section("Deep Link") {
-                        Text(deepLink)
-                            .textSelection(.enabled)
-                    }
-                }
-                if let raw = item.rawDataJson, !raw.isEmpty {
-                    Section("Raw Data") {
-                        Text(raw)
-                            .font(.footnote.monospaced())
-                            .textSelection(.enabled)
-                    }
+                    Text(Date(timeIntervalSince1970: Double(item.createdAtMs) / 1000).formatted(date: .abbreviated, time: .shortened))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Notification")
@@ -217,4 +202,9 @@ private struct NotificationDetailView: View {
             .sbwNavigationBarBackdrop()
         }
     }
+}
+
+// Pushed onto a NavigationStack; see InvoiceDetailView's Equatable conformance.
+extension NotificationsView: Equatable {
+    static func == (_: NotificationsView, _: NotificationsView) -> Bool { true }
 }

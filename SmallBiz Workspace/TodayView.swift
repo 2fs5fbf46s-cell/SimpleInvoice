@@ -16,11 +16,13 @@ struct TodayView: View {
     @Query private var invoices: [Invoice]
     @Query private var jobs: [Job]
     @Query private var profiles: [BusinessProfile]
+    @Query(filter: #Predicate<AppNotification> { $0.readAtMs == nil }) private var unreadNotifications: [AppNotification]
 
     @State private var quickStart = QuickStartChecklist()
     @State private var weeklyPaidText = "—"
     @State private var scheduleCount = 0
     @State private var showHelpCenter = false
+    @State private var showNotifications = false
     @State private var selectedInvoice: Invoice?
     @State private var selectedContract: Contract?
 
@@ -37,6 +39,11 @@ struct TodayView: View {
             },
             sort: [SortDescriptor(\Job.startDate, order: .forward)]
         )
+    }
+
+    private var unreadNotificationCount: Int {
+        guard let businessID = effectiveBusinessID else { return 0 }
+        return unreadNotifications.filter { $0.businessId == businessID }.count
     }
 
     private var effectiveBusinessID: UUID? {
@@ -109,15 +116,19 @@ struct TodayView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showHelpCenter = true
+                    showNotifications = true
                 } label: {
-                    Image(systemName: "questionmark.circle")
+                    Image(systemName: unreadNotificationCount > 0 ? "bell.badge" : "bell")
+                        .symbolRenderingMode(.multicolor)
                 }
-                .accessibilityLabel("Help & About")
+                .accessibilityLabel(unreadNotificationCount > 0 ? "Notifications, \(unreadNotificationCount) unread" : "Notifications")
             }
         }
         .navigationDestination(isPresented: $showHelpCenter) {
             HelpCenterView()
+        }
+        .navigationDestination(isPresented: $showNotifications) {
+            NotificationsView()
         }
         .navigationDestination(item: $selectedInvoice) { InvoiceOverviewView(invoice: $0) }
         .navigationDestination(item: $selectedContract) { ContractDetailView(contract: $0) }

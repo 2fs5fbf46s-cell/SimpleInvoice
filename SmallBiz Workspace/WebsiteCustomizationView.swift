@@ -532,7 +532,7 @@ private struct WebsiteHeroImageView: View {
                             .frame(height: 220)
 
                         if let path = draft.heroImageLocalPath,
-                           let image = UIImage(contentsOfFile: path) {
+                           let image = UIImage(contentsOfFile: WebsiteImageStore.resolve(path) ?? path) {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
@@ -991,7 +991,7 @@ private struct WebsiteTeamView: View {
                             .frame(height: 140)
 
                         if let photoPath,
-                           let image = UIImage(contentsOfFile: photoPath) {
+                           let image = UIImage(contentsOfFile: WebsiteImageStore.resolve(photoPath) ?? photoPath) {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
@@ -1133,7 +1133,7 @@ private struct WebsiteGalleryView: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                             ForEach(Array(draft.galleryLocalPaths.enumerated()), id: \.offset) { idx, path in
                                 ZStack(alignment: .topTrailing) {
-                                    if let image = UIImage(contentsOfFile: path) {
+                                    if let image = UIImage(contentsOfFile: WebsiteImageStore.resolve(path) ?? path) {
                                         Image(uiImage: image)
                                             .resizable()
                                             .scaledToFill()
@@ -1245,7 +1245,7 @@ private struct ImageDropTile: View {
             .frame(height: 180)
 
         if let path,
-           let image = UIImage(contentsOfFile: path) {
+           let image = UIImage(contentsOfFile: WebsiteImageStore.resolve(path) ?? path) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
@@ -1276,10 +1276,7 @@ private struct Underline: View {
 }
 
 private func writeTemporaryImage(data: Data, prefix: String) throws -> String {
-    let fileName = "\(prefix)-\(UUID().uuidString).jpg"
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-    try data.write(to: url, options: .atomic)
-    return url.path
+    try WebsiteImageStore.write(data, fileName: "\(prefix)-\(UUID().uuidString).jpg")
 }
 
 private func fetchPublishedBusinessSite(id: UUID, context: ModelContext) -> PublishedBusinessSite? {

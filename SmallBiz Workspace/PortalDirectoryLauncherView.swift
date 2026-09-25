@@ -190,10 +190,8 @@ struct PortalDirectoryLauncherView: View {
         defer { opening = false }
 
         do {
-            // new PortalBackend signature (no mode param)
             let token = try await PortalBackend.shared.createClientDirectoryPortalToken(client: client)
 
-            // new URL builder name
             let url = PortalBackend.shared.portalClientDirectoryURL(
                 clientId: client.id.uuidString,
                 token: token

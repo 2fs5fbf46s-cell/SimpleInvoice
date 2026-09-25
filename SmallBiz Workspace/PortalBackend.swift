@@ -642,6 +642,10 @@ struct BookingSettingsDTO: Decodable, Encodable {
     let minBookingMinutes: Int?
     let maxBookingMinutes: Int?
     let allowSameDay: Bool?
+    /// "Taking bookings". Nil from older servers means yes.
+    let acceptingBookings: Bool?
+    /// The owner's note shown above the booking form.
+    let clientNote: String?
 
     init(
         businessId: String? = nil,
@@ -655,7 +659,9 @@ struct BookingSettingsDTO: Decodable, Encodable {
         bookingSlotMinutes: Int? = nil,
         minBookingMinutes: Int? = nil,
         maxBookingMinutes: Int? = nil,
-        allowSameDay: Bool? = nil
+        allowSameDay: Bool? = nil,
+        acceptingBookings: Bool? = nil,
+        clientNote: String? = nil
     ) {
         self.businessId = businessId
         self.slug = slug
@@ -669,6 +675,8 @@ struct BookingSettingsDTO: Decodable, Encodable {
         self.minBookingMinutes = minBookingMinutes
         self.maxBookingMinutes = maxBookingMinutes
         self.allowSameDay = allowSameDay
+        self.acceptingBookings = acceptingBookings
+        self.clientNote = clientNote
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -684,6 +692,8 @@ struct BookingSettingsDTO: Decodable, Encodable {
         case minBookingMinutes
         case maxBookingMinutes
         case allowSameDay
+        case acceptingBookings
+        case clientNote
     }
 
     init(from decoder: Decoder) throws {
@@ -697,6 +707,8 @@ struct BookingSettingsDTO: Decodable, Encodable {
         minBookingMinutes = try c.decodeIfPresent(Int.self, forKey: .minBookingMinutes)
         maxBookingMinutes = try c.decodeIfPresent(Int.self, forKey: .maxBookingMinutes)
         allowSameDay = try c.decodeIfPresent(Bool.self, forKey: .allowSameDay)
+        acceptingBookings = try c.decodeIfPresent(Bool.self, forKey: .acceptingBookings)
+        clientNote = try c.decodeIfPresent(String.self, forKey: .clientNote)
 
         if let opts = try c.decodeIfPresent([BookingServiceOption].self, forKey: .services) {
             services = opts
@@ -726,6 +738,8 @@ struct BookingSettingsDTO: Decodable, Encodable {
         try c.encodeIfPresent(minBookingMinutes, forKey: .minBookingMinutes)
         try c.encodeIfPresent(maxBookingMinutes, forKey: .maxBookingMinutes)
         try c.encodeIfPresent(allowSameDay, forKey: .allowSameDay)
+        try c.encodeIfPresent(acceptingBookings, forKey: .acceptingBookings)
+        try c.encodeIfPresent(clientNote, forKey: .clientNote)
     }
 }
 
@@ -1893,6 +1907,84 @@ final class PortalBackend {
         }
     }
 
+    /// Which alerts push to the owner's phone, and the daily recap. The
+    /// server keeps these (it's what sends the pushes); see
+    /// NotificationSettingsView.
+    struct AlertSettingsDTO: Decodable, Equatable {
+        struct Toggles: Decodable, Equatable {
+            var invoiceSent: Bool
+            var invoicePaid: Bool
+            var contractSigned: Bool
+            var bookingRequested: Bool
+
+            private enum CodingKeys: String, CodingKey {
+                case invoiceSent = "invoice.sent"
+                case invoicePaid = "invoice.paid"
+                case contractSigned = "contract.signed"
+                case bookingRequested = "booking.requested"
+            }
+
+            init(invoiceSent: Bool = true, invoicePaid: Bool = true, contractSigned: Bool = true, bookingRequested: Bool = true) {
+                self.invoiceSent = invoiceSent
+                self.invoicePaid = invoicePaid
+                self.contractSigned = contractSigned
+                self.bookingRequested = bookingRequested
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                invoiceSent = (try? c.decode(Bool.self, forKey: .invoiceSent)) ?? true
+                invoicePaid = (try? c.decode(Bool.self, forKey: .invoicePaid)) ?? true
+                contractSigned = (try? c.decode(Bool.self, forKey: .contractSigned)) ?? true
+                bookingRequested = (try? c.decode(Bool.self, forKey: .bookingRequested)) ?? true
+            }
+        }
+
+        struct DailySummary: Decodable, Equatable {
+            var enabled: Bool
+            var timeLocalHHmm: String
+            var tz: String
+        }
+
+        var enabled: Bool
+        var toggles: Toggles
+        var dailySummary: DailySummary?
+    }
+
+    private struct AlertSettingsResponseDTO: Decodable {
+        let settings: AlertSettingsDTO
+    }
+
+    func fetchAlertSettings() async throws -> AlertSettingsDTO {
+        let adminKey = try requireAdminKey()
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/notifications/settings"))
+        req.httpMethod = "GET"
+        applyAuthHeaders(&req, adminKey: adminKey)
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? ""
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http((resp as? HTTPURLResponse)?.statusCode ?? -1, body: raw)
+        }
+        return try JSONDecoder().decode(AlertSettingsResponseDTO.self, from: data).settings
+    }
+
+    /// Sends only what changed, e.g. `["toggles": ["invoice.paid": false]]`.
+    @discardableResult
+    func updateAlertSettings(_ patch: [String: Any]) async throws -> AlertSettingsDTO {
+        let adminKey = try requireAdminKey()
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/notifications/settings"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["settings": patch], options: [])
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? ""
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http((resp as? HTTPURLResponse)?.statusCode ?? -1, body: raw)
+        }
+        return try JSONDecoder().decode(AlertSettingsResponseDTO.self, from: data).settings
+    }
+
     // MARK: - Recurring invoice schedules
 
     /// The backend can't read SwiftData, so a schedule's client email rides
@@ -2304,7 +2396,7 @@ final class PortalBackend {
     private func paymentMethodsPayload(for business: Business?) -> [String: Any] {
         guard let business else { return [:] }
         return [
-            "stripeEnabled": business.stripeChargesEnabled && business.stripePayoutsEnabled,
+            "stripeEnabled": business.cardPaymentsOffered,
             "paypalPlatformEnabled": business.paypalEnabled,
             "paypalFallbackUrl": (business.paypalMeFallback ?? business.paypalMeUrl ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines),
@@ -2453,6 +2545,25 @@ final class PortalBackend {
                 throw PortalBackendError.decode(body: raw)
             }
         }
+    }
+
+    /// What a client opening the booking link sees right now: whether the
+    /// page loads, and whether it's taking bookings. "Live" on the Booking
+    /// page used to mean only that a link ending existed on this phone.
+    enum PublicBookingStatus: Equatable { case live(acceptingBookings: Bool), notFound }
+
+    func fetchPublicBookingStatus(slug: String) async throws -> PublicBookingStatus {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/booking/settings"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "slug", value: slug)]
+        guard let url = comps.url else { throw PortalBackendError.badURL }
+        let (data, resp) = try await PortalBackend.session.data(from: url)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        if code == 404 { return .notFound }
+        guard (200...299).contains(code) else {
+            throw PortalBackendError.http(code, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return .live(acceptingBookings: (json?["acceptingBookings"] as? Bool) ?? true)
     }
 
     func fetchBookingSettings(businessId: UUID) async throws -> BookingSettingsDTO {

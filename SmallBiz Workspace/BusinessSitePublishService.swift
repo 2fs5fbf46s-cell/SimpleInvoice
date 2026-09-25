@@ -336,10 +336,7 @@ final class BusinessSitePublishService {
     }
 
     private func normalizedLocalPath(_ raw: String?) -> String? {
-        guard let raw else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return trimmed
+        WebsiteImageStore.resolve(raw)
     }
 
     private func shouldUploadAsset(localPath: String, remoteUrl: String?) -> Bool {
@@ -440,10 +437,7 @@ final class BusinessSitePublishService {
         prefix: String,
         fileExtension: String
     ) throws -> String {
-        let fileName = "\(prefix)-\(businessID.uuidString).\(fileExtension)"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        try data.write(to: url, options: .atomic)
-        return url.path
+        try WebsiteImageStore.write(data, fileName: "\(prefix)-\(businessID.uuidString).\(fileExtension)")
     }
 }
 

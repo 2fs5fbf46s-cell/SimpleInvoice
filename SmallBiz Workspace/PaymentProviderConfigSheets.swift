@@ -291,7 +291,7 @@ struct PayPalFallbackConfigSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Add an optional PayPal.me fallback link for manual reconciliation.")
+                Text("Optional: a PayPal.me link clients can pay through. You mark the invoice paid.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 

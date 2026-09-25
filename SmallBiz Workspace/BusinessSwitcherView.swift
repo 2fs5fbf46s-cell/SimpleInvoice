@@ -148,13 +148,12 @@ struct BusinessSwitcherView: View {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        // Update Business
-        business.name = trimmed
-
-        // Keep BusinessProfile in sync (recommended)
+        // One rename for the switcher, documents, booking page and website.
         if let profile = profiles.first(where: { $0.businessID == business.id }) {
-            profile.name = trimmed
+            BusinessIdentity.rename(profile: profile, business: business, to: trimmed, context: modelContext)
+            return
         }
+        business.name = trimmed
 
         do {
             try modelContext.save()

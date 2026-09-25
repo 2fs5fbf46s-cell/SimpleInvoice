@@ -19,7 +19,9 @@ struct SetupPaymentsView: View {
     @State private var stripeURL: URL?
     @State private var showStripeSafari = false
     @State private var awaitingStripeReturn = false
-    @State private var stripeEnabled = true
+    /// What the payment methods looked like on arrival; leaving with a
+    /// change republishes open invoices (PaymentMethodsPublisher).
+    @State private var methodsOnAppear: String? = nil
     @State private var stripeStatusError = false
 
     @State private var isLoadingPayPalStatus = false
@@ -62,27 +64,20 @@ struct SetupPaymentsView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
 
-                    sectionLabel("Card Payments")
+                    sectionLabel("Online, Paid Right Away")
                     if let business {
                         stripeCard(business)
                         payPalCard(business)
-                        squareCard(business)
                     } else {
                         loadingCard
                     }
 
-                    sectionLabel("Peer-to-Peer")
+                    sectionLabel("You Confirm When It Arrives")
                         .padding(.top, 8)
                     if let business {
-                        cashAppCard(business)
                         venmoCard(business)
-                    } else {
-                        loadingCard
-                    }
-
-                    sectionLabel("Bank")
-                        .padding(.top, 8)
-                    if let business {
+                        cashAppCard(business)
+                        squareCard(business)
                         achCard(business)
                     } else {
                         loadingCard
@@ -114,11 +109,19 @@ struct SetupPaymentsView: View {
         .safeAreaInset(edge: .bottom) {
             Spacer().frame(height: 24)
         }
-        .navigationTitle("Setup Payments")
+        .navigationTitle("Payment Methods")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .onAppear {
             reloadForActiveBusiness()
+            if methodsOnAppear == nil, let business { methodsOnAppear = Self.methodsSignature(business) }
+        }
+        .onDisappear {
+            guard let business, let before = methodsOnAppear,
+                  Self.methodsSignature(business) != before else { return }
+            let businessID = business.id
+            let context = modelContext
+            Task { await PaymentMethodsPublisher.republishOpenInvoices(businessID: businessID, context: context) }
         }
         .onChange(of: activeBiz.activeBusinessID) { _, _ in
             reloadForActiveBusiness()
@@ -222,7 +225,7 @@ struct SetupPaymentsView: View {
         } message: {
             Text(stripeAlertMessage ?? "Stripe service unavailable. Try again.")
         }
-        .alert("PayPal status check failed", isPresented: $showPayPalError) {
+        .alert("PayPal", isPresented: $showPayPalError) {
             #if DEBUG
             Button("Copy Details") {
                 UIPasteboard.general.string = payPalAlertDetails ?? ""
@@ -230,13 +233,13 @@ struct SetupPaymentsView: View {
             #endif
             Button("OK", role: .cancel) {}
         } message: {
-            Text(payPalAlertMessage ?? "PayPal status unavailable. Please verify backend deployment and environment variables.")
+            Text(payPalAlertMessage ?? "Couldn't check PayPal just now. Try again in a minute.")
         }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Choose how customers can pay you. Enable only what you want to offer.")
+            Text("What clients can use to pay your invoices. Turn one off to stop offering it; nothing is disconnected.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -331,8 +334,8 @@ struct SetupPaymentsView: View {
         return PaymentProviderCard(
             logoName: "stripe_logo",
             fallbackSymbol: "creditcard.fill",
-            title: "Stripe Connect",
-            subtitle: "Accept cards and wallet payments with connected payouts.",
+            title: "Card (Stripe)",
+            subtitle: "Clients pay by card or Apple Pay. Money goes to your bank.",
             tags: ["Visa", "Mastercard", "Apple Pay"],
             statusText: status.label,
             statusStyle: status.style,
@@ -342,7 +345,7 @@ struct SetupPaymentsView: View {
                     handleStripeToggle(value, business: business)
                 }
             ),
-            hintWhenDisabled: "Enable to configure Stripe.",
+            hintWhenDisabled: "Turn on to offer card payments.",
             primaryAction: nil
         ) {
             inlineHelperRow(
@@ -377,7 +380,7 @@ struct SetupPaymentsView: View {
             logoName: "paypal_logo",
             fallbackSymbol: "p.circle.fill",
             title: "PayPal",
-            subtitle: "Connect PayPal to route payments to your PayPal account.",
+            subtitle: "Clients pay with PayPal. Money goes to your PayPal account.",
             tags: ["PayPal", "Cards"],
             statusText: payPalStatusLabel,
             statusStyle: payPalStatusStyle,
@@ -388,7 +391,7 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            hintWhenDisabled: "Enable to configure PayPal.",
+            hintWhenDisabled: "Turn on to offer PayPal.",
             primaryAction: nil
         ) {
             if let note = payPalStatusNote, !note.isEmpty {
@@ -437,7 +440,7 @@ struct SetupPaymentsView: View {
             logoName: "square_logo",
             fallbackSymbol: "squareshape",
             title: "Square",
-            subtitle: "Share a Square payment link and reconcile reports.",
+            subtitle: "Clients pay through your Square link. You mark the invoice paid.",
             tags: ["Cards", "Wallets"],
             statusText: statusText,
             statusStyle: statusStyle,
@@ -448,7 +451,7 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            hintWhenDisabled: "Enable to configure Square.",
+            hintWhenDisabled: "Turn on to offer Square.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
@@ -470,7 +473,7 @@ struct SetupPaymentsView: View {
             logoName: "cashapp_logo",
             fallbackSymbol: "dollarsign.circle.fill",
             title: "Cash App",
-            subtitle: "Accept Cash App transfers with reconciliation.",
+            subtitle: "Clients send to your $cashtag. You mark the invoice paid.",
             tags: ["Cash App"],
             statusText: statusText,
             statusStyle: statusStyle,
@@ -481,7 +484,7 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            hintWhenDisabled: "Enable to configure Cash App.",
+            hintWhenDisabled: "Turn on to offer Cash App.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
@@ -503,7 +506,7 @@ struct SetupPaymentsView: View {
             logoName: "venmo_logo",
             fallbackSymbol: "v.circle.fill",
             title: "Venmo",
-            subtitle: "Use a Venmo profile link and reconcile reports.",
+            subtitle: "Clients send to your Venmo. You mark the invoice paid.",
             tags: ["Venmo"],
             statusText: statusText,
             statusStyle: statusStyle,
@@ -514,7 +517,7 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            hintWhenDisabled: "Enable to configure Venmo.",
+            hintWhenDisabled: "Turn on to offer Venmo.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
@@ -535,8 +538,8 @@ struct SetupPaymentsView: View {
         return PaymentProviderCard(
             logoName: "ach_logo",
             fallbackSymbol: "building.columns.fill",
-            title: "ACH",
-            subtitle: "Manual bank transfer with instructions and reconciliation.",
+            title: "Bank Transfer",
+            subtitle: "Clients transfer using your instructions. You mark the invoice paid.",
             tags: ["Bank Transfer"],
             statusText: statusText,
             statusStyle: statusStyle,
@@ -547,7 +550,7 @@ struct SetupPaymentsView: View {
                     save()
                 }
             ),
-            hintWhenDisabled: "Enable to configure ACH.",
+            hintWhenDisabled: "Turn on to offer bank transfer.",
             primaryAction: .init(
                 title: "Configure",
                 isLoading: false,
@@ -562,10 +565,10 @@ struct SetupPaymentsView: View {
     }
 
     private var stripeState: (label: String, style: ProviderStatusStyle, isConnected: Bool, isActive: Bool, actionRequired: Bool) {
-        guard stripeEnabled else { return ("Disabled", .disabled, false, false, false) }
+        guard stripeEnabled else { return ("Off", .disabled, false, false, false) }
 
         let accountId = normalizedStripeAccountId
-        guard !accountId.isEmpty else { return ("Needs setup", .pending, false, false, true) }
+        guard !accountId.isEmpty else { return ("Not connected", .pending, false, false, true) }
 
         if stripeStatusError {
             return ("Error", .error, true, false, true)
@@ -578,7 +581,7 @@ struct SetupPaymentsView: View {
         let isActive = chargesEnabled && payoutsEnabled && !actionRequired && detailsSubmitted
 
         if isActive {
-            return ("Active", .active, true, true, false)
+            return ("Connected", .active, true, true, false)
         }
         return ("Pending", .pending, true, false, true)
     }
@@ -606,24 +609,22 @@ struct SetupPaymentsView: View {
     }
 
     private var payPalStatusLabel: String {
-        guard business?.paypalEnabled == true else { return "Disabled" }
-        if isLoadingPayPalStatus { return payPalState == .active ? "Active" : "Pending" }
+        guard business?.paypalEnabled == true else { return "Off" }
+        if isLoadingPayPalStatus { return payPalState == .active ? "Connected" : "Checking…" }
         let state = payPalState
         switch state {
         case .unavailable:
-            return "Unavailable"
-        case .notConfigured:
-            return "Needs setup"
-        case .notConnected:
-            return "Needs setup"
+            return "Not available yet"
+        case .notConfigured, .notConnected:
+            return "Not connected"
         case .pending:
-            return "Pending"
+            return "Finishing setup"
         case .active:
-            return "Active"
+            return "Connected"
         case .error:
-            return "Error"
+            return "Couldn't check"
         case .disabled:
-            return "Disabled"
+            return "Off"
         }
     }
 
@@ -676,8 +677,8 @@ struct SetupPaymentsView: View {
     }
 
     private func manualStatusText(isEnabled: Bool, isConfigured: Bool) -> String {
-        if !isEnabled { return "Disabled" }
-        return isConfigured ? "Active" : "Needs setup"
+        if !isEnabled { return "Off" }
+        return isConfigured ? "On" : "Add details"
     }
 
     private func manualStatusStyle(isEnabled: Bool, isConfigured: Bool) -> ProviderStatusStyle {
@@ -739,7 +740,7 @@ struct SetupPaymentsView: View {
     private func sanitizePayPalMessage(_ message: String?) -> String {
         let trimmed = (message ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return "PayPal status unavailable. Please verify backend deployment and environment variables."
+            return "Couldn't check PayPal just now. Try again in a minute."
         }
         let noNewlines = trimmed.replacingOccurrences(of: "\n", with: " ")
         return String(noNewlines.prefix(140))
@@ -783,7 +784,6 @@ struct SetupPaymentsView: View {
         payPalURL = nil
         showPayPalSafari = false
 
-        stripeEnabled = !normalizedStripeAccountId.isEmpty
     }
 
     private func reloadForActiveBusiness() {
@@ -798,6 +798,16 @@ struct SetupPaymentsView: View {
 
     private func save() {
         try? modelContext.save()
+    }
+
+    /// Everything a published invoice's payment options depend on.
+    static func methodsSignature(_ b: Business) -> String {
+        [
+            "\(b.cardPaymentsOffered)", "\(b.paypalEnabled)", b.paypalMeFallback ?? b.paypalMeUrl ?? "",
+            "\(b.squareEnabled)", b.squareLink ?? "", "\(b.cashAppEnabled)", b.cashAppHandleOrLink ?? "",
+            "\(b.venmoEnabled)", b.venmoHandleOrLink ?? "", "\(b.achEnabled)", b.achInstructions ?? "",
+            b.achAccountLast4 ?? "",
+        ].joined(separator: "|")
     }
 
     private func openStripeOnboarding() async {
@@ -832,8 +842,16 @@ struct SetupPaymentsView: View {
         }
     }
 
+    /// On when card payments are offered: connected (or connecting) and not
+    /// switched off. This used to be screen-only state that reset itself and
+    /// did nothing when turned off.
+    private var stripeEnabled: Bool {
+        !normalizedStripeAccountId.isEmpty && (business?.stripeOffered ?? true)
+    }
+
     private func handleStripeToggle(_ enabled: Bool, business: Business) {
-        stripeEnabled = enabled
+        business.stripeOffered = enabled
+        save()
         guard enabled else { return }
         let accountId = normalizedStripeAccountId
         if accountId.isEmpty {
@@ -897,7 +915,7 @@ struct SetupPaymentsView: View {
             payPalLastCheckedAt = Date()
         } catch {
             guard self.business?.id == businessID else { return }
-            let fallback = "PayPal status unavailable. Please verify backend deployment and environment variables."
+            let fallback = "Couldn't check PayPal just now. Try again in a minute."
             let message = payPalUserMessage(error: error, fallback: fallback)
             if case PortalBackendError.http(let code, _, _) = error, code == 404 || code == 405 {
                 payPalPartnerAvailable = false
@@ -1051,7 +1069,7 @@ struct SetupPaymentsView: View {
             } catch {
                 payPalAlertDetails = errorDebugDetails(error)
                 payPalAlertMessage = (error as? PaymentServiceResponseError)?.message ??
-                    "PayPal status unavailable. Please verify backend deployment and environment variables."
+                    "Couldn't check PayPal just now. Try again in a minute."
                 showPayPalError = true
             }
         }
@@ -1068,7 +1086,7 @@ struct SetupPaymentsView: View {
     private func openStripeURL(_ url: URL) {
         let scheme = url.scheme?.lowercased()
         guard scheme == "https" || scheme == "http" else {
-            stripeAlertMessage = "Backend returned an invalid link. Verify backend deployment and route."
+            stripeAlertMessage = "Couldn't open the setup page. Try again in a minute."
             stripeAlertDetails = "Invalid URL: \(url.absoluteString)"
             showStripeError = true
             return
@@ -1080,7 +1098,7 @@ struct SetupPaymentsView: View {
     private func openPayPalURL(_ url: URL) {
         let scheme = url.scheme?.lowercased()
         guard scheme == "https" || scheme == "http" else {
-            payPalAlertMessage = "Backend returned an invalid link. Verify backend deployment and route."
+            payPalAlertMessage = "Couldn't open the setup page. Try again in a minute."
             payPalAlertDetails = "Invalid URL: \(url.absoluteString)"
             showPayPalError = true
             return
@@ -1097,7 +1115,7 @@ struct SetupPaymentsView: View {
     }
 
     private func stripeUserMessage(error: Error, details: String) -> String {
-        // These used to read "Backend authorization failed. Check admin key." — a
+        // These used to read "This device needs to sign in again. Close and reopen the app, then try again." — a
         // note to a developer, shown to a business owner.
         if case PortalBackendError.missingAdminKey = error {
             return PaymentErrorPresenter.humanize("INVALID_TOKEN", provider: .stripe)
@@ -1122,10 +1140,10 @@ struct SetupPaymentsView: View {
             return "Stripe setup service misconfigured (method not allowed)."
         }
         if lower.contains("http 401") || lower.contains("unauthorized") {
-            return "Backend authorization failed. Check admin key."
+            return "This device needs to sign in again. Close and reopen the app, then try again."
         }
         if lower.contains("invalid portal backend url") || lower.contains("badurl") || lower.contains("invalid url") {
-            return "Backend returned an invalid link. Verify backend deployment and route."
+            return "Couldn't open the setup page. Try again in a minute."
         }
         if lower.contains("<!doctype html") ||
             lower.contains("<html") ||
@@ -1137,20 +1155,20 @@ struct SetupPaymentsView: View {
             lower.contains("connect is not enabled") ||
             lower.contains("platform_account_not_allowed") ||
             lower.contains("create new accounts") {
-            return "Stripe Connect isn’t enabled for the platform account yet. Enable Connect in the Stripe dashboard (Live mode)."
+            return "Card payments aren't available yet. We're finishing setup with Stripe; try again later."
         }
         return "Stripe service unavailable. Try again."
     }
 
     private func payPalUserMessage(error: Error, fallback: String) -> String {
         if case PortalBackendError.missingAdminKey = error {
-            return "Backend authorization failed. Check admin key."
+            return "This device needs to sign in again. Close and reopen the app, then try again."
         }
         if case PortalBackendError.badURL = error {
-            return "Backend returned an invalid link. Verify backend deployment and route."
+            return "Couldn't open the setup page. Try again in a minute."
         }
         if case PortalBackendError.http(let code, _, _) = error, code == 401 {
-            return "Backend authorization failed. Check admin key."
+            return "This device needs to sign in again. Close and reopen the app, then try again."
         }
         if let serviceError = error as? PaymentServiceResponseError {
             return serviceError.message

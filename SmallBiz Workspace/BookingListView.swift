@@ -189,7 +189,7 @@ struct BookingListView: View {
             BookingAnalyticsView(businessID: businessID)
         }
         .navigationDestination(isPresented: $showBookingPage) {
-            BookingPortalView()
+            BookingPageView()
         }
         .task(id: businessID) { await load() }
         .refreshable { await load() }
