@@ -138,38 +138,33 @@ private struct InvoiceOverviewSummaryView: View {
 
             SummaryKit.SummaryCard {
                 SummaryKit.SummaryHeader(title: "Primary Actions")
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    // Send is the only filled button here. It emails a document to
-                    // a customer and can't be taken back; Preview opens a sheet.
-                    // They used to look identical.
-                    primaryActionButton(
+                // Send is the only filled button here. It emails a document to
+                // a customer and can't be taken back; Preview opens a sheet.
+                // They used to look identical.
+                SummaryKit.PrimaryActionRow(actions: [
+                    .init(
                         title: "Send",
                         systemImage: "paperplane",
                         prominence: .primary,
                         isEnabled: invoice.canBeSent
                     ) {
                         sharePDFOnly()
-                    }
-
-                    if invoice.documentType == "estimate" {
-                        primaryActionButton(title: "Convert", systemImage: "arrow.triangle.2.circlepath") {
+                    },
+                    invoice.documentType == "estimate"
+                        ? .init(title: "Convert", systemImage: "arrow.triangle.2.circlepath", prominence: .secondary) {
                             convertEstimateToInvoice()
                         }
-                    } else {
-                        primaryActionButton(title: invoice.isPaid ? "Mark Unpaid" : "Mark Paid", systemImage: "checkmark.circle") {
+                        : .init(title: invoice.isPaid ? "Mark Unpaid" : "Mark Paid", systemImage: "checkmark.circle", prominence: .secondary) {
                             setPaid(!invoice.isPaid)
                             try? modelContext.save()
-                        }
-                    }
-
-                    primaryActionButton(title: "Preview", systemImage: "doc.richtext") {
+                        },
+                    .init(title: "Preview", systemImage: "doc.richtext", prominence: .secondary) {
                         previewPDF()
-                    }
-
-                    primaryActionButton(title: "Edit", systemImage: "square.and.pencil") {
+                    },
+                    .init(title: "Edit", systemImage: "square.and.pencil", prominence: .secondary) {
                         detailInvoice = invoice
                     }
-                }
+                ])
 
                 if let reason = invoice.cannotBeSentReason {
                     Text(reason)
@@ -394,54 +389,6 @@ private struct InvoiceOverviewSummaryView: View {
         }
     }
 
-    /// How loud an action should be.
-    ///
-    /// Everything in this card used to be `.borderedProminent` in the same blue,
-    /// so the irreversible action and the harmless one were indistinguishable.
-    private enum ActionProminence {
-        case primary
-        case secondary
-    }
-
-    @ViewBuilder
-    private func primaryActionButton(
-        title: String,
-        systemImage: String,
-        prominence: ActionProminence = .secondary,
-        isEnabled: Bool = true,
-        action: @escaping () -> Void
-    ) -> some View {
-        switch prominence {
-        case .primary:
-            Button(action: action) {
-                primaryActionLabel(title: title, systemImage: systemImage)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(SBWTheme.brandBlue)
-            .disabled(!isEnabled)
-        case .secondary:
-            Button(action: action) {
-                primaryActionLabel(title: title, systemImage: systemImage)
-            }
-            .buttonStyle(.bordered)
-            .tint(SBWTheme.brandBlue)
-            .disabled(!isEnabled)
-        }
-    }
-
-    private func primaryActionLabel(title: String, systemImage: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.footnote.weight(.semibold))
-            Text(title)
-                .lineLimit(1)
-                .font(.footnote.weight(.semibold))
-                .minimumScaleFactor(0.75)
-                .allowsTightening(true)
-        }
-        .frame(maxWidth: .infinity, minHeight: 46)
-        .padding(.horizontal, 2)
-    }
 
     private func sharePDFOnly() {
         do {

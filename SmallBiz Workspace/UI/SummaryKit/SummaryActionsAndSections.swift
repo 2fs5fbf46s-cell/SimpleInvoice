@@ -13,13 +13,22 @@ struct PrimaryActionRow: View {
         let systemImage: String
         let role: ButtonRole?
         let prominence: Prominence
+        let isEnabled: Bool
         let action: () -> Void
 
-        init(title: String, systemImage: String, role: ButtonRole? = nil, prominence: Prominence = .primary, action: @escaping () -> Void) {
+        init(
+            title: String,
+            systemImage: String,
+            role: ButtonRole? = nil,
+            prominence: Prominence = .primary,
+            isEnabled: Bool = true,
+            action: @escaping () -> Void
+        ) {
             self.title = title
             self.systemImage = systemImage
             self.role = role
             self.prominence = prominence
+            self.isEnabled = isEnabled
             self.action = action
         }
     }
@@ -74,11 +83,13 @@ struct PrimaryActionRow: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
                 .tint(SBWTheme.brandBlue)
+                .disabled(!item.isEnabled)
         case .secondary:
             Button(role: item.role, action: item.action) { label }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
                 .tint(SBWTheme.brandBlue)
+                .disabled(!item.isEnabled)
         }
     }
 }
