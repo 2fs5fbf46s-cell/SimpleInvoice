@@ -134,4 +134,66 @@ final class InvoiceSendGuardTests: XCTestCase {
         XCTAssertEqual(InvoiceAmountParser.cents(from: "0.005"), 1)
         XCTAssertEqual(InvoiceAmountParser.cents(from: "19.999"), 2000)
     }
+
+    // MARK: - Draft estimates stay on the device
+
+    // The portal buttons, Done and the PDF upload all used to publish draft
+    // estimates to the client's portal. Only Send Estimate may now.
+
+    private func makeEstimate(status: String, clientEmail: String = "client@example.com") throws -> Invoice {
+        let estimate = try makeInvoice(items: [("Fence repair", 1, 250)], documentType: "estimate")
+        estimate.estimateStatus = status
+        let client = Client(businessID: estimate.businessID, name: "Testing Freeman", email: clientEmail)
+        context.insert(client)
+        estimate.client = client
+        try context.save()
+        return estimate
+    }
+
+    func testOnlyAnEstimateThatWasSentIsPublishable() throws {
+        XCTAssertTrue(try makeEstimate(status: "draft").isUnsentEstimate)
+        XCTAssertTrue(try makeEstimate(status: "").isUnsentEstimate)
+        XCTAssertFalse(try makeEstimate(status: "sent").isUnsentEstimate)
+        XCTAssertFalse(try makeEstimate(status: " Accepted ").isUnsentEstimate)
+        XCTAssertFalse(try makeEstimate(status: "declined").isUnsentEstimate)
+        XCTAssertFalse(try makeInvoice(items: [("Work", 1, 10)]).isUnsentEstimate)
+    }
+
+    func testPortalSyncSkipsADraftEstimate() throws {
+        let estimate = try makeEstimate(status: "draft")
+        XCTAssertFalse(PortalAutoSyncService.isEligible(invoice: estimate))
+
+        estimate.estimateStatus = "sent"
+        XCTAssertTrue(PortalAutoSyncService.isEligible(invoice: estimate))
+    }
+
+    func testADraftEstimateCannotMintAPortalLink() async throws {
+        let estimate = try makeEstimate(status: "draft")
+        do {
+            _ = try await PortalBackend.shared.createInvoicePortalToken(invoice: estimate)
+            XCTFail("A draft estimate must not reach the portal")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Send this estimate"))
+        }
+    }
+
+    func testSendingWithoutAClientEmailLeavesTheEstimateADraft() async throws {
+        let estimate = try makeEstimate(status: "draft", clientEmail: "")
+        do {
+            _ = try await EstimateSendService.send(estimate: estimate, context: context, businessName: nil)
+            XCTFail("Expected noClientEmail")
+        } catch EstimateSendService.SendError.noClientEmail {
+            XCTAssertEqual(estimate.estimateStatus, "draft")
+        }
+    }
+
+    func testAnEstimateTheClientDecidedCannotBeSentAgain() async throws {
+        let estimate = try makeEstimate(status: "accepted")
+        do {
+            _ = try await EstimateSendService.send(estimate: estimate, context: context, businessName: nil)
+            XCTFail("Expected alreadyDecided")
+        } catch EstimateSendService.SendError.alreadyDecided {
+            XCTAssertEqual(estimate.estimateStatus, "accepted")
+        }
+    }
 }

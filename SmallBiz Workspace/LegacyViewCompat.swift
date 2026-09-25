@@ -60,6 +60,9 @@ private struct InvoiceOverviewSummaryView: View {
     @State private var convertedInvoice: Invoice? = nil
     @State private var detailInvoice: Invoice? = nil
     @State private var previewPDFURL: URL? = nil
+    @State private var confirmSendEstimate = false
+    @State private var sendingEstimate = false
+    @State private var sendNotice: String? = nil
 
     private enum InvoiceOverviewSection: Hashable {
         case items
@@ -103,6 +106,47 @@ private struct InvoiceOverviewSummaryView: View {
         invoice.total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
     }
 
+    private var estimateStatus: String {
+        invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var sendActionTitle: String {
+        invoice.documentType == "estimate" && estimateStatus == "sent" ? "Resend" : "Send"
+    }
+
+    private var canSend: Bool {
+        guard invoice.canBeSent else { return false }
+        guard invoice.documentType == "estimate" else { return true }
+        return !sendingEstimate && estimateStatus != "accepted" && estimateStatus != "declined"
+    }
+
+    private func sendEstimate() {
+        guard !sendingEstimate else { return }
+        sendingEstimate = true
+        sendNotice = nil
+        Task {
+            defer { sendingEstimate = false }
+            do {
+                switch try await EstimateSendService.send(
+                    estimate: invoice,
+                    context: modelContext,
+                    businessName: EstimateSendService.businessName(for: invoice, profiles: profiles)
+                ) {
+                case .emailed(let email):
+                    Haptics.success()
+                    sendNotice = "Sent to \(email)."
+                case .publishedNotEmailed(let link, _):
+                    if let link { UIPasteboard.general.string = link }
+                    exportError = link == nil
+                        ? "The estimate is in your client's portal, but the email didn't go out. Tap Resend to try again."
+                        : "The estimate is in your client's portal, but the email didn't go out. Its link is copied — paste it to your client, or tap Resend."
+                }
+            } catch {
+                exportError = error.localizedDescription
+            }
+        }
+    }
+
     private var dueLabel: String {
         invoice.documentType == "estimate" ? "Valid Until" : "Due"
     }
@@ -143,12 +187,19 @@ private struct InvoiceOverviewSummaryView: View {
                 // They used to look identical.
                 SummaryKit.PrimaryActionRow(actions: [
                     .init(
-                        title: "Send",
+                        title: sendActionTitle,
                         systemImage: "paperplane",
                         prominence: .primary,
-                        isEnabled: invoice.canBeSent
+                        isEnabled: canSend
                     ) {
-                        sharePDFOnly()
+                        // An estimate is sent from the server (publish +
+                        // email); an invoice still goes out through the share
+                        // sheet.
+                        if invoice.documentType == "estimate" {
+                            confirmSendEstimate = true
+                        } else {
+                            sharePDFOnly()
+                        }
                     },
                     invoice.documentType == "estimate"
                         ? .init(title: "Convert", systemImage: "arrow.triangle.2.circlepath", prominence: .secondary) {
@@ -173,8 +224,34 @@ private struct InvoiceOverviewSummaryView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 6)
                 }
+
+                if sendingEstimate {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Sending estimate…")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
+                } else if let sendNotice {
+                    Text(sendNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
+                }
             }
             .listRowBackground(Color.clear)
+            .confirmationDialog(
+                sendActionTitle == "Resend" ? "Resend this estimate?" : "Send this estimate?",
+                isPresented: $confirmSendEstimate,
+                titleVisibility: .visible
+            ) {
+                Button(sendActionTitle == "Resend" ? "Resend Estimate" : "Send Estimate") { sendEstimate() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(EstimateSendService.confirmationMessage(for: invoice))
+            }
 
             InvoiceSummaryDisclosureCard(
                 title: "Line Items",
@@ -214,30 +291,33 @@ private struct InvoiceOverviewSummaryView: View {
             }
             .listRowBackground(Color.clear)
 
-            InvoiceSummaryDisclosureCard(
-                title: "Payments & Receipts",
-                subtitle: "Paid status and remaining balance",
-                icon: "creditcard",
-                isExpanded: expandedSection == .payments,
-                onToggle: {
-                    expandedSection = expandedSection == .payments ? nil : .payments
-                }
-            ) {
-                VStack(alignment: .leading, spacing: 8) {
-                    SummaryKit.SummaryKeyValueRow(label: "Status", value: invoice.isPaid ? "Paid" : "Unpaid")
-                    SummaryKit.SummaryKeyValueRow(label: "Total", value: amountText)
-                    SummaryKit.SummaryKeyValueRow(label: "Remaining", value: (invoice.isPaid ? 0 : invoice.total).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))
-
-                    NavigationLink {
-                        InvoicePaymentsSummaryView(invoice: invoice)
-                    } label: {
-                        Label("Update Payment", systemImage: "square.and.pencil")
+            // An estimate isn't paid; its deposit invoice is.
+            if invoice.documentType != "estimate" {
+                InvoiceSummaryDisclosureCard(
+                    title: "Payments & Receipts",
+                    subtitle: "Paid status and remaining balance",
+                    icon: "creditcard",
+                    isExpanded: expandedSection == .payments,
+                    onToggle: {
+                        expandedSection = expandedSection == .payments ? nil : .payments
                     }
-                    .buttonStyle(.bordered)
+                ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SummaryKit.SummaryKeyValueRow(label: "Status", value: invoice.isPaid ? "Paid" : "Unpaid")
+                        SummaryKit.SummaryKeyValueRow(label: "Total", value: amountText)
+                        SummaryKit.SummaryKeyValueRow(label: "Remaining", value: (invoice.isPaid ? 0 : invoice.total).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))
+
+                        NavigationLink {
+                            InvoicePaymentsSummaryView(invoice: invoice)
+                        } label: {
+                            Label("Update Payment", systemImage: "square.and.pencil")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.top, 6)
                 }
-                .padding(.top, 6)
+                .listRowBackground(Color.clear)
             }
-            .listRowBackground(Color.clear)
 
             InvoiceSummaryDisclosureCard(
                 title: "Attachments",

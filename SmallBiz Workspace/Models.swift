@@ -590,6 +590,16 @@ extension Invoice {
         return nil
     }
 
+    /// An estimate that hasn't been sent. Drafts never leave the device:
+    /// every portal write checks this, and an estimate reaches the client's
+    /// portal only through Send Estimate (EstimateSendService). Before, the
+    /// portal buttons, Done and the PDF upload all published drafts.
+    var isUnsentEstimate: Bool {
+        guard documentType == "estimate" else { return false }
+        let status = estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !["sent", "accepted", "declined"].contains(status)
+    }
+
     var isFinalized: Bool {
         isBusinessInfoLocked
     }

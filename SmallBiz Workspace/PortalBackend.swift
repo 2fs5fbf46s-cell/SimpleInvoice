@@ -884,12 +884,18 @@ final class PortalBackend {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice must be linked to a client to create a portal link."])
         }
         
+        // This seed also files the document in the client's portal, so a
+        // draft estimate must never get here.
+        if invoice.isUnsentEstimate {
+            throw NSError(domain: "Portal", code: 409, userInfo: [NSLocalizedDescriptionKey: "Send this estimate before opening it in the client portal."])
+        }
+
         let lineItems = buildPortalLineItems(invoice: invoice)
         let subtotalCents = portalSubtotalCents(from: lineItems)
         let taxCents = portalTaxCents(invoice: invoice)
         let totalCents = portalTotalCents(invoice: invoice)
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "businessId": invoice.businessID.uuidString,
             "clientId": clientId.uuidString,
             "scope": "invoice",
@@ -908,6 +914,17 @@ final class PortalBackend {
             "clientPortalEnabled": invoice.client?.portalEnabled ?? true,
             "paymentMethods": paymentMethodsPayload(for: business)
         ]
+
+        // Without these the backend guessed the type from an "EST-" number
+        // prefix, so a named estimate ("TF Estimate") was filed as an unpaid
+        // invoice — listed under Invoices, and its estimate link unavailable.
+        if invoice.documentType == "estimate" {
+            let status = invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            body["documentType"] = "estimate"
+            body["estimateStatus"] = status
+            body["status"] = status
+            body["title"] = "Estimate \(invoice.invoiceNumber)"
+        }
 
         return try await seedToken(payload: body).token
     }
@@ -1720,6 +1737,58 @@ final class PortalBackend {
         }
 
         return link
+    }
+
+    enum EstimateEmailOutcome {
+        case emailed(link: String)
+        /// The estimate is in the client's portal but the email didn't go
+        /// out; `link` still opens it, to share another way.
+        case emailFailed(link: String, reason: String)
+    }
+
+    /// Emails the client a link to an estimate that's already published as
+    /// "sent" — the server refuses anything else. See EstimateSendService.
+    func sendEstimateEmail(
+        estimateId: String,
+        clientEmail: String,
+        businessName: String?
+    ) async throws -> EstimateEmailOutcome {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/portal/estimate/send-email")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        var payload: [String: Any] = [
+            "estimateId": estimateId,
+            "clientEmail": clientEmail
+        ]
+        if let businessName, !businessName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["businessName"] = businessName
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+
+        let decoded = try? decoder().decode(SendLinkResponseDTO.self, from: data)
+        if http.statusCode == 502, let link = decoded?.link, !link.isEmpty {
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let reason = (json?["errorCode"] as? String) ?? decoded?.error ?? "email_failed"
+            return .emailFailed(link: link, reason: reason)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: decoded?.error ?? raw)
+        }
+        guard let link = decoded?.link, !link.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return .emailed(link: link)
     }
 
     // MARK: - Notification settings

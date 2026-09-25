@@ -70,6 +70,8 @@ struct InvoiceDetailView: View {
     @State private var portalNotice: String? = nil
     @State private var businessInfoNotice: String? = nil
     @State private var openingPortal = false
+    @State private var sendingEstimate = false
+    @State private var confirmSendEstimate = false
     @State private var uploadingPortalPDF = false
     @State private var portalPDFNotice: String? = nil
     @State private var navigateToClientSettings: Client? = nil
@@ -143,7 +145,9 @@ struct InvoiceDetailView: View {
             TotalsDisclosureSection
             ClientPortalSection
             StatusSection
-            PaymentReportsSection
+            if invoice.documentType != "estimate" {
+                PaymentReportsSection
+            }
             AdvancedOptionsSection
         }
         .listStyle(.plain)
@@ -829,106 +833,66 @@ struct InvoiceDetailView: View {
 
                 let canOpenPortal = (invoice.client != nil) && isClientPortalEnabled
 
-                HStack(spacing: 8) {
-                    Text(portalSyncStatusText)
-                        .font(.caption)
-                        .foregroundStyle(invoice.portalLastUploadError == nil ? Color.secondary : Color.red)
-                    Spacer()
-                    if shouldShowPortalRetryButton && canOpenPortal {
-                        Button("Retry") {
-                            triggerInvoicePortalAutoSync()
+                if invoice.isUnsentEstimate {
+                    unsentEstimatePortalRow(canSend: canOpenPortal)
+                } else {
+                    HStack(spacing: 8) {
+                        Text(portalSyncStatusText)
+                            .font(.caption)
+                            .foregroundStyle(invoice.portalLastUploadError == nil ? Color.secondary : Color.red)
+                        Spacer()
+                        if shouldShowPortalRetryButton && canOpenPortal {
+                            Button("Retry") {
+                                triggerInvoicePortalAutoSync()
+                            }
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(invoice.portalUploadInFlight)
                         }
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(invoice.portalUploadInFlight)
                     }
-                }
 
-                HStack(spacing: 12) {
-                    Button {
-                        Task {
-                            openingPortal = true
-                            portalError = nil
-                            portalNotice = nil
+                    HStack(spacing: 12) {
+                        Button {
+                            Task {
+                                openingPortal = true
+                                portalError = nil
+                                portalNotice = nil
 
-                            do {
-                                let url = try await buildPortalLink(mode: nil)
-                                portalURL = url
-                                showPortal = true
-                            } catch {
-                                portalURL = nil
-                                SBWLog.ui.problem("Portal open failed: \(error)")
-                                portalError = error.localizedDescription
+                                do {
+                                    let url = try await buildPortalLink(mode: nil)
+                                    portalURL = url
+                                    showPortal = true
+                                } catch {
+                                    portalURL = nil
+                                    SBWLog.ui.problem("Portal open failed: \(error)")
+                                    portalError = error.localizedDescription
+                                }
+
+                                openingPortal = false
                             }
-
-                            openingPortal = false
-                        }
-                    } label: {
-                        if openingPortal {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text("Opening secure portal…")
-                            }
-                        } else {
-                            if invoice.isPaid {
-                                Label("View Client Portal (Paid)", systemImage: "checkmark.seal")
+                        } label: {
+                            if openingPortal {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                    Text("Opening secure portal…")
+                                }
                             } else {
-                                Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(SBWTheme.brandBlue)
-                    .disabled(openingPortal || !canOpenPortal)
-                    .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
-
-                    Spacer()
-
-                    Menu {
-                        Button {
-                            Task {
-                                openingPortal = true
-                                portalError = nil
-                                portalNotice = nil
-
-                                do {
-                                    let url = try await buildPortalLink(mode: nil)
-                                    UIPasteboard.general.string = url.absoluteString
-                                    showNotice("Client link copied")
-                                } catch {
-                                    SBWLog.ui.problem("Copy link failed: \(error)")
-                                    portalError = error.localizedDescription
+                                if invoice.isPaid {
+                                    Label("View Client Portal (Paid)", systemImage: "checkmark.seal")
+                                } else {
+                                    Label("View in Client Portal", systemImage: "rectangle.and.hand.point.up.left")
                                 }
-
-                                openingPortal = false
                             }
-                        } label: {
-                            Label("Copy Client Link", systemImage: "doc.on.doc")
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SBWTheme.brandBlue)
+                        .disabled(openingPortal || !canOpenPortal)
+                        .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
 
-                        Button {
-                            Task {
-                                openingPortal = true
-                                portalError = nil
-                                portalNotice = nil
+                        Spacer()
 
-                                do {
-                                    let url = try await buildPortalLink(mode: nil)
-                                    shareItems = [url]
-                                    showNotice("Sharing link…")
-                                } catch {
-                                    SBWLog.ui.problem("Share link failed: \(error)")
-                                    portalError = error.localizedDescription
-                                }
-
-                                openingPortal = false
-                            }
-                        } label: {
-                            Label("Share Client Link", systemImage: "square.and.arrow.up")
-                        }
-
-                        if isPortalExpiredForThisInvoice {
+                        Menu {
                             Button {
                                 Task {
                                     openingPortal = true
@@ -937,53 +901,102 @@ struct InvoiceDetailView: View {
 
                                     do {
                                         let url = try await buildPortalLink(mode: nil)
-                                        portalURL = url
-                                        showPortal = true
-                                        portalReturn.expiredInvoiceID = nil
+                                        UIPasteboard.general.string = url.absoluteString
+                                        showNotice("Client link copied")
                                     } catch {
+                                        SBWLog.ui.problem("Copy link failed: \(error)")
                                         portalError = error.localizedDescription
                                     }
 
                                     openingPortal = false
                                 }
                             } label: {
-                                Label("Regenerate Link", systemImage: "arrow.clockwise")
-                            }
-                        }
-
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .imageScale(.large)
-                            .padding(.vertical, 6)
-                    }
-                    .disabled(openingPortal || !canOpenPortal)
-                    .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
-                }
-
-                if canOpenPortal {
-                    Button {
-                        Task {
-                            openingPortal = true
-                            portalError = nil
-                            portalNotice = nil
-
-                            do {
-                                let url = try await buildPortalLink(mode: nil)
-                                portalURL = url
-                                showPortal = true
-                            } catch {
-                                portalURL = nil
-                                portalError = error.localizedDescription
+                                Label("Copy Client Link", systemImage: "doc.on.doc")
                             }
 
-                            openingPortal = false
+                            Button {
+                                Task {
+                                    openingPortal = true
+                                    portalError = nil
+                                    portalNotice = nil
+
+                                    do {
+                                        let url = try await buildPortalLink(mode: nil)
+                                        shareItems = [url]
+                                        showNotice("Sharing link…")
+                                    } catch {
+                                        SBWLog.ui.problem("Share link failed: \(error)")
+                                        portalError = error.localizedDescription
+                                    }
+
+                                    openingPortal = false
+                                }
+                            } label: {
+                                Label("Share Client Link", systemImage: "square.and.arrow.up")
+                            }
+
+                            if isPortalExpiredForThisInvoice {
+                                Button {
+                                    Task {
+                                        openingPortal = true
+                                        portalError = nil
+                                        portalNotice = nil
+
+                                        do {
+                                            let url = try await buildPortalLink(mode: nil)
+                                            portalURL = url
+                                            showPortal = true
+                                            portalReturn.expiredInvoiceID = nil
+                                        } catch {
+                                            portalError = error.localizedDescription
+                                        }
+
+                                        openingPortal = false
+                                    }
+                                } label: {
+                                    Label("Regenerate Link", systemImage: "arrow.clockwise")
+                                }
+                            }
+
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .imageScale(.large)
+                                .padding(.vertical, 6)
                         }
-                    } label: {
-                        Label("Open Client Payment Page", systemImage: "creditcard")
+                        .disabled(openingPortal || !canOpenPortal)
+                        .opacity((openingPortal || !canOpenPortal) ? 0.6 : 1)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(openingPortal)
-                    .opacity(openingPortal ? 0.6 : 1)
+
+                    if canOpenPortal && invoice.documentType != "estimate" {
+                        Button {
+                            Task {
+                                openingPortal = true
+                                portalError = nil
+                                portalNotice = nil
+
+                                do {
+                                    let url = try await buildPortalLink(mode: nil)
+                                    portalURL = url
+                                    showPortal = true
+                                } catch {
+                                    portalURL = nil
+                                    portalError = error.localizedDescription
+                                }
+
+                                openingPortal = false
+                            }
+                        } label: {
+                            Label("Open Client Payment Page", systemImage: "creditcard")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(openingPortal)
+                        .opacity(openingPortal ? 0.6 : 1)
+                    }
+
+                    if canOpenPortal && invoice.documentType == "estimate"
+                        && invoice.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "sent" {
+                        sendEstimateButton(title: "Resend Estimate", prominent: false)
+                    }
                 }
 
                 if let client = invoice.client, !isClientPortalEnabled {
@@ -1032,6 +1045,16 @@ struct InvoiceDetailView: View {
                 }
             }
             .sbwCardRow()
+            .confirmationDialog(
+                invoice.isUnsentEstimate ? "Send this estimate?" : "Resend this estimate?",
+                isPresented: $confirmSendEstimate,
+                titleVisibility: .visible
+            ) {
+                Button(invoice.isUnsentEstimate ? "Send Estimate" : "Resend Estimate") { sendEstimate() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(EstimateSendService.confirmationMessage(for: invoice))
+            }
         }
     }
 
@@ -1323,6 +1346,86 @@ struct InvoiceDetailView: View {
             .background(Capsule().fill(colors.bg))
             .foregroundStyle(colors.fg)
             .accessibilityLabel(Text(text))
+    }
+
+    /// An unsent estimate isn't in the client's portal at all, so there's no
+    /// link to open or share yet — just the way to send it.
+    @ViewBuilder
+    private func unsentEstimatePortalRow(canSend: Bool) -> some View {
+        portalNoticeRow(
+            icon: "paperplane",
+            title: "Not in the client portal yet.",
+            detail: "Your client can see this estimate once you send it. Use Preview to check the PDF first."
+        )
+
+        if canSend {
+            sendEstimateButton(title: "Send Estimate", prominent: true)
+
+            if let email = invoice.client?.email.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+                Text("Emails \(email) a link to review and respond.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sendEstimateButton(title: String, prominent: Bool) -> some View {
+        let button = Button {
+            confirmSendEstimate = true
+        } label: {
+            if sendingEstimate {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Sending…")
+                }
+            } else {
+                Label(title, systemImage: "paperplane.fill")
+            }
+        }
+        .disabled(sendingEstimate || openingPortal || !invoice.canBeSent)
+
+        if prominent {
+            button.buttonStyle(.borderedProminent).tint(SBWTheme.brandBlue)
+        } else {
+            button.buttonStyle(.bordered).tint(SBWTheme.brandBlue)
+        }
+
+        if let reason = invoice.cannotBeSentReason {
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func sendEstimate() {
+        guard !sendingEstimate else { return }
+        sendingEstimate = true
+        portalError = nil
+        portalNotice = nil
+        forceSaveNow()
+
+        Task {
+            defer { sendingEstimate = false }
+            do {
+                switch try await EstimateSendService.send(
+                    estimate: invoice,
+                    context: modelContext,
+                    businessName: resolvedPortalBusinessName()
+                ) {
+                case .emailed(let email):
+                    Haptics.success()
+                    showNotice("Estimate sent to \(email)")
+                case .publishedNotEmailed(let link, _):
+                    if let link { UIPasteboard.general.string = link }
+                    portalError = link == nil
+                        ? "The estimate is in your client's portal, but the email didn't go out. Use Resend to try again."
+                        : "The estimate is in your client's portal, but the email didn't go out. Its link is copied — paste it to your client, or use Resend."
+                }
+            } catch {
+                portalError = error.localizedDescription
+            }
+        }
     }
 
     private func portalNoticeRow(icon: String, title: String, detail: String) -> some View {
@@ -1719,6 +1822,14 @@ struct InvoiceDetailView: View {
         portalError = nil
         portalNotice = nil
 
+        if invoice.isUnsentEstimate {
+            throw NSError(
+                domain: "Portal",
+                code: 409,
+                userInfo: [NSLocalizedDescriptionKey: "Send this estimate before opening it in the client portal."]
+            )
+        }
+
         if isClientPortalEnabled == false {
             throw NSError(
                 domain: "Portal",
@@ -1862,42 +1973,45 @@ struct InvoiceDetailView: View {
                 .accessibilityLabel("Change template")
 
             Menu {
-                Button {
-                    Task { @MainActor in
-                        uploadingPortalPDF = true
-                        portalPDFNotice = nil
-                        do {
-                            let pdfData = await InvoicePDFService.makePDFDataOffMainThread(
-                                invoice: invoice,
-                                profiles: profiles,
-                                context: modelContext,
-                                businesses: businesses,
-                                lockBusinessSnapshot: true,
-                                lockReason: .portal
-                            )
-                            let pdfFileName = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
+                // A draft's PDF has no business in the client's portal.
+                if !invoice.isUnsentEstimate {
+                    Button {
+                        Task { @MainActor in
+                            uploadingPortalPDF = true
+                            portalPDFNotice = nil
+                            do {
+                                let pdfData = await InvoicePDFService.makePDFDataOffMainThread(
+                                    invoice: invoice,
+                                    profiles: profiles,
+                                    context: modelContext,
+                                    businesses: businesses,
+                                    lockBusinessSnapshot: true,
+                                    lockReason: .portal
+                                )
+                                let pdfFileName = InvoicePDFGenerator.preferredPDFFileName(for: invoice)
 
-                            _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
-                                businessId: invoice.businessID.uuidString,
-                                invoiceId: String(describing: invoice.id),
-                                fileName: pdfFileName,
-                                pdfData: pdfData
-                            )
-                            portalPDFNotice = "Portal PDF uploaded"
-                        } catch {
-                            exportError = error.localizedDescription
+                                _ = try await PortalBackend.shared.uploadInvoicePDFToBlob(
+                                    businessId: invoice.businessID.uuidString,
+                                    invoiceId: String(describing: invoice.id),
+                                    fileName: pdfFileName,
+                                    pdfData: pdfData
+                                )
+                                portalPDFNotice = "Portal PDF uploaded"
+                            } catch {
+                                exportError = error.localizedDescription
+                            }
+                            uploadingPortalPDF = false
                         }
-                        uploadingPortalPDF = false
+                    } label: {
+                        if uploadingPortalPDF {
+                            Label("Uploading Portal PDF…", systemImage: "arrow.up.doc")
+                        } else {
+                            Label("Upload PDF to Client Portal", systemImage: "arrow.up.doc")
+                        }
                     }
-                } label: {
-                    if uploadingPortalPDF {
-                        Label("Uploading Portal PDF…", systemImage: "arrow.up.doc")
-                    } else {
-                        Label("Upload PDF to Client Portal", systemImage: "arrow.up.doc")
-                    }
-                }
 
-                Divider()
+                    Divider()
+                }
                 Button("Share PDF Only") { sharePDFOnly() }
                 Button("Share PDF + Attachments") { sharePDFWithAttachments() }
                 Button("Share ZIP Package (PDF + Attachments)") { shareZIPPackage() }
@@ -2473,7 +2587,11 @@ struct InvoiceDetailView: View {
                     decidedAtMs: decidedAtMs
                 )
             } else {
-                estimate.estimateStatus = remote.status
+                // Only a client's decision comes from the portal. Whether an
+                // estimate was sent is this device's call (EstimateSendService)
+                // — taking "sent" from here flipped drafts to sent when the
+                // backend guessed at a record's status.
+                return
             }
             try? modelContext.save()
         } catch {
