@@ -242,10 +242,14 @@ struct ClientPickerManualFetchView: View {
         loadError = nil
 
         do {
-            let descriptor = FetchDescriptor<Client>(
+            // Scoped to the active business: unscoped, this picker offered
+            // other businesses' clients for this one's invoices.
+            var descriptor = FetchDescriptor<Client>(
                 sortBy: [SortDescriptor(\Client.name, order: .forward)]
             )
-            // (No predicate — keep simple and stable)
+            if let bizID = activeBiz.activeBusinessID {
+                descriptor.predicate = #Predicate<Client> { $0.businessID == bizID }
+            }
 
             let results = try modelContext.fetch(descriptor)
             clients = results
@@ -260,7 +264,14 @@ struct ClientPickerManualFetchView: View {
         let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
 
-        let newClient = Client()
+        guard let bizID = activeBiz.activeBusinessID else {
+            loadError = "No active business selected."
+            return
+        }
+
+        // `Client()` gets a random businessID, which left clients added here
+        // attached to the invoice but missing from the Clients tab.
+        let newClient = Client(businessID: bizID)
         newClient.name = name
         newClient.email = draftEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         newClient.phone = draftPhone.trimmingCharacters(in: .whitespacesAndNewlines)
