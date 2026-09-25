@@ -85,7 +85,7 @@ struct BusinessSwitcherView: View {
             }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("This will delete all data for this business.")
+            Text("Deletes all of this business's clients, invoices, jobs and contracts from this phone, stops its recurring invoices and takes its website offline. This can't be undone.")
         }
         .alert("Rename Business", isPresented: Binding(
             get: { pendingRename != nil },
@@ -182,6 +182,27 @@ struct BusinessSwitcherView: View {
                 activeBiz.clearActiveBusiness()
             }
         }
+
+        // The server bills and publishes on its own: stop its recurring
+        // invoices and take its website down, or clients kept getting
+        // invoices from a business that no longer existed in the app.
+        let schedules = (try? modelContext.fetch(FetchDescriptor<RecurringInvoiceSchedule>(
+            predicate: #Predicate { $0.businessID == businessID }
+        ))) ?? []
+        for schedule in schedules {
+            RecurringScheduleSync.delete(schedule, context: modelContext)
+        }
+        let handles = ((try? modelContext.fetch(FetchDescriptor<PublishedBusinessSite>(
+            predicate: #Predicate { $0.businessID == businessID }
+        ))) ?? []).map(\.handle).filter { !$0.isEmpty }
+        let token = BusinessTokenStore.shared.token(for: businessID)
+        Task {
+            for handle in handles {
+                try? await PortalBackend.shared.unpublishSite(handle: handle, businessToken: token)
+            }
+        }
+        deleteAll(PublishedBusinessSite.self, #Predicate { $0.businessID == businessID })
+        deleteAll(Expense.self, #Predicate { $0.businessID == businessID })
 
         deleteAll(BusinessProfile.self, #Predicate { $0.businessID == businessID })
         deleteAll(Client.self, #Predicate { $0.businessID == businessID })

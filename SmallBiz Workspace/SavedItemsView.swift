@@ -660,7 +660,7 @@ private struct CatalogItemEditorSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Pricing")
                                 .font(.headline)
-                            TextField("Unit Price", value: $draft.unitPrice, format: .number)
+                            TextField("Unit Price", value: $draft.unitPrice.zeroAsEmpty, format: .number.precision(.fractionLength(2)))
                                 .keyboardType(.decimalPad)
 
                             Stepper(value: $draft.defaultQuantity, in: 1...999, step: 1) {

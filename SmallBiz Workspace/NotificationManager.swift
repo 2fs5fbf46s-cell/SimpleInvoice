@@ -69,7 +69,9 @@ final class NotificationManager {
         let now = Date()
         let calendar = Calendar.current
 
-        for invoice in invoices where !invoice.isPaid && invoice.documentType.lowercased() == "invoice" {
+        // Only what the client has (sent, still owed): drafts were getting
+        // "due in 2 days" reminders too.
+        for invoice in MoneyMath.open(invoices) {
             let triggerDate = calendar.date(byAdding: .day, value: -2, to: invoice.dueDate) ?? invoice.dueDate
             guard triggerDate > now else { continue }
 
@@ -123,8 +125,10 @@ final class NotificationManager {
             content.body = "\(reminderTitle) starts in about 24 hours."
             content.sound = .default
             content.userInfo = [
-                "event": "booking_coming_up",
-                "businessId": businessIDString
+                "event": "job_coming_up",
+                "businessId": businessIDString,
+                // So the tap opens this job, not the Bookings list.
+                "jobId": job.id.uuidString
             ]
 
             let trigger = UNCalendarNotificationTrigger(

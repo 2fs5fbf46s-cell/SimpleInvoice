@@ -11,6 +11,7 @@ struct RecurringInvoiceScheduleListView: View {
     @Query private var businesses: [Business]
 
     @State private var selectedSchedule: RecurringInvoiceSchedule? = nil
+    @State private var draftSaved = false
     @State private var showingNewSchedule = false
     @State private var newScheduleDraft: RecurringInvoiceSchedule? = nil
 
@@ -123,13 +124,20 @@ struct RecurringInvoiceScheduleListView: View {
         .navigationDestination(item: $selectedSchedule) { schedule in
             RecurringInvoiceScheduleFormView(schedule: schedule, isDraft: false)
         }
-        .sheet(isPresented: $showingNewSchedule, onDismiss: { newScheduleDraft = nil }) {
+        .sheet(isPresented: $showingNewSchedule, onDismiss: {
+            // Swiped away without Save: the draft was left in the list,
+            // never uploaded, so it looked set up but never billed.
+            if let draft = newScheduleDraft, !draftSaved { modelContext.delete(draft); try? modelContext.save() }
+            newScheduleDraft = nil
+            draftSaved = false
+        }) {
             NavigationStack {
                 if let newScheduleDraft {
                     RecurringInvoiceScheduleFormView(schedule: newScheduleDraft, isDraft: true) {
+                        draftSaved = true
                         showingNewSchedule = false
                     } onCancel: {
-                        deleteIfInvalidAndClose(newScheduleDraft)
+                        showingNewSchedule = false
                     }
                 } else {
                     ProgressView("Loading…")
@@ -197,20 +205,6 @@ struct RecurringInvoiceScheduleListView: View {
         Haptics.lightTap()
     }
 
-    private func deleteIfInvalidAndClose(_ schedule: RecurringInvoiceSchedule) {
-        let hasRealItem = schedule.lineItems.contains {
-            !$0.itemDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.unitPrice > 0
-        }
-        if !hasRealItem {
-            modelContext.delete(schedule)
-        }
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save after cancel: \(error)") }
-
-        showingNewSchedule = false
-    }
-
     private func deleteSchedules(at offsets: IndexSet) {
         let toDelete: [RecurringInvoiceSchedule] = offsets.compactMap { idx -> RecurringInvoiceSchedule? in
             guard idx < scopedSchedules.count else { return nil }
@@ -218,15 +212,8 @@ struct RecurringInvoiceScheduleListView: View {
         }
 
         for schedule in toDelete {
-            let scheduleID = schedule.id
-            Task {
-                try? await PortalBackend.shared.deleteRecurringSchedule(scheduleId: scheduleID)
-            }
-            modelContext.delete(schedule)
+            RecurringScheduleSync.delete(schedule, context: modelContext)
         }
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
         Haptics.success()
     }
 }

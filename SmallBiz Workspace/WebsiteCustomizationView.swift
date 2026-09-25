@@ -223,7 +223,11 @@ struct WebsiteCustomizationView: View {
                     TextField("Site Address", text: Binding(
                         get: { draft?.handle ?? "" },
                         set: { value in
-                            draft?.handle = PublishedBusinessSite.normalizeHandle(value)
+                            // Only drop characters an address can't have; the
+                            // full cleanup (trimming dashes) waits for Publish,
+                            // or "joes-plumbing" couldn't be typed past "joes".
+                            let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-")
+                            draft?.handle = String(value.lowercased().map { $0 == " " || $0 == "_" ? "-" : $0 }.filter { allowed.contains($0) })
                             saveDraft()
                         }
                     ))
@@ -244,8 +248,10 @@ struct WebsiteCustomizationView: View {
                     TextField("example.com", text: Binding(
                         get: { draft?.publicSiteDomain ?? "" },
                         set: { value in
-                            let normalized = PublishedBusinessSite.normalizePublicSiteDomain(value)
-                            draft?.publicSiteDomain = normalized.isEmpty ? nil : normalized
+                            // Cleaned up on Publish; doing it per keystroke
+                            // stripped the "." before "com" could be typed.
+                            let typed = value.trimmingCharacters(in: .whitespaces).lowercased()
+                            draft?.publicSiteDomain = typed.isEmpty ? nil : typed
                             saveDraft()
                             scheduleSiteDomainStatusCheck(force: false, debounced: true)
                         }
@@ -434,7 +440,17 @@ struct WebsiteCustomizationView: View {
                 context: modelContext
             )
             scheduleSiteDomainStatusCheck(force: true, debounced: false)
-            alertMessage = "Website queued for publishing."
+            // It used to say "queued" whatever happened, even when the
+            // address was taken and nothing went live.
+            let problem = draft.lastPublishError?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            switch PublishStatus(rawValue: draft.publishStatus) {
+            case .published:
+                alertMessage = problem.isEmpty ? "Your website is live." : "Your website is live, but \(problem)"
+            case .error:
+                alertMessage = problem.isEmpty ? "Your website couldn't be published. Try again." : "Your website couldn't be published: \(problem)"
+            default:
+                alertMessage = "You're offline. Your website will publish when you're back online."
+            }
             showAlert = true
         } catch {
             alertMessage = error.localizedDescription

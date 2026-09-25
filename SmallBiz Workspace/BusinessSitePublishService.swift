@@ -186,9 +186,9 @@ final class BusinessSitePublishService {
                     SBWLog.portal.problem("⚠️ Public site domain mapping failed: \(error.localizedDescription)")
                     #endif
                     if case PortalBackendError.http(let code, _, _) = error, code == 409 {
-                        domainWarning = "This domain is already connected to another business."
+                        domainWarning = "that domain is already connected to another business."
                     } else {
-                        domainWarning = "domain mapping failed: \(error.localizedDescription)"
+                        domainWarning = "your domain couldn't be connected: \(error.localizedDescription)"
                     }
                 }
                 if let domainWarning, !domainWarning.isEmpty {
@@ -205,7 +205,11 @@ final class BusinessSitePublishService {
             try? context.save()
         } catch {
             site.publishStatus = PublishStatus.error.rawValue
-            site.lastPublishError = error.localizedDescription
+            if case PortalBackendError.http(409, let body, _) = error, body.contains("HANDLE_TAKEN") {
+                site.lastPublishError = "the site address \(site.handle) is taken. Choose another one."
+            } else {
+                site.lastPublishError = error.localizedDescription
+            }
             site.needsSync = true
             try? context.save()
         }
@@ -240,6 +244,11 @@ final class BusinessSitePublishService {
         let all = (try? context.fetch(FetchDescriptor<PublishedBusinessSite>())) ?? []
         guard let site = all.first(where: { $0.id == siteID }) else { return }
         guard site.needsSync else { return }
+        // Publishing signs in as the active business. Retrying another
+        // business's queued site with that sign-in either filed it under the
+        // wrong business or failed with "handle taken"; it waits until its
+        // own business is active.
+        guard site.businessID.uuidString == UserDefaults.standard.string(forKey: "activeBusinessID") else { return }
 
         inFlightSiteIDs.insert(siteID)
         defer { inFlightSiteIDs.remove(siteID) }
@@ -304,8 +313,10 @@ final class BusinessSitePublishService {
             let existing = site.galleryRemoteUrls
 
             for (index, rawPath) in site.galleryLocalPaths.enumerated() {
-                let localPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !localPath.isEmpty else { continue }
+                // Resolved like the hero and team photos: a stored absolute
+                // path goes stale when an update moves the app's container,
+                // and one missing file failed the whole publish.
+                guard let localPath = normalizedLocalPath(rawPath) else { continue }
 
                 let candidateAtIndex: String? = index < existing.count ? existing[index] : nil
                 let matchingExisting = existing.first(where: { url in

@@ -90,12 +90,15 @@ enum RecurringInvoicePullService {
         }
 
         let dueDate = Date(timeIntervalSince1970: item.dueAtMs / 1000)
-        let netDays = max(0, Calendar.current.dateComponents([.day], from: .now, to: dueDate).day ?? 14)
+        // Issued when the server made it, not when this phone pulled it (a
+        // day or more later if it was off), so "Net 14" still reads 14.
+        let issued = item.updatedAtMs > 0 ? min(Date(timeIntervalSince1970: item.updatedAtMs / 1000), .now) : .now
+        let netDays = max(0, Calendar.current.dateComponents([.day], from: issued, to: dueDate).day ?? 14)
 
         let invoice = Invoice(
             businessID: businessID,
             invoiceNumber: realInvoiceNumber,
-            issueDate: .now,
+            issueDate: issued,
             dueDate: dueDate,
             paymentTerms: "Net \(netDays)",
             notes: "",

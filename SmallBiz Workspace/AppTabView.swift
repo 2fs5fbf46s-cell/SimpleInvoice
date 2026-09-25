@@ -39,6 +39,7 @@ struct AppTabView: View {
     @State private var showCreateSheet = false
     @State private var deepLinkedEstimate: Invoice? = nil
     @State private var deepLinkedInvoice: Invoice? = nil
+    @State private var deepLinkedJob: Job? = nil
     @State private var deepLinkedContract: Contract? = nil
     @State private var deepLinkedBookingRequest: BookingRequestItem? = nil
     @State private var toastDismissTask: Task<Void, Never>? = nil
@@ -165,6 +166,16 @@ struct AppTabView: View {
         .sheet(item: $deepLinkedInvoice) { invoice in
             NavigationStack {
                 InvoiceOverviewView(invoice: invoice)
+            }
+        }
+        .sheet(item: $deepLinkedJob) { job in
+            NavigationStack {
+                JobDetailView(job: job)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { deepLinkedJob = nil }
+                        }
+                    }
             }
         }
         .sheet(item: $deepLinkedContract) { contract in
@@ -445,6 +456,19 @@ struct AppTabView: View {
             activeBiz.setActiveBusiness(bizID)
         }
 
+        // Bring the client's answer in, so the estimate opens showing it.
+        if effectivePayload.event.lowercased().contains("estimate") {
+            Task { await EstimateAcceptancePullService.pullAndMaterialize(context: modelContext, businessID: activeBiz.activeBusinessID) }
+        }
+
+        if let jobID = effectivePayload.jobId.flatMap(UUID.init(uuidString:)),
+           let job = (try? modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })))?.first {
+            tab = .work
+            deepLinkedJob = job
+            notificationRouter.consumePendingPayload()
+            return
+        }
+
         if let invoiceID = effectivePayload.invoiceId,
            let id = UUID(uuidString: invoiceID),
            let invoice = invoice(withID: id) {
@@ -474,6 +498,13 @@ struct AppTabView: View {
         if eventKey.contains("booking") {
             tab = .work
             showBookingsList()
+            notificationRouter.consumePendingPayload()
+            return
+        }
+
+        // The daily recap: Today is the day's summary.
+        if eventKey.contains("summary") {
+            tab = .today
             notificationRouter.consumePendingPayload()
             return
         }

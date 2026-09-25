@@ -2,6 +2,7 @@ import OSLog
 import SwiftUI
 import SwiftData
 import UIKit
+import UserNotifications
 
 @main
 struct SmallBizWorkspaceApp: App {
@@ -79,6 +80,11 @@ struct SmallBizWorkspaceApp: App {
 
     @MainActor
     private func handleScenePhase(_ newPhase: ScenePhase) {
+        // Every push sets the icon badge to 1 and nothing cleared it, so the
+        // badge stayed forever. Opening the app is seeing what's new.
+        if newPhase == .active {
+            UNUserNotificationCenter.current().setBadgeCount(0)
+        }
         guard newPhase == .active, let context = readyModelContext else { return }
 
         Task {
@@ -114,6 +120,7 @@ struct SmallBizWorkspaceApp: App {
         await ContractActivityPullService.pull(context: context, businessID: businessID)
         await BookingWorkSetup.syncConfirmed(context: context, businessID: businessID)
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: businessID)
+        await RecurringScheduleSync.retryPending(context: context, businessID: businessID)
         await DepositStatusSyncService.refreshPendingDeposits(context: context, businessID: businessID)
         await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: businessID)
     }
@@ -141,6 +148,7 @@ struct SmallBizWorkspaceApp: App {
         // Generation itself is server/push-driven; this is the "next launch as
         // a fallback" leg, covering a push that never arrived or was denied.
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
+        await RecurringScheduleSync.retryPending(context: context, businessID: activeBiz.activeBusinessID)
         // Same reasoning: estimate decisions (accepted and declined) are
         // server/push-driven (POST /api/portal/estimate/decision), this is
         // the fallback leg — and the only one, now that per-estimate status

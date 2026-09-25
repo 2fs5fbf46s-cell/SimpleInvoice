@@ -77,7 +77,8 @@ struct RecurringInvoiceScheduleFormView: View {
                 }
                 .onChange(of: schedule.cadence) { _, _ in saveIfEditing() }
 
-                DatePicker("Next Invoice", selection: $schedule.nextRunAt, displayedComponents: .date)
+                // Not in the past: the first run would go out right away.
+                DatePicker("Next Invoice", selection: $schedule.nextRunAt, in: Calendar.current.startOfDay(for: .now)..., displayedComponents: .date)
                     .onChange(of: schedule.nextRunAt) { _, _ in saveIfEditing() }
 
                 Stepper("Due \(schedule.netDays) days after", value: $schedule.netDays, in: 0...90)
@@ -104,7 +105,7 @@ struct RecurringInvoiceScheduleFormView: View {
                 HStack {
                     Text("Tax Rate")
                     Spacer()
-                    TextField("0", value: $schedule.taxRatePercent, format: .number)
+                    TextField("0", value: $schedule.taxRatePercent.zeroAsEmpty, format: .number)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .onChange(of: schedule.taxRatePercent) { _, _ in saveIfEditing() }
@@ -117,7 +118,7 @@ struct RecurringInvoiceScheduleFormView: View {
                     Spacer()
                     TextField(
                         "$0.00",
-                        value: $schedule.discountAmount,
+                        value: $schedule.discountAmount.zeroAsEmpty,
                         format: .currency(code: currencyCode)
                     )
                     .keyboardType(.decimalPad)
@@ -152,8 +153,14 @@ struct RecurringInvoiceScheduleFormView: View {
                         do {
                             try modelContext.save()
                             Haptics.success()
+                            // Before closing: the sheet is gone by the time
+                            // it finishes, so a failure is retried instead of
+                            // shown here (needsBackendSync).
+                            schedule.needsBackendSync = true
+                            let context = modelContext
+                            let saved = schedule
+                            Task { await RecurringScheduleSync.push(saved, context: context) }
                             onSave?()
-                            syncToBackend()
                         } catch {
                             Haptics.error()
                             SBWLog.ui.problem("Failed to save new schedule: \(error)")
@@ -164,12 +171,7 @@ struct RecurringInvoiceScheduleFormView: View {
             } else {
                 ToolbarItem(placement: .destructiveAction) {
                     Button(role: .destructive) {
-                        let scheduleID = schedule.id
-                        Task { try? await PortalBackend.shared.deleteRecurringSchedule(scheduleId: scheduleID) }
-                        modelContext.delete(schedule)
-                        do { try modelContext.save() } catch {
-                            SBWLog.ui.problem("Failed to save after deleting schedule: \(error)")
-                        }
+                        RecurringScheduleSync.delete(schedule, context: modelContext)
                         dismiss()
                     } label: {
                         Image(systemName: "trash")
@@ -216,7 +218,7 @@ struct RecurringInvoiceScheduleFormView: View {
                         value: Binding(
                             get: { schedule.lineItems[safe: index]?.unitPrice ?? 0 },
                             set: { newValue in updateLineItem(at: index) { $0.unitPrice = newValue } }
-                        ),
+                        ).zeroAsEmpty,
                         format: .currency(code: currencyCode)
                     )
                     .keyboardType(.decimalPad)
@@ -265,13 +267,10 @@ struct RecurringInvoiceScheduleFormView: View {
     }
 
     private func syncToBackend() {
-        guard let client = clients.first(where: { $0.id == schedule.clientID }) else { return }
         isSyncing = true
         Task {
-            do {
-                try await PortalBackend.shared.upsertRecurringSchedule(schedule, clientEmail: client.email)
-            } catch {
-                syncError = "This schedule is saved on your device but couldn't reach the server, so it won't generate invoices until it syncs. \(error.localizedDescription)"
+            if let message = await RecurringScheduleSync.push(schedule, context: modelContext) {
+                syncError = "This schedule is saved on your device but couldn't reach the server. It will keep trying; it won't generate invoices until it gets through. \(message)"
             }
             isSyncing = false
         }

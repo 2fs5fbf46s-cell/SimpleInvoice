@@ -440,8 +440,11 @@ struct OnboardingFlowView: View {
             return businesses.first
         }()
 
+        // Not the placeholder the app starts with: prefilling "Default
+        // Business" meant Skip kept it, on invoices and as the website address.
         if trimmedBusinessName.isEmpty {
-            businessName = sourceBusiness?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let existing = sourceBusiness?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            businessName = existing == "Default Business" ? "" : existing
         }
 
         let sourceProfile: BusinessProfile? = {

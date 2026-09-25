@@ -856,9 +856,12 @@ final class PortalBackend {
     /// The business token is what authorizes business-scoped routes. The admin key
     /// is still sent because a few genuinely platform-level routes accept it, but
     /// it no longer grants access to anyone else's data.
-    fileprivate func applyAuthHeaders(_ req: inout URLRequest, adminKey: String) {
+    /// `businessToken`: act as a business that isn't the active one (one
+    /// being deleted, or a queued delete from before a switch). Passed per
+    /// request; swapping the shared token would misroute requests in flight.
+    fileprivate func applyAuthHeaders(_ req: inout URLRequest, adminKey: String, businessToken: String? = nil) {
         req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
-        if let token = PortalBackend.activeBusinessToken, !token.isEmpty {
+        if let token = businessToken ?? PortalBackend.activeBusinessToken, !token.isEmpty {
             req.setValue(token, forHTTPHeaderField: "x-sbw-business-token")
         }
     }
@@ -1990,7 +1993,16 @@ final class PortalBackend {
     /// The backend can't read SwiftData, so a schedule's client email rides
     /// along explicitly rather than being looked up server-side — the caller
     /// already has the `Client` in hand.
-    func upsertRecurringSchedule(_ schedule: RecurringInvoiceSchedule, clientEmail: String) async throws {
+    /// The server's dates after an upsert: it moves the next run forward
+    /// after each invoice it generates, and keeps the later of its own and
+    /// an edit's.
+    struct RecurringScheduleSyncResult {
+        var nextRunAt: Date?
+        var lastGeneratedAt: Date?
+    }
+
+    @discardableResult
+    func upsertRecurringSchedule(_ schedule: RecurringInvoiceSchedule, clientEmail: String) async throws -> RecurringScheduleSyncResult {
         let adminKey = try requireAdminKey()
 
         let endpoint = baseURL.appendingPathComponent("/api/recurring/schedule")
@@ -2029,9 +2041,14 @@ final class PortalBackend {
         guard (200...299).contains(http.statusCode) else {
             throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        func date(_ key: String) -> Date? {
+            (json?[key] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
+        }
+        return RecurringScheduleSyncResult(nextRunAt: date("nextRunAtMs"), lastGeneratedAt: date("lastGeneratedAtMs"))
     }
 
-    func deleteRecurringSchedule(scheduleId: UUID) async throws {
+    func deleteRecurringSchedule(scheduleId: UUID, businessToken: String? = nil) async throws {
         let adminKey = try requireAdminKey()
 
         var comps = URLComponents(
@@ -2042,7 +2059,7 @@ final class PortalBackend {
 
         var req = URLRequest(url: comps.url!)
         req.httpMethod = "DELETE"
-        applyAuthHeaders(&req, adminKey: adminKey)
+        applyAuthHeaders(&req, adminKey: adminKey, businessToken: businessToken)
 
         let (data, resp) = try await PortalBackend.session.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
@@ -2050,6 +2067,20 @@ final class PortalBackend {
         }
         guard (200...299).contains(http.statusCode) else {
             throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    /// Takes a business's website offline (when the business is deleted).
+    func unpublishSite(handle: String, businessToken: String? = nil) async throws {
+        let adminKey = try requireAdminKey()
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/public-site/unpublish"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey, businessToken: businessToken)
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["handle": handle], options: [])
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http((resp as? HTTPURLResponse)?.statusCode ?? -1, body: String(data: data, encoding: .utf8) ?? "")
         }
     }
 

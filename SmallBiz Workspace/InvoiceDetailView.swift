@@ -82,6 +82,7 @@ struct InvoiceDetailView: View {
     @State private var confirmUnlockPricing = false
     @State private var confirmDeleteDocument = false
     @State private var showPaymentMethods = false
+    @State private var recurringDraftSaved = false
     @State private var showRecordPayment = false
     @State private var invoiceSendKind: InvoiceSendService.Kind? = nil
     @State private var sendingInvoice = false
@@ -250,14 +251,22 @@ struct InvoiceDetailView: View {
         .navigationDestination(item: $invoiceOverviewRoute) { routedInvoice in
             InvoiceOverviewView(invoice: routedInvoice)
         }
-        .sheet(isPresented: $showingNewRecurringSchedule, onDismiss: { newRecurringScheduleDraft = nil }) {
+        .sheet(isPresented: $showingNewRecurringSchedule, onDismiss: {
+            // Swiped away without Save: don't leave a schedule that looks set
+            // up but was never uploaded.
+            if let draft = newRecurringScheduleDraft, !recurringDraftSaved {
+                modelContext.delete(draft)
+                try? modelContext.save()
+            }
+            newRecurringScheduleDraft = nil
+            recurringDraftSaved = false
+        }) {
             NavigationStack {
                 if let newRecurringScheduleDraft {
                     RecurringInvoiceScheduleFormView(schedule: newRecurringScheduleDraft, isDraft: true) {
+                        recurringDraftSaved = true
                         showingNewRecurringSchedule = false
                     } onCancel: {
-                        modelContext.delete(newRecurringScheduleDraft)
-                        try? modelContext.save()
                         showingNewRecurringSchedule = false
                     }
                 } else {

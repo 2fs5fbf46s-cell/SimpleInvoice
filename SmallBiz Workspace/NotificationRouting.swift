@@ -9,6 +9,7 @@ struct NotificationRoutePayload: Equatable {
     let invoiceId: String?
     let contractId: String?
     let bookingRequestId: String?
+    let jobId: String?
     let deepLink: String?
     let portalURL: URL?
 
@@ -19,6 +20,7 @@ struct NotificationRoutePayload: Equatable {
         invoiceId: String? = nil,
         contractId: String? = nil,
         bookingRequestId: String? = nil,
+        jobId: String? = nil,
         deepLink: String? = nil,
         portalURL: URL? = nil
     ) {
@@ -32,6 +34,7 @@ struct NotificationRoutePayload: Equatable {
         self.invoiceId = Self.normalizedString(invoiceId)
         self.contractId = Self.normalizedString(contractId)
         self.bookingRequestId = Self.normalizedString(bookingRequestId)
+        self.jobId = Self.normalizedString(jobId)
         self.deepLink = Self.normalizedString(deepLink)
         self.portalURL = portalURL
     }
@@ -57,7 +60,10 @@ struct NotificationRoutePayload: Equatable {
         let businessId = readString("businessId")
         let entityId = readString("entityId")
         let eventKey = (event ?? "").lowercased()
-        let invoiceId = readString("invoiceId") ?? (eventKey.hasPrefix("invoice") ? entityId : nil)
+        // Estimates are invoices on the device, opened the same way; an
+        // "estimate declined" push used to open nothing.
+        let invoiceId = readString("invoiceId") ?? readString("estimateId")
+            ?? (eventKey.hasPrefix("invoice") || eventKey.hasPrefix("estimate") ? entityId : nil)
         let contractId = readString("contractId") ?? (eventKey.hasPrefix("contract") ? entityId : nil)
         let bookingRequestId = readString("bookingRequestId") ?? (eventKey.hasPrefix("booking") ? entityId : nil)
         let deepLink = readString("deepLink") ?? readString("deeplink")
@@ -72,6 +78,7 @@ struct NotificationRoutePayload: Equatable {
             invoiceId: invoiceId,
             contractId: contractId,
             bookingRequestId: bookingRequestId,
+            jobId: readString("jobId"),
             deepLink: deepLink,
             portalURL: urlString.flatMap(URL.init(string:))
         )
