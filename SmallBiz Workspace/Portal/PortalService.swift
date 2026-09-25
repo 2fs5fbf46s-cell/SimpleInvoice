@@ -576,6 +576,10 @@ final class PortalService {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "content-type")
         req.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
+        // The seed route authorizes with the business's own sign-in.
+        if let token = PortalBackend.activeBusinessToken, !token.isEmpty {
+            req.setValue(token, forHTTPHeaderField: "x-sbw-business-token")
+        }
 
         let body = WebSeedRequest(
             businessId: bizID.uuidString,

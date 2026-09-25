@@ -179,6 +179,25 @@ final class PortalPaymentsAPI {
         request.setValue(adminKey, forHTTPHeaderField: "x-portal-admin")
         request.setValue(adminKey, forHTTPHeaderField: "x-admin-key")
         request.setValue("Bearer \(adminKey)", forHTTPHeaderField: "Authorization")
+        attachBusinessToken(&request)
+    }
+
+    /// The business's own sign-in. Every business route authorizes with this
+    /// (the server takes the business from it, not from `businessId`); without
+    /// it Stripe and PayPal setup, their status, and manual payment reports all
+    /// failed with "This device isn't signed in for this business".
+    private func attachBusinessToken(_ request: inout URLRequest) {
+        if let token = PortalBackend.activeBusinessToken, !token.isEmpty {
+            request.setValue(token, forHTTPHeaderField: "x-sbw-business-token")
+        }
+    }
+
+    /// A GET to a business route, signed in as the business.
+    private func businessGET(_ url: URL) async throws -> (Data, URLResponse) {
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        attachBusinessToken(&req)
+        return try await PortalBackend.session.data(for: req)
     }
 
     private func stripeServiceErrorMessage(from data: Data) -> String? {
@@ -202,7 +221,7 @@ final class PortalPaymentsAPI {
 
         guard let url = comps?.url else { throw PortalBackendError.badURL }
 
-        let (data, resp) = try await PortalBackend.session.data(from: url)
+        let (data, resp) = try await businessGET(url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
@@ -239,6 +258,7 @@ final class PortalPaymentsAPI {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        attachBusinessToken(&req)
 
         let payload: [String: Any] = ["businessId": businessId.uuidString]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
@@ -265,7 +285,7 @@ final class PortalPaymentsAPI {
 
         guard let url = comps?.url else { throw PortalBackendError.badURL }
 
-        let (data, resp) = try await PortalBackend.session.data(from: url)
+        let (data, resp) = try await businessGET(url)
         let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
 
         guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
