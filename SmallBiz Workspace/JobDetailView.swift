@@ -604,40 +604,12 @@ struct JobDetailView: View {
                 Text("No attachments yet")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(attachments) { a in
-                    Button {
-                        if isImageFile(a.file) {
-                            selectedPhotoAttachment = a
-                        } else {
-                            openPreview(a)
-                        }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(a.file?.displayName ?? "Missing file")
-                                Text(a.file?.originalFileName ?? "")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if !a.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(a.notes)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .italic()
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            removeAttachment(a)
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3),
+                    spacing: 12
+                ) {
+                    ForEach(attachments) { a in
+                        attachmentTile(a)
                     }
                 }
             }
@@ -676,7 +648,53 @@ struct JobDetailView: View {
                 }
             }
         }
+        // The whole card is a single List row, and a row full of
+        // default-style buttons fires them all on one tap — tapping an
+        // attachment also opened "Attach Existing File". Borderless gives
+        // each control its own tap target.
+        .buttonStyle(.borderless)
         .sbwJobCardRow()
+    }
+
+    private func attachmentTile(_ attachment: JobAttachment) -> some View {
+        Button {
+            if isImageFile(attachment.file) {
+                selectedPhotoAttachment = attachment
+            } else {
+                openPreview(attachment)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                AttachmentThumbnailView(file: attachment.file)
+                if let caption = tileCaption(for: attachment) {
+                    Text(caption)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                removeAttachment(attachment)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+    }
+
+    /// The photo's own note if it has one. A photo without one needs no label
+    /// — the thumbnail is the content, and its generated file name
+    /// ("Photo-1789…") says nothing. Other files show their name, since a
+    /// first-page thumbnail alone can be hard to tell apart.
+    private func tileCaption(for attachment: JobAttachment) -> String? {
+        let note = attachment.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !note.isEmpty { return note }
+        guard !isImageFile(attachment.file) else { return nil }
+        return attachment.file?.displayName ?? "Missing file"
     }
 
     private func isImageFile(_ file: FileItem?) -> Bool {
