@@ -72,7 +72,7 @@ struct ExpenseFormView: View {
                 HStack {
                     Text(currencySymbol)
                         .foregroundStyle(.secondary)
-                    TextField("0.00", value: $expense.amountDollars, format: .number)
+                    TextField("0.00", value: $expense.amountDollars.zeroAsEmpty, format: .number)
                         .keyboardType(.decimalPad)
                         .onChange(of: expense.amountDollars) { _, _ in saveIfEditing() }
                 }

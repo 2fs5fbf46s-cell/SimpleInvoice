@@ -75,6 +75,21 @@ final class AttentionFeedServiceTests: XCTestCase {
         XCTAssertTrue(item.subtitle.contains("$250.00"), item.subtitle)
     }
 
+    func testOverdueSaysWhenItWasLastReminded() throws {
+        let inv = try invoice(450, dueInDays: -12)
+        XCTAssertFalse(try XCTUnwrap(items().first).subtitle.contains("reminded"))
+        inv.lastReminderAt = .now
+        try context.save()
+        XCTAssertTrue(try XCTUnwrap(items().first).subtitle.hasSuffix(" · reminded today"))
+    }
+
+    func testAnUnnumberedInvoiceIsNamedWithoutATrailingSpace() throws {
+        let inv = try invoice(450, dueInDays: -12)
+        inv.invoiceNumber = ""
+        try context.save()
+        XCTAssertTrue(try XCTUnwrap(items().first).subtitle.hasPrefix("Invoice · "))
+    }
+
     func testDueTodayIsNotLateYet() throws {
         try invoice(100, dueInDays: 0)
         XCTAssertTrue(items().isEmpty)

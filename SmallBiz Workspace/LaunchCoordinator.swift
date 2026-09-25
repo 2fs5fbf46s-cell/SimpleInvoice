@@ -132,6 +132,8 @@ final class LaunchCoordinator: ObservableObject {
                 modelContext: context,
                 activeBiz: activeBusiness
             )
+            // A repair, not a gate: never block startup on it.
+            try? BusinessMigration.numberUnnumberedInvoicesIfNeeded(modelContext: context)
 
             transition(to: .restoringBusiness)
             try activeBusiness.loadOrCreateDefaultBusiness(modelContext: context)

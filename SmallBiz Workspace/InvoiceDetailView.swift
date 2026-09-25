@@ -825,7 +825,7 @@ struct InvoiceDetailView: View {
                     HStack {
                         Text("Discount")
                         Spacer()
-                        TextField("0.00", value: $invoice.discountAmount, format: .number)
+                        TextField("0.00", value: $invoice.discountAmount.zeroAsEmpty, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -833,7 +833,7 @@ struct InvoiceDetailView: View {
                     HStack {
                         Text("Tax Rate")
                         Spacer()
-                        TextField("0.00", value: $invoice.taxRate, format: .number)
+                        TextField("0", value: $invoice.taxRate.zeroAsEmpty, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                         Text("%").foregroundStyle(.secondary)
@@ -1153,7 +1153,7 @@ struct InvoiceDetailView: View {
             detail: invoice.lastReminderAt.map { "Last reminder sent \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "No reminder sent yet."
         )
         HStack(spacing: 10) {
-            Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind Client", icon: "bell.fill") }
+            Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind", icon: "bell.fill") }
                 .sbwProminentButton(.red)
                 .disabled(sendingInvoice)
             Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }

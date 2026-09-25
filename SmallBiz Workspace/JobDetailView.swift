@@ -563,11 +563,18 @@ struct JobDetailView: View {
 
             case .completed:
                 if let invoice = finalInvoice {
+                    // A draft isn't "out": it was saying so for an unsent
+                    // $0.00 invoice made by Bill.
+                    let sent = invoice.isPaid || invoice.wasSent
                     stepTitle(
-                        invoice.isPaid ? "Paid" : "Invoice \(invoice.invoiceNumber) is out",
+                        invoice.isPaid ? "Paid" : sent ? "Invoice \(invoice.invoiceNumber) is out" : "Invoice \(invoice.invoiceNumber) isn't sent yet",
                         detail: invoice.isPaid
                             ? "This job is done and paid for."
-                            : "\(currency(invoice.total)) \(isOverdue(invoice) ? "overdue" : "unpaid")."
+                            : sent
+                                ? "\(currency(invoice.total)) \(isOverdue(invoice) ? "overdue" : "unpaid")."
+                                : invoice.totalCents > 0
+                                    ? "\(currency(invoice.total)), ready to send."
+                                    : "Add what you're charging for, then send it."
                     )
                     HStack(spacing: 10) {
                         Button { invoiceRoute = invoice } label: { Label("Open Invoice", systemImage: "doc.plaintext") }
@@ -809,8 +816,10 @@ struct JobDetailView: View {
                 paperworkRow(
                     icon: "doc.plaintext",
                     title: "Invoice \(invoice.invoiceNumber)",
-                    status: "\(invoice.isPaid ? "Paid" : (isOverdue(invoice) ? "Overdue" : "Unpaid")) \(currency(invoice.total))",
-                    tint: invoice.isPaid ? SBWTheme.brandGreen : (isOverdue(invoice) ? .red : .orange)
+                    status: invoice.isPaid || invoice.wasSent
+                        ? "\(invoice.isPaid ? "Paid" : (isOverdue(invoice) ? "Overdue" : "Unpaid")) \(currency(invoice.total))"
+                        : "Draft",
+                    tint: invoice.isPaid ? SBWTheme.brandGreen : (isOverdue(invoice) ? .red : invoice.wasSent ? .orange : .secondary)
                 ) { invoiceRoute = invoice }
             }
         }
@@ -865,7 +874,7 @@ struct JobDetailView: View {
     }
 
     private func isOverdue(_ invoice: Invoice) -> Bool {
-        !invoice.isPaid && invoice.dueDate < Calendar.current.startOfDay(for: .now)
+        invoice.isOverdue
     }
 
     private func currency(_ amount: Double) -> String {

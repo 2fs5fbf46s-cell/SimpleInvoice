@@ -100,11 +100,18 @@ enum AttentionFeedService {
             .sorted { $0.dueDate < $1.dueDate }
             .map { invoice in
                 let days = max(1, calendar.dateComponents([.day], from: calendar.startOfDay(for: invoice.dueDate), to: calendar.startOfDay(for: now)).day ?? 1)
+                var subtitle = "\(ClientWorkItem.documentName(invoice)) · \(InvoicePaymentService.currency(invoice.balanceDueCents))"
+                // So a second Remind is a choice, not an accident.
+                if let reminded = invoice.lastReminderAt {
+                    subtitle += calendar.isDate(reminded, inSameDayAs: now)
+                        ? " · reminded today"
+                        : " · reminded \(reminded.formatted(.dateTime.month(.abbreviated).day()))"
+                }
                 return AttentionItem(
                     id: "overdue-\(invoice.id.uuidString)",
                     severity: .critical,
                     title: "\(invoice.displayClientName) is \(days) day\(days == 1 ? "" : "s") late",
-                    subtitle: "\(ClientWorkItem.documentName(invoice)) · \(InvoicePaymentService.currency(invoice.balanceDueCents))",
+                    subtitle: subtitle,
                     kind: .overdueInvoice(invoiceID: invoice.id),
                     action: .remind
                 )

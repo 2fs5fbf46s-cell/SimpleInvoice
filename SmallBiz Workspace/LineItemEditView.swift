@@ -70,7 +70,7 @@ struct LineItemEditView: View {
                     Spacer()
                     TextField(
                         "$0.00",
-                        value: $unitPriceValue,
+                        value: $unitPriceValue.zeroAsEmpty,
                         format: .currency(code: Locale.current.currency?.identifier ?? "USD")
                     )
                     .keyboardType(.decimalPad)

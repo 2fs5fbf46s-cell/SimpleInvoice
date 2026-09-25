@@ -217,7 +217,7 @@ struct TodayView: View {
                         Text(item.subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                     Spacer(minLength: 6)
                 }
@@ -452,7 +452,10 @@ struct TodayView: View {
         do {
             let invoice = try JobInvoiceBuilder.makeInvoice(for: job, client: client, profile: profile, context: modelContext)
             try? modelContext.save()
-            selectedInvoice = invoice
+            // The save removes the Bill row this button sits in. Pushing in
+            // the same update left the invoice (and every screen pushed from
+            // Today after it) laid out under the navigation bar.
+            DispatchQueue.main.async { selectedInvoice = invoice }
         } catch {
             notice = "Couldn't make the invoice. Open the job to bill it."
         }

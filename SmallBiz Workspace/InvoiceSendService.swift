@@ -76,6 +76,13 @@ enum InvoiceSendService {
         if invoice.sentAt == nil {
             invoice.sentAt = .now
             let profiles = (try? context.fetch(FetchDescriptor<BusinessProfile>())) ?? []
+            // Invoices started from Create used to get no number at all (a
+            // date-format placeholder that came out empty); never send one
+            // without a number.
+            if invoice.trimmedInvoiceNumber.isEmpty,
+               let profile = profiles.first(where: { $0.businessID == invoice.businessID }) {
+                invoice.invoiceNumber = InvoiceNumberGenerator.consumeNextNumber(profile: profile)
+            }
             _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
                 invoice: invoice,
                 profiles: profiles.filter { $0.businessID == invoice.businessID },

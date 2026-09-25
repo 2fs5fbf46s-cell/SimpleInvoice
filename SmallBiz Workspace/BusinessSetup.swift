@@ -85,7 +85,7 @@ struct PaymentMethodSummary: Equatable {
 
     var text: String {
         switch offered.count {
-        case 0: return "None on yet"
+        case 0: return "None turned on yet"
         case 1...3: return offered.joined(separator: ", ")
         default: return offered.prefix(2).joined(separator: ", ") + " and \(offered.count - 2) more"
         }

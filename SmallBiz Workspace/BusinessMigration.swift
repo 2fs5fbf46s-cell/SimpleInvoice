@@ -223,4 +223,25 @@ enum BusinessMigration {
 
         SBWLog.launch.note("✅ Business migration v\(currentVersion) completed")
     }
+
+    /// Invoices started from Create got no number (a date-format placeholder
+    /// that came out empty), and some went out that way. Number them once,
+    /// oldest first; sent ones republish so the client's portal shows it.
+    /// Kept apart from `runIfNeeded` so bumping its version doesn't rerun
+    /// steps that clear pending portal uploads.
+    static func numberUnnumberedInvoicesIfNeeded(modelContext: ModelContext) throws {
+        let key = "sbw.migration.numberBlankInvoices"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        let profiles = try modelContext.fetch(FetchDescriptor<BusinessProfile>())
+        let unnumbered = try modelContext.fetch(FetchDescriptor<Invoice>())
+            .filter { $0.documentType != "estimate" && $0.trimmedInvoiceNumber.isEmpty }
+            .sorted { $0.issueDate < $1.issueDate }
+        for invoice in unnumbered {
+            guard let profile = profiles.first(where: { $0.businessID == invoice.businessID }) else { continue }
+            invoice.invoiceNumber = InvoiceNumberGenerator.consumeNextNumber(profile: profile)
+            if invoice.sentAt != nil { invoice.portalNeedsUpload = true }
+        }
+        try modelContext.save()
+        UserDefaults.standard.set(true, forKey: key)
+    }
 }

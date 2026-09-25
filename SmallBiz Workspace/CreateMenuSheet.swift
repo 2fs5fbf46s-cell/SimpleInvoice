@@ -31,6 +31,10 @@ struct CreateMenuSheet: View {
     // New Job (Clients-style)
     @State private var showNewJobSheet = false
     @State private var newJobDraft: Job? = nil
+    /// The job just saved from the New Job sheet, opened once the sheet is
+    /// gone (like a new invoice opens) instead of landing back on this menu.
+    @State private var savedJob: Job? = nil
+    @State private var createdJob: Job? = nil
 
     // New Contract
     @State private var showNewContractSheet = false
@@ -154,6 +158,9 @@ struct CreateMenuSheet: View {
             .navigationDestination(item: $createdInvoice) { inv in
                 InvoiceDetailView(invoice: inv)
             }
+            .navigationDestination(item: $createdJob) { job in
+                JobDetailView(job: job)
+            }
             .navigationDestination(item: $createdContract) { contract in
                 ContractDetailView(contract: contract)
             }
@@ -216,6 +223,8 @@ struct CreateMenuSheet: View {
             // New job flow (uses JobDetailView)
             .sheet(isPresented: $showNewJobSheet, onDismiss: {
                 newJobDraft = nil
+                createdJob = savedJob
+                savedJob = nil
             }) {
                 NavigationStack {
                     if let newJobDraft {
@@ -237,6 +246,7 @@ struct CreateMenuSheet: View {
                                             modelContext.insert(newJobDraft)
                                             try modelContext.save()
                                             _ = try WorkspaceProvisioningService.ensureJobWorkspace(job: newJobDraft, context: modelContext)
+                                            savedJob = newJobDraft
                                             showNewJobSheet = false
                                         }
                                         catch { SBWLog.ui.problem("Failed to save new job: \(error)") }
@@ -317,7 +327,7 @@ struct CreateMenuSheet: View {
 
         let inv = Invoice(
             businessID: bizID,
-            invoiceNumber: generateInvoiceDraftNumber(),
+            invoiceNumber: getOrCreateProfileForActiveBusiness().map { InvoiceNumberGenerator.generateNextNumber(profile: $0) } ?? "",
             documentType: "invoice",
             items: []
         )
@@ -386,12 +396,6 @@ struct CreateMenuSheet: View {
     }
 
     // MARK: - Draft numbers
-
-    private func generateInvoiceDraftNumber() -> String {
-        let df = DateFormatter()
-        df.dateFormat = "INV-DRAFT-yyyyMMdd-HHmmss"
-        return df.string(from: Date())
-    }
 
 }
 private func hapticTap() {

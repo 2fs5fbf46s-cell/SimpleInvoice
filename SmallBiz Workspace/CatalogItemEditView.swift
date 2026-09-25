@@ -74,7 +74,7 @@ struct CatalogItemEditView: View {
                 HStack {
                     Text("Unit Price")
                     Spacer()
-                    TextField("0.00", value: $item.unitPrice, format: .number)
+                    TextField("0.00", value: $item.unitPrice.zeroAsEmpty, format: .number)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .onChange(of: item.unitPrice) { _, _ in saveNow() }

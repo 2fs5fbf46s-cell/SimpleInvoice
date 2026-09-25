@@ -244,7 +244,8 @@ struct ClientWorkItem: Identifiable {
         let noun = document.documentType == "estimate" ? "Estimate" : "Invoice"
         let number = document.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         if number.localizedCaseInsensitiveContains(noun) { return number }
-        return "\(lowercased ? noun.lowercased() : noun) \(number)"
+        let word = lowercased ? noun.lowercased() : noun
+        return number.isEmpty ? word : "\(word) \(number)"
     }
 
     init(job: Job) {
