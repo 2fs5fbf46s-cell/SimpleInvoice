@@ -158,6 +158,9 @@ struct CreateMenuSheet: View {
             .navigationDestination(item: $createdInvoice) { inv in
                 InvoiceDetailView(invoice: inv)
             }
+            .onChange(of: createdInvoice) { old, new in
+                if new == nil, let old { discardIfUntouched(old) }
+            }
             .navigationDestination(item: $createdJob) { job in
                 JobDetailView(job: job)
             }
@@ -340,6 +343,28 @@ struct CreateMenuSheet: View {
         createdInvoice = inv
     }
 
+    /// Backing out of a new invoice without choosing a client or adding a
+    /// line left an empty draft behind, holding a number. Remove it and give
+    /// the number back.
+    private func discardIfUntouched(_ invoice: Invoice) {
+        guard invoice.documentType == "invoice",
+              invoice.client == nil,
+              invoice.job == nil,
+              (invoice.items ?? []).isEmpty,
+              (invoice.payments ?? []).isEmpty,
+              !invoice.wasSent
+        else { return }
+        let context = modelContext
+        let profile = profiles.first { $0.businessID == invoice.businessID }
+        // After the pop finishes: deleting a model its screen still shows
+        // crashes SwiftData views.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if let profile { InvoiceNumberGenerator.release(invoice.trimmedInvoiceNumber, profile: profile) }
+            context.delete(invoice)
+            try? context.save()
+        }
+    }
+
     private func createEstimateFromDraftAndOpen() {
         guard let bizID = activeBiz.activeBusinessID else {
             SBWLog.ui.problem("❌ No active business selected"); return
@@ -380,8 +405,9 @@ struct CreateMenuSheet: View {
 
         let job = Job(
             businessID: bizID,
-            startDate: .now,
-            endDate: Calendar.current.date(byAdding: .hour, value: 2, to: .now) ?? .now
+            // The same rounded start the Jobs list uses, not this minute.
+            startDate: JobDetailView.defaultScheduleStart(),
+            endDate: JobDetailView.defaultScheduleStart().addingTimeInterval(2 * 3600)
         )
         job.title = ""
         job.status = "scheduled"

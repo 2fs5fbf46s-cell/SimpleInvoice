@@ -760,8 +760,9 @@ struct ClientDetailView: View {
             businessID: client.businessID,
             clientID: client.id,
             title: "",
-            startDate: .now,
-            endDate: Calendar.current.date(byAdding: .hour, value: 2, to: .now) ?? .now
+            // The same rounded start the Jobs list uses, not this minute.
+            startDate: JobDetailView.defaultScheduleStart(),
+            endDate: JobDetailView.defaultScheduleStart().addingTimeInterval(2 * 3600)
         )
         job.status = "scheduled"
         job.locationName = client.address

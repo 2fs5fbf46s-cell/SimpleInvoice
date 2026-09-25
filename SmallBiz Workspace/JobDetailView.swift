@@ -538,7 +538,7 @@ struct JobDetailView: View {
                     DatePicker("Ends", selection: $job.endDate, in: job.startDate...)
                         .onChange(of: job.endDate) { _, _ in scheduleSave() }
                 }
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { startJob() } label: { Label("Start Job", systemImage: "play.fill") }
                         .sbwProminentButton()
                     Button { showReschedule.toggle() } label: {
@@ -552,7 +552,7 @@ struct JobDetailView: View {
                     "Job in progress",
                     detail: "\(jobWhenText). Take before and after photos as you go."
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { completeJob() } label: { Label("Complete Job", systemImage: "checkmark") }
                         .sbwProminentButton(SBWTheme.brandGreen)
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {
@@ -576,7 +576,7 @@ struct JobDetailView: View {
                                     ? "\(currency(invoice.total)), ready to send."
                                     : "Add what you're charging for, then send it."
                     )
-                    HStack(spacing: 10) {
+                    NextStepButtons {
                         Button { invoiceRoute = invoice } label: { Label("Open Invoice", systemImage: "doc.plaintext") }
                             .sbwProminentButton()
                         Button { shareSummary() } label: { Label("Share", systemImage: "square.and.arrow.up") }
@@ -584,7 +584,7 @@ struct JobDetailView: View {
                     }
                 } else {
                     stepTitle("Bill for it", detail: billingDetailText)
-                    HStack(spacing: 10) {
+                    NextStepButtons {
                         Button { createJobInvoice() } label: { Label("Create Invoice", systemImage: "doc.badge.plus") }
                             .sbwProminentButton()
                         Button { shareSummary() } label: { Label("Share", systemImage: "square.and.arrow.up") }
@@ -602,6 +602,13 @@ struct JobDetailView: View {
                 Text(calendarError)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                // "Enable it in Settings" with no way there was a dead end.
+                if calendarError.localizedCaseInsensitiveContains("Settings"),
+                   let url = URL(string: UIApplication.openSettingsURLString) {
+                    Button("Open Settings") { UIApplication.shared.open(url) }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                }
             }
         }
         .sbwJobCardRow()
@@ -778,8 +785,10 @@ struct JobDetailView: View {
                 Text("No estimate, contract or invoice yet.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Button { createJobEstimate() } label: { Label("New Estimate", systemImage: "doc.text.magnifyingglass") }
-                    .buttonStyle(.bordered)
+                if JobDisplayStatus(job) != .canceled {
+                    Button { createJobEstimate() } label: { Label("New Estimate", systemImage: "doc.text.magnifyingglass") }
+                        .buttonStyle(.bordered)
+                }
             }
 
             ForEach(jobEstimates) { estimate in

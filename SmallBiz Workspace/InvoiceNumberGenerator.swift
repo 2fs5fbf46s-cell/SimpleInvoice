@@ -38,6 +38,18 @@ enum InvoiceNumberGenerator {
         return invoiceNumber
     }
 
+    /// Gives back a number nothing ended up using (a new invoice left
+    /// untouched), but only if it's the last one handed out, so numbers
+    /// already on other invoices never repeat.
+    static func release(_ number: String, profile: BusinessProfile, date: Date = .now) {
+        let year = Calendar.current.component(.year, from: date)
+        guard profile.lastInvoiceYear == year,
+              profile.nextInvoiceNumber > 1,
+              formattedNumber(profile: profile, year: year, number: profile.nextInvoiceNumber - 1) == number
+        else { return }
+        profile.nextInvoiceNumber -= 1
+    }
+
     private static func formattedNumber(profile: BusinessProfile, year: Int, number: Int) -> String {
         let formatted = String(format: "%03d", number)
         let trimmed = profile.invoicePrefix.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -244,7 +244,7 @@ struct ContractDetailView: View {
                     "Waiting for \(clientName) to sign",
                     detail: sentDetail
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { pendingSend = .reminder } label: {
                         Label(sendingKind == .reminder ? "Sending…" : "Send Reminder", systemImage: "bell")
                     }
@@ -259,7 +259,7 @@ struct ContractDetailView: View {
                     .buttonStyle(.borderless)
             case .signed:
                 stepTitle(signedTitle, detail: signedDetail)
-                HStack(spacing: 10) {
+                NextStepButtons {
                     if let url = contract.signedPDFURL.flatMap(URL.init(string:)) {
                         Button { safariURL = IdentifiableURL(url: url) } label: {
                             Label("Signed PDF", systemImage: "checkmark.seal")
@@ -303,7 +303,7 @@ struct ContractDetailView: View {
                     ? "Emails \(clientName) a link to review and sign. The terms lock while it's out."
                     : "It's off \(clientName)'s portal while you revise. Sending emails them the new version to sign."
             )
-            HStack(spacing: 10) {
+            NextStepButtons {
                 Button { pendingSend = .send } label: {
                     Label(sendingKind == .send ? "Sending…" : "Send for Signature", systemImage: "paperplane")
                 }

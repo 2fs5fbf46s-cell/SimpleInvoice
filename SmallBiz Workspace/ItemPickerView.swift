@@ -113,20 +113,23 @@ struct ItemPickerView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.name.isEmpty ? "Item" : item.name)
                                 .font(.headline)
+                                .foregroundStyle(Color.primary)
 
                             HStack {
+                                // Explicit: in a button, .secondary picks up the tint.
                                 Text(normalizedCategory(item.category))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.secondary)
 
                                 Text(item.details)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.secondary)
                                     .lineLimit(1)
 
                                 Spacer()
 
                                 Text(item.unitPrice, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
                                     .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.primary)
                             }
                         }
                         .padding(.vertical, 4)
@@ -135,6 +138,9 @@ struct ItemPickerView: View {
             }
         }
         .navigationTitle("Pick Saved Item")
+        // Inline: under the category bar a large title never showed, just a
+        // blurred band where it should be.
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search items")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -143,13 +149,24 @@ struct ItemPickerView: View {
         }
         .safeAreaInset(edge: .top) {
             VStack(spacing: 8) {
-                Picker("Category", selection: $selectedCategory) {
-                    ForEach(categories, id: \.self) { c in
-                        Text(c).tag(c)
+                // Chips that scroll: a segmented control cut every category
+                // name down to "Audio…", "Backl…".
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(categories, id: \.self) { c in
+                            Button { selectedCategory = c } label: {
+                                Text(c)
+                                    .font(.subheadline.weight(.medium))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(selectedCategory == c ? Color.accentColor : Color(.secondarySystemFill)))
+                                    .foregroundStyle(selectedCategory == c ? Color.white : Color.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
+                    .padding(.horizontal)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
 

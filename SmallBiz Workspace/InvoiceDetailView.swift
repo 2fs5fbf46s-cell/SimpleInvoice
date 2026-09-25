@@ -80,6 +80,8 @@ struct InvoiceDetailView: View {
     // Invoice layout
     @State private var pricingUnlocked = false
     @State private var confirmUnlockPricing = false
+    @State private var confirmDeleteDocument = false
+    @State private var showPaymentMethods = false
     @State private var showRecordPayment = false
     @State private var invoiceSendKind: InvoiceSendService.Kind? = nil
     @State private var sendingInvoice = false
@@ -157,8 +159,23 @@ struct InvoiceDetailView: View {
             .sheet(isPresented: $showRecordPayment) {
                 RecordPaymentSheet(invoice: invoice)
             }
+            .navigationDestination(isPresented: $showPaymentMethods) { SetupPaymentsView() }
             .navigationDestination(item: $estimateJobRoute) { job in
                 JobSummaryView(job: job)
+            }
+            .confirmationDialog(
+                "Delete \(ClientWorkItem.documentName(invoice, lowercased: true))?",
+                isPresented: $confirmDeleteDocument,
+                titleVisibility: .visible
+            ) {
+                Button(invoice.documentType == "estimate" ? "Delete Estimate" : "Delete Invoice", role: .destructive) {
+                    deleteDocument()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(invoice.wasSent
+                     ? "\(invoiceClientName) already has it; it stays in their portal. This can't be undone."
+                     : "This can't be undone.")
             }
             .alert("Rename Estimate", isPresented: $showRenameEstimate) {
                 TextField("Name", text: $renameEstimateText)
@@ -825,7 +842,7 @@ struct InvoiceDetailView: View {
                     HStack {
                         Text("Discount")
                         Spacer()
-                        TextField("0.00", value: $invoice.discountAmount.zeroAsEmpty, format: .number)
+                        TextField("0.00", value: $invoice.discountAmount.zeroAsEmpty, format: .number.precision(.fractionLength(2)))
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -1071,7 +1088,7 @@ struct InvoiceDetailView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { kind in
-                Text(InvoiceSendService.confirmationMessage(for: invoice, kind: kind))
+                Text(InvoiceSendService.confirmationMessage(for: invoice, kind: kind, canPayOnline: canPayOnline))
             }
         }
     }
@@ -1101,21 +1118,42 @@ struct InvoiceDetailView: View {
         } else {
             estimateStepTitle(
                 "Send it to \(invoiceClientName)",
-                detail: "Emails \(email) a link to view and pay online."
+                detail: canPayOnline ? "Emails \(email) a link to view and pay online." : "Emails \(email) a link to view it."
             )
-            HStack(spacing: 10) {
+            NextStepButtons {
                 Button { invoiceSendKind = .send } label: { sendingLabel("Send Invoice", icon: "paperplane.fill") }
                     .sbwProminentButton()
                     .disabled(sendingInvoice)
                 Button { previewPDF() } label: { Label("Preview", systemImage: "doc.richtext") }
                     .buttonStyle(.bordered)
             }
+            noPaymentMethodsNote
         }
         if invoice.totalCents > 0 {
             Button("Paid already? Record a payment") { showRecordPayment = true }
                 .font(.caption)
                 .buttonStyle(.borderless)
                 .foregroundStyle(SBWTheme.brandBlue)
+        }
+    }
+
+    /// No card, PayPal, Venmo… is on, so the client can see the invoice but
+    /// has no way to pay it online. Says so, with the way to fix it.
+    private var canPayOnline: Bool {
+        guard let business = resolvedBusiness() else { return true }
+        return !PaymentMethodSummary(business: business).offered.isEmpty
+    }
+
+    @ViewBuilder
+    private var noPaymentMethodsNote: some View {
+        if !canPayOnline {
+            Button { showPaymentMethods = true } label: {
+                Label("No way to pay online is turned on. Set up payment methods", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.orange)
         }
     }
 
@@ -1126,7 +1164,7 @@ struct InvoiceDetailView: View {
             detail: invoice.viewedAt.map { "Viewed \($0.formatted(date: .abbreviated, time: .omitted)). You'll get a notification when it's paid." }
                 ?? "You'll get a notification when it's paid."
         )
-        HStack(spacing: 10) {
+        NextStepButtons {
             Button { openClientPortal() } label: {
                 if openingPortal { ProgressView() } else { Label("View in Portal", systemImage: "rectangle.and.hand.point.up.left") }
             }
@@ -1135,7 +1173,7 @@ struct InvoiceDetailView: View {
             Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
                 .buttonStyle(.bordered)
         }
-        HStack(spacing: 10) {
+        NextStepButtons {
             Button { invoiceSendKind = .send } label: { sendingLabel("Resend", icon: "paperplane") }
                 .buttonStyle(.bordered)
                 .disabled(sendingInvoice)
@@ -1143,6 +1181,7 @@ struct InvoiceDetailView: View {
                 .buttonStyle(.bordered)
                 .disabled(openingPortal)
         }
+        noPaymentMethodsNote
     }
 
     @ViewBuilder
@@ -1152,13 +1191,14 @@ struct InvoiceDetailView: View {
             "\(currencyString(fromCents: invoice.balanceDueCents)) is \(days) day\(days == 1 ? "" : "s") overdue",
             detail: invoice.lastReminderAt.map { "Last reminder sent \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "No reminder sent yet."
         )
-        HStack(spacing: 10) {
+        NextStepButtons {
             Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind", icon: "bell.fill") }
                 .sbwProminentButton(.red)
                 .disabled(sendingInvoice)
             Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
                 .buttonStyle(.bordered)
         }
+        noPaymentMethodsNote
     }
 
     @ViewBuilder
@@ -1168,13 +1208,14 @@ struct InvoiceDetailView: View {
             "\(currencyString(fromCents: invoice.balanceDueCents)) still owed",
             detail: lastPayment.map { "Paid \(currencyString(fromCents: $0.amountCents)) by \($0.methodLabel.lowercased()) on \($0.paidAt.formatted(date: .abbreviated, time: .omitted))." } ?? ""
         )
-        HStack(spacing: 10) {
+        NextStepButtons {
             Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
                 .sbwProminentButton()
             Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind", icon: "bell") }
                 .buttonStyle(.bordered)
                 .disabled(sendingInvoice)
         }
+        noPaymentMethodsNote
     }
 
     @ViewBuilder
@@ -1184,7 +1225,7 @@ struct InvoiceDetailView: View {
             "Paid in full",
             detail: online ? "Paid through the client portal." : "Nothing left to collect."
         )
-        HStack(spacing: 10) {
+        NextStepButtons {
             Button { sharePDFOnly() } label: { Label("Share Receipt", systemImage: "doc.text") }
                 .buttonStyle(.bordered)
             Button { duplicateInvoice() } label: { Label(duplicateActionTitle, systemImage: "doc.on.doc") }
@@ -1438,7 +1479,11 @@ struct InvoiceDetailView: View {
                 Button { makeRecurring() } label: { Label("Make Recurring", systemImage: "arrow.triangle.2.circlepath") }
             }
             Button { showTemplatePicker = true } label: { Label("Change Template", systemImage: "paintpalette") }
-            Button { openJobWorkspaceFolder() } label: { Label("Job Files", systemImage: "folder") }
+            if invoice.job != nil {
+                Button { openJobWorkspaceFolder() } label: { Label("Job Files", systemImage: "folder") }
+            }
+            Divider()
+            Button(role: .destructive) { confirmDeleteDocument = true } label: { Label("Delete Invoice", systemImage: "trash") }
         } label: {
             Image(systemName: "ellipsis.circle")
         }
@@ -1576,12 +1621,21 @@ struct InvoiceDetailView: View {
                 Label("Enable Client Portal", systemImage: "togglepower")
             }
             .buttonStyle(.bordered)
+        } else if invoice.cannotBeSentReason != nil {
+            // Same as an invoice: say what's missing instead of a disabled
+            // Send squeezed into one row with the reason ("Esti-mate").
+            estimateStepTitle(
+                "Add what you're charging for",
+                detail: invoice.totalCents == 0 && !(invoice.items ?? []).isEmpty
+                    ? "Your line items add up to $0.00. Set their prices, then send it."
+                    : "Add a line item below, then send it to \(estimateClientName)."
+            )
         } else {
             estimateStepTitle(
                 "Send it to \(estimateClientName)",
                 detail: "Emails \(estimateClientEmail) a link to review, accept or decline."
             )
-            HStack(spacing: 10) {
+            NextStepButtons {
                 sendEstimateButton(title: "Send Estimate", prominent: true)
                 Button { previewPDF() } label: { Label("Preview", systemImage: "doc.richtext") }
                     .buttonStyle(.bordered)
@@ -1595,7 +1649,7 @@ struct InvoiceDetailView: View {
             "Waiting on \(estimateClientName)",
             detail: "You'll get a notification when they respond."
         )
-        HStack(spacing: 10) {
+        NextStepButtons {
             Button { openClientPortal() } label: {
                 if openingPortal {
                     ProgressView()
@@ -1626,7 +1680,7 @@ struct InvoiceDetailView: View {
             estimateStatusTimestampText ?? "Accepted",
             detail: "Schedule the work and bill for it."
         )
-        HStack(spacing: 10) {
+        NextStepButtons {
             if let job = invoice.job {
                 Button { estimateJobRoute = job } label: { Label("Open Job", systemImage: "hammer") }
                     .sbwProminentButton()
@@ -1756,8 +1810,10 @@ struct InvoiceDetailView: View {
             Button { showTemplatePicker = true } label: {
                 Label("Change Template", systemImage: "paintpalette")
             }
-            Button { openJobWorkspaceFolder() } label: {
-                Label("Job Files", systemImage: "folder")
+            if invoice.job != nil {
+                Button { openJobWorkspaceFolder() } label: {
+                    Label("Job Files", systemImage: "folder")
+                }
             }
 
             Divider()
@@ -1775,6 +1831,10 @@ struct InvoiceDetailView: View {
             }
             Button { duplicateInvoice() } label: {
                 Label(duplicateActionTitle, systemImage: "doc.on.doc")
+            }
+            Divider()
+            Button(role: .destructive) { confirmDeleteDocument = true } label: {
+                Label("Delete Estimate", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -1939,11 +1999,6 @@ struct InvoiceDetailView: View {
             button.buttonStyle(.bordered).tint(SBWTheme.brandBlue)
         }
 
-        if let reason = invoice.cannotBeSentReason {
-            Text(reason)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 
     private func sendEstimate() {
@@ -2875,6 +2930,18 @@ struct InvoiceDetailView: View {
             return true
         }
         return invoice.portalNeedsUpload
+    }
+
+    private func deleteDocument() {
+        let doomed = invoice
+        let context = modelContext
+        dismiss()
+        // After the pop finishes: deleting the model this screen is bound to
+        // while it's on screen crashes SwiftData views.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            context.delete(doomed)
+            try? context.save()
+        }
     }
 
     private func handleDoneTapped() {

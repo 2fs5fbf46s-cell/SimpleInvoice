@@ -366,8 +366,16 @@ struct TodayView: View {
     private var snapshot: some View {
         let received = MoneyMath.tally(MoneyMath.received(invoices: invoices, jobs: jobs), in: MoneyMath.lastDays(7))
         let owed = MoneyMath.owed(invoices)
-        let week = weekDays.reduce(0) { $0 + jobs(on: $1).count }
+        let weekJobs = weekDays.flatMap { jobs(on: $0) }
+        let week = weekJobs.count
+        let done = weekJobs.filter { JobDisplayStatus($0) == .completed }.count
         let unscheduled = jobs.scoped(to: businessID).filter { JobDisplayStatus($0) == .needsScheduling }.count
+        // It said "scheduled" even when some of them were done.
+        let weekDetail = unscheduled > 0 ? "\(unscheduled) need a date"
+            : week == 0 ? "none scheduled"
+            : done == week ? "all done"
+            : done > 0 ? "\(done) done"
+            : "scheduled"
         return HStack(spacing: 8) {
             tile("In, 7 days", InvoicePaymentService.currency(received.cents),
                  "\(received.count) payment\(received.count == 1 ? "" : "s")") {
@@ -379,7 +387,7 @@ struct TodayView: View {
                 MoneyHubView.show(.invoices)
                 AppRouteCenter.shared.route(.invoicesRoot)
             }
-            tile("Jobs this week", "\(week)", unscheduled > 0 ? "\(unscheduled) need a date" : "scheduled") {
+            tile("Jobs this week", "\(week)", weekDetail) {
                 WorkHubView.show(.jobs)
                 AppRouteCenter.shared.route(.workRoot)
             }

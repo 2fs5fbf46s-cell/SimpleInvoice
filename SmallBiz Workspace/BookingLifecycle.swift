@@ -311,7 +311,10 @@ enum BookingWorkSetup {
         let job = Job(
             businessID: businessID,
             clientID: client.id,
-            title: "\(booking.serviceName) — \(booking.customerName)",
+            // The service; the client shows under it everywhere the job
+            // appears, so "Lawn mowing — Maria Reyes" said it twice.
+            title: booking.serviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Booking" : booking.serviceName,
             notes: (booking.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             startDate: start,
             endDate: booking.end ?? Calendar.current.date(byAdding: .hour, value: 1, to: start) ?? start,

@@ -3,6 +3,20 @@ import SwiftData
 
 @MainActor
 enum EstimateAcceptanceHandler {
+    /// The work, not the paperwork: the estimate's name ("Patio Repaint"),
+    /// else its first line, else who it's for. It used to be "Job - Maria
+    /// Reyes (Patio Repaint)", which repeated the client shown right under it.
+    static func jobTitle(estimateName: String, estimate: Invoice, client: String) -> String {
+        var name = estimateName
+        if name.lowercased().hasPrefix("estimate ") { name = String(name.dropFirst("estimate ".count)) }
+        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        let firstLine = (estimate.items ?? [])
+            .map { CatalogItemAutoSaveService.parseLineItemDescription($0.itemDescription).name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        return firstLine ?? "Work for \(client)"
+    }
+
     static func handleAccepted(estimate: Invoice, context: ModelContext) throws {
         guard estimate.documentType == "estimate" else { return }
 
@@ -15,7 +29,7 @@ enum EstimateAcceptanceHandler {
         let safeClient = (clientName?.isEmpty == false) ? clientName! : "Client"
         let estimateNumber = estimate.invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         let safeEstimateNumber = estimateNumber.isEmpty ? String(estimate.id.uuidString.prefix(8)) : estimateNumber
-        let title = "Job - \(safeClient) (\(safeEstimateNumber))"
+        let title = jobTitle(estimateName: estimateNumber, estimate: estimate, client: safeClient)
 
         let job = Job(
             businessID: estimate.businessID,

@@ -47,15 +47,19 @@ enum InvoiceSendService {
         }
     }
 
-    static func confirmationMessage(for invoice: Invoice, kind: Kind) -> String {
+    /// `canPayOnline`: false when the business has no payment method on,
+    /// so the message doesn't promise a way to pay that isn't there.
+    static func confirmationMessage(for invoice: Invoice, kind: Kind, canPayOnline: Bool = true) -> String {
         let email = (invoice.client?.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let recipient = email.isEmpty ? "your client" : email
         let balance = InvoicePaymentService.currency(invoice.balanceDueCents)
         switch kind {
         case .send:
-            return "Emails \(recipient) a link to view and pay \(balance) online. It also appears in their client portal."
+            return canPayOnline
+                ? "Emails \(recipient) a link to view and pay \(balance) online. It also appears in their client portal."
+                : "Emails \(recipient) a link to view it (\(balance) due). No payment method is turned on, so they can't pay online yet."
         case .reminder:
-            return "Emails \(recipient) a reminder that \(balance) is \(invoice.isOverdue ? "overdue" : "due"), with the link to pay."
+            return "Emails \(recipient) a reminder that \(balance) is \(invoice.isOverdue ? "overdue" : "due")\(canPayOnline ? ", with the link to pay" : "")."
         }
     }
 

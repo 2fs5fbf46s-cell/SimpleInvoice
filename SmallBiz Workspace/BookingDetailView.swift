@@ -166,7 +166,7 @@ struct BookingDetailView: View {
                     "Reply to \(firstName)'s request",
                     detail: requestedText + " Confirming emails \(firstName) and puts the job on your calendar."
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { confirmConfirm = true } label: { Label("Confirm", systemImage: "checkmark") }
                         .sbwProminentButton(SBWTheme.brandGreen)
                     Button { showDepositSheet = true } label: { Label("Ask for Deposit", systemImage: "dollarsign") }
@@ -182,7 +182,7 @@ struct BookingDetailView: View {
 
             case .awaitingDeposit:
                 stepTitle("Waiting on \(firstName)'s deposit", detail: depositWaitingText)
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { showDepositSheet = true } label: { Label("Resend Link", systemImage: "paperplane") }
                         .sbwProminentButton()
                     Button { confirmMarkPaid = true } label: { Label("Mark Paid", systemImage: "banknote") }
@@ -202,7 +202,7 @@ struct BookingDetailView: View {
                 } else {
                     stepTitle("Confirmed for \(booking.whenText)", detail: confirmedText)
                 }
-                HStack(spacing: 10) {
+                NextStepButtons {
                     if let job {
                         Button { jobRoute = job } label: { Label("Open Job", systemImage: "wrench.and.screwdriver") }
                             .sbwProminentButton()

@@ -73,6 +73,39 @@ final class InvoiceNumberingTests: XCTestCase {
         XCTAssertEqual(later.invoiceNumber, "")
     }
 
+    func testAnUntouchedDraftGivesBackOnlyTheLatestNumber() {
+        let profile = BusinessProfile(businessID: businessID, nextInvoiceNumber: 5)
+        context.insert(profile)
+        InvoiceNumberGenerator.release("SI-\(year)-003", profile: profile)
+        XCTAssertEqual(profile.nextInvoiceNumber, 5, "003 may be on another invoice; never hand it out twice")
+        InvoiceNumberGenerator.release("SI-\(year)-004", profile: profile)
+        XCTAssertEqual(profile.nextInvoiceNumber, 4)
+        XCTAssertEqual(InvoiceNumberGenerator.generateNextNumber(profile: profile), "SI-\(year)-004")
+    }
+
+    func testAnUnnamedEstimateIsNamedForItsClient() throws {
+        let client = Client(businessID: businessID, name: "Maria Reyes", email: "m@example.com")
+        context.insert(client)
+        try context.save()
+        let first = try EstimateDrafts.make(name: "", client: client, businessID: businessID, context: context)
+        let second = try EstimateDrafts.make(name: "  ", client: client, businessID: businessID, context: context)
+        let noClient = try EstimateDrafts.make(name: "", client: nil, businessID: businessID, context: context)
+        XCTAssertEqual(first.invoiceNumber, "Maria Reyes 1")
+        XCTAssertEqual(second.invoiceNumber, "Maria Reyes 2")
+        XCTAssertEqual(noClient.invoiceNumber, "Estimate 3")
+    }
+
+    func testAnAcceptedEstimatesJobIsNamedForTheWork() {
+        let estimate = invoice("Patio Repaint", issued: 1, type: "estimate")
+        XCTAssertEqual(EstimateAcceptanceHandler.jobTitle(estimateName: "Patio Repaint", estimate: estimate, client: "Maria"), "Patio Repaint")
+        XCTAssertEqual(EstimateAcceptanceHandler.jobTitle(estimateName: "Estimate Deck", estimate: estimate, client: "Maria"), "Deck")
+        let item = LineItem(itemDescription: "Fence repair", quantity: 1, unitPrice: 100)
+        estimate.items = [item]
+        XCTAssertEqual(EstimateAcceptanceHandler.jobTitle(estimateName: "", estimate: estimate, client: "Maria"), "Fence repair")
+        estimate.items = []
+        XCTAssertEqual(EstimateAcceptanceHandler.jobTitle(estimateName: "", estimate: estimate, client: "Maria"), "Work for Maria")
+    }
+
     func testZeroShowsAsAnEmptyField() {
         var price = 0.0
         let field = Binding(get: { price }, set: { price = $0 }).zeroAsEmpty
