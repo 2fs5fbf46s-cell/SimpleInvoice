@@ -234,7 +234,7 @@ struct AppTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WalkthroughState.runRequestNotification)) { _ in
-            startWalkthrough(force: true)
+            beginWalkthroughFromAnywhere()
         }
         .onReceive(AppRouteCenter.shared.publisher) { route in
             handleAppRoute(route)
@@ -303,6 +303,25 @@ struct AppTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
         .frame(height: 62)
+    }
+
+    /// "Run Walkthrough" lives on the Help screen, which is pushed inside the
+    /// Business settings sheet — two layers on top of the tab bar the
+    /// walkthrough actually points at. Starting it while that sheet is still
+    /// up used to just flip `isWalkthroughPresented` behind the sheet, so the
+    /// button appeared to do nothing. Close the sheet first so the coach
+    /// marks land on a screen the person can actually see.
+    @MainActor
+    private func beginWalkthroughFromAnywhere() {
+        guard businessSettingsPresenter.isPresented else {
+            startWalkthrough(force: true)
+            return
+        }
+        businessSettingsPresenter.isPresented = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            startWalkthrough(force: true)
+        }
     }
 
     @MainActor
@@ -393,22 +412,57 @@ struct AppTabView: View {
     private func handleAppRoute(_ route: AppRoute) {
         switch route {
         case .clientsRoot:
+            dismissBusinessSettingsIfNeeded()
             routeToTabRoot(.clients)
         case .invoicesRoot:
+            dismissBusinessSettingsIfNeeded()
             routeToTabRoot(.money)
         case .workRoot:
+            dismissBusinessSettingsIfNeeded()
             routeToTabRoot(.work)
         case .bookingsRoot:
+            dismissBusinessSettingsIfNeeded()
             WorkHubView.show(.bookings)
             routeToTabRoot(.work)
         case .moreRoot:
             businessSettingsPresenter.open()
         case .paymentsSetup:
-            businessSettingsPresenter.open(.setupPayments)
+            reopenBusinessSettings(at: .setupPayments)
         case .openAppSettings:
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
+        }
+    }
+
+    /// Quick Start's rows route through here too, from a screen nested inside
+    /// the Business settings sheet. Same problem as the walkthrough: routing
+    /// to a tab while that sheet is still up just changes state behind it.
+    @MainActor
+    private func dismissBusinessSettingsIfNeeded() {
+        guard businessSettingsPresenter.isPresented else { return }
+        businessSettingsPresenter.isPresented = false
+    }
+
+    /// `BusinessSettingsPresenter.open(_:)` is only read in the sheet's own
+    /// `onAppear`, so calling it while the sheet is already presented (Quick
+    /// Start's "Set up how you get paid" row, reached through Help, reached
+    /// through this same sheet) sets `pendingDestination` and nothing ever
+    /// reads it. Closing and reopening gives it a fresh `onAppear`.
+    @MainActor
+    private func reopenBusinessSettings(at destination: BusinessSettingsPresenter.Destination) {
+        guard businessSettingsPresenter.isPresented else {
+            businessSettingsPresenter.open(destination)
+            return
+        }
+        businessSettingsPresenter.isPresented = false
+        // UIKit's own dismiss animation is ~0.35s; re-presenting before it
+        // finishes gets silently dropped (the sheet just sits there looking
+        // untouched), so this needs real margin past that, not just past
+        // when our state flips.
+        Task {
+            try? await Task.sleep(for: .milliseconds(650))
+            businessSettingsPresenter.open(destination)
         }
     }
 

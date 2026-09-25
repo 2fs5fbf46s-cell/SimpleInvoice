@@ -237,11 +237,11 @@ private struct FAQCategory: Identifiable {
         FAQCategory(title: "Getting Started", items: [
             FAQItem(
                 question: "What does the Quick Start checklist track?",
-                answer: "Four steps: add your first client, send an invoice, turn on notifications, and set up a payment method. The Dashboard shows how many you've completed and links straight to the next one."
+                answer: "Four steps: add your first client, send an invoice, turn on notifications, and set up a payment method. Find it from View Quick Start above, or from the Next Step card on your avatar's Business screen — it shows how many you've completed and links straight to the next one."
             ),
             FAQItem(
                 question: "How do I switch between businesses?",
-                answer: "Open Business Profile, expand Advanced, and choose Switch Business. Everything in the app — invoices, clients, contracts — is scoped to whichever business is active."
+                answer: "Tap your avatar in the top corner to open Business settings. If you already have more than one business, tap Switch next to your business name; otherwise use the ⋯ menu there and choose Add a Business. Everything in the app — invoices, clients, contracts — is scoped to whichever business is active."
             ),
             FAQItem(
                 question: "What's the Create button for?",
@@ -259,17 +259,17 @@ private struct FAQCategory: Identifiable {
             ),
             FAQItem(
                 question: "How do invoice numbers get assigned?",
-                answer: "Automatically, in the form PREFIX-YEAR-NUMBER (for example SI-2026-001). The prefix comes from your Business Profile and can be changed there."
+                answer: "Automatically, in the form PREFIX-YEAR-NUMBER (for example SI-2026-001). Change the prefix or start the count over from your avatar's Business screen, under Invoice Numbers."
             ),
             FAQItem(
                 question: "Can I reuse services or products I bill often?",
-                answer: "Yes — save them once under Saved Items (in More), then add them straight into any invoice or estimate instead of retyping the description and price each time."
+                answer: "Yes — save them once under Saved Items, on your avatar's Business screen, then add them straight into any invoice or estimate instead of retyping the description and price each time."
             )
         ]),
         FAQCategory(title: "Payments", items: [
             FAQItem(
                 question: "Which payment methods can I accept?",
-                answer: "Stripe, PayPal, Square, Cash App, Venmo and ACH, each configured separately under Setup Payments."
+                answer: "Card (via Stripe), PayPal, Venmo, Cash App, Square and Bank Transfer, each turned on separately under Payment Methods on your avatar's Business screen."
             ),
             FAQItem(
                 question: "Do I have to enable every payment method?",
@@ -301,11 +301,7 @@ private struct FAQCategory: Identifiable {
             ),
             FAQItem(
                 question: "What is the Client Portal?",
-                answer: "A secure page where a specific client can view their invoices, contracts and shared files without needing an account. Turn it on or off under Client portal on the client's screen."
-            ),
-            FAQItem(
-                question: "What does \u{201c}Portal On\u{201d} mean in the Clients filter?",
-                answer: "It shows only clients who currently have portal access enabled, so you can see at a glance who can log in to view their documents."
+                answer: "A secure page where a specific client can view their invoices, contracts and shared files without needing an account. Open a client, expand Client Portal, and turn on Portal Access."
             )
         ]),
         FAQCategory(title: "Jobs & Bookings", items: [
@@ -321,7 +317,7 @@ private struct FAQCategory: Identifiable {
         FAQCategory(title: "Your Website", items: [
             FAQItem(
                 question: "What is the Website screen for?",
-                answer: "It builds a public page for your business — hero image, services, team, gallery — that customers can view and book from. Preview it before publishing."
+                answer: "It builds a public page for your business — hero image, services, about us, team, gallery — that customers can view and book from. Preview it before publishing."
             ),
             FAQItem(
                 question: "Where do customers actually find my site?",
