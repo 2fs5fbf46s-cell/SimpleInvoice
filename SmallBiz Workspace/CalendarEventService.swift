@@ -148,6 +148,18 @@ final class CalendarEventService {
         }
     }
 
+    /// Deletes the job's event, if it's still there. Used when a job is
+    /// canceled; a missing event (deleted by hand in Calendar) is fine.
+    func removeEvent(identifier: String?) async throws {
+        guard let event = fetchEvent(by: identifier) else { return }
+        try await requestAccessIfNeeded()
+        do {
+            try eventStore.remove(event, span: .thisEvent, commit: true)
+        } catch {
+            throw CalendarEventServiceError.unableToSave
+        }
+    }
+
     func openInCalendarApp(event: EKEvent) throws {
         let ref = event.startDate.timeIntervalSinceReferenceDate
         guard let url = URL(string: "calshow:\(ref)") else {

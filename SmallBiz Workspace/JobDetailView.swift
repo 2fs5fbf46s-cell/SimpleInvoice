@@ -20,6 +20,8 @@ private struct JobFolderSheetItem: Identifiable {
 
 struct JobDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Bindable var job: Job
     let isDraft: Bool
 
@@ -67,6 +69,21 @@ struct JobDetailView: View {
     @State private var calendarPermissionDenied = false
     @State private var calendarSheetEvent: EKEvent? = nil
 
+    // One-screen job layout (see "Job screen" below)
+    @State private var showDetails = false
+    @State private var showMeasurements = false
+    @State private var showFolder = false
+    @State private var showReschedule = false
+    @State private var scheduleStart: Date = JobDetailView.defaultScheduleStart()
+    @State private var scheduleEnd: Date = JobDetailView.defaultScheduleStart().addingTimeInterval(2 * 3600)
+    @State private var invoiceRoute: Invoice? = nil
+    @State private var shareItems: [Any]? = nil
+    @State private var confirmCancelJob = false
+    @State private var confirmDeleteJob = false
+    @State private var isDeleted = false
+    @State private var pendingCalendarRefreshTask: Task<Void, Never>? = nil
+    @State private var actionError: String? = nil
+
     init(job: Job, isDraft: Bool = false) {
         self.job = job
         self.isDraft = isDraft
@@ -88,23 +105,7 @@ struct JobDetailView: View {
     }
 
     var body: some View {
-        List {
-            jobEssentialsCard
-            scheduleCard
-            locationCard
-            measurementsCard
-            notesCard
-            calendarCard
-            linkedContractsCard
-            attachmentsCard
-            filesCard
-        }
-        .listStyle(.plain)
-        .listRowSeparator(.hidden)
-        .safeAreaInset(edge: .top) { pinnedHeader }
-        .navigationTitle("Job")
-        .navigationBarTitleDisplayMode(.inline)
-        .sbwNavigationBarBackdrop()
+        jobScreen
         .navigationDestination(item: $selectedContract) { c in
             ContractDetailView(contract: c)
         }
@@ -277,7 +278,7 @@ struct JobDetailView: View {
         }
 
         .onDisappear {
-            if isDraft { return }
+            if isDraft || isDeleted { return }
             pendingSaveTask?.cancel()
             pendingSaveTask = nil
 
@@ -298,61 +299,777 @@ struct JobDetailView: View {
         return title.isEmpty ? "Job" : title
     }
 
-    private var jobStatusText: String {
-        switch job.stage {
-        case .booked:
-            return "SCHEDULED"
-        case .inProgress:
-            return "IN PROGRESS"
-        case .completed:
-            return "COMPLETED"
-        case .canceled:
-            return "CANCELED"
-        }
-    }
-
-    private var jobScheduleSummary: String {
-        "\(job.startDate.formatted(date: .abbreviated, time: .omitted)) - \(job.endDate.formatted(date: .abbreviated, time: .omitted))"
-    }
+    private var displayStatus: JobDisplayStatus { JobDisplayStatus(job) }
 
     private var linkedClient: Client? {
         guard let clientID = job.clientID else { return nil }
         return clients.first(where: { $0.id == clientID })
     }
 
-    private var pinnedHeader: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(jobTitleText)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(jobScheduleSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+    /// "Thu, Sep 25 · 9:00–11:00 AM" for a same-day job, else both dates.
+    private var jobWhenText: String {
+        switch displayStatus {
+        case .needsScheduling:
+            return "No date yet"
+        case .inProgress:
+            if let startedAt = job.startedAt {
+                return "On site since \(startedAt.formatted(date: .omitted, time: .shortened))"
             }
-            Spacer()
-            jobStatusPill
+            return "In progress"
+        case .completed:
+            return "Completed \((job.completedAt ?? job.endDate).formatted(date: .abbreviated, time: .omitted))"
+        case .canceled:
+            return "Canceled \((job.canceledAt ?? job.startDate).formatted(date: .abbreviated, time: .omitted))"
+        case .scheduled:
+            let start = job.startDate
+            let end = job.endDate
+            if Calendar.current.isDate(start, inSameDayAs: end) {
+                let day = start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+                let times = "\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))"
+                return "\(day) · \(times)"
+            }
+            return "\(start.formatted(date: .abbreviated, time: .shortened)) – \(end.formatted(date: .abbreviated, time: .shortened))"
+        }
+    }
+
+    private var jobPlaceText: String {
+        let client = linkedClient?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let place = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [client, place].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    // Solid, not material: the list scrolled visibly underneath the old one.
+    private var pinnedHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(jobTitleText)
+                        .font(.headline)
+                        .lineLimit(2)
+                    if !jobPlaceText.isEmpty {
+                        Text(jobPlaceText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if !isDraft {
+                        Text(jobWhenText)
+                            .font(.caption)
+                    }
+                }
+                Spacer()
+                if !isDraft {
+                    jobStatusPill
+                }
+            }
+            if !isDraft {
+                jobStageTrack
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .background(Color(.systemBackground))
         .overlay(alignment: .bottom) { Divider() }
     }
 
     private var jobStatusPill: some View {
-        let colors = SBWTheme.chip(forStatus: jobStatusText)
-        return Text(jobStatusText)
+        Text(displayStatus.label)
             .font(.caption.weight(.semibold))
             .padding(.vertical, 4)
             .padding(.horizontal, 10)
-            .background(Capsule().fill(colors.bg))
-            .foregroundStyle(colors.fg)
+            .background(Capsule().fill(displayStatus.foreground.opacity(0.15)))
+            .foregroundStyle(displayStatus.foreground)
+    }
+
+    private var jobStageTrack: some View {
+        let reached: Int
+        switch displayStatus {
+        case .needsScheduling: reached = 0
+        case .scheduled: reached = 1
+        case .inProgress: reached = 2
+        case .completed, .canceled: reached = 3
+        }
+        let lastColor: Color = displayStatus == .canceled ? .red : SBWTheme.brandBlue
+        return VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule()
+                        .fill(index < reached ? (index == 2 ? lastColor : SBWTheme.brandBlue) : Color.secondary.opacity(0.25))
+                        .frame(height: 4)
+                }
+            }
+            HStack {
+                Text("Scheduled")
+                Spacer()
+                Text("In progress")
+                Spacer()
+                Text(displayStatus == .canceled ? "Canceled" : "Completed")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Status: \(displayStatus.label)")
+    }
+
+    // MARK: - Job screen
+    //
+    // One screen per job, the same shape as the estimate screen: a header
+    // with a stage track, then a Next step card with what to do now —
+    // schedule it, start it, finish it, bill for it — then the client
+    // contact row, the job's paperwork, photos and notes. Editing details,
+    // measurements and the folder collapse below. A new job (isDraft) gets
+    // just the fields needed to create it.
+
+    private var jobScreen: some View {
+        List {
+            if isDraft {
+                jobEssentialsCard
+                scheduleCard
+                locationCard
+                notesCard
+            } else {
+                nextStepCard
+                contactRow
+                paperworkCard
+                attachmentsCard
+                notesCard
+                detailsGroup
+                measurementsGroup
+                folderGroup
+            }
+        }
+        .listStyle(.plain)
+        .listRowSeparator(.hidden)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !isDraft { pinnedHeader }
+        }
+        .navigationTitle(isDraft ? "New Job" : "Job")
+        .navigationBarTitleDisplayMode(.inline)
+        .sbwNavigationBarBackdrop()
+        .toolbar {
+            if !isDraft {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button { showJobCamera = true } label: { Image(systemName: "camera") }
+                            .accessibilityLabel("Take Photo")
+                    }
+                    jobMenu
+                }
+            }
+        }
+        .navigationDestination(item: $invoiceRoute) { invoice in
+            InvoiceOverviewView(invoice: invoice)
+        }
+        .sheet(isPresented: Binding(
+            get: { shareItems != nil },
+            set: { if !$0 { shareItems = nil } }
+        )) {
+            ShareSheet(items: shareItems ?? [])
+        }
+        .confirmationDialog("Cancel this job?", isPresented: $confirmCancelJob, titleVisibility: .visible) {
+            Button("Cancel Job", role: .destructive) { cancelJob() }
+            Button("Keep Job", role: .cancel) {}
+        } message: {
+            Text("It stays in your records and comes off your calendar. You can reopen it later.")
+        }
+        .confirmationDialog("Delete this job?", isPresented: $confirmDeleteJob, titleVisibility: .visible) {
+            Button("Delete Job", role: .destructive) { deleteJob() }
+            Button("Keep Job", role: .cancel) {}
+        } message: {
+            Text(deleteImpactText)
+        }
+        .alert("Job", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
+        }
+        // The calendar event carries the job's time, place and notes; it
+        // used to go stale until the owner tapped "Update Calendar Event".
+        .onChange(of: job.startDate) { _, _ in scheduleCalendarRefresh() }
+        .onChange(of: job.endDate) { _, _ in scheduleCalendarRefresh() }
+        .onChange(of: job.notes) { _, _ in scheduleCalendarRefresh() }
+        .onChange(of: job.locationName) { _, _ in scheduleCalendarRefresh() }
+    }
+
+    // MARK: Next step
+
+    private var nextStepCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Next step")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(SBWTheme.brandBlue)
+
+            switch displayStatus {
+            case .needsScheduling:
+                stepTitle("Schedule it", detail: job.sourceEstimateId == nil
+                    ? "Pick when the work happens. It goes on your calendar."
+                    : "Created from the accepted estimate. Pick when the work happens and it goes on your calendar.")
+                DatePicker("Starts", selection: $scheduleStart)
+                DatePicker("Ends", selection: $scheduleEnd, in: scheduleStart...)
+                Button { applySchedule() } label: {
+                    Label("Schedule", systemImage: "calendar.badge.plus")
+                }
+                .sbwProminentButton()
+
+            case .scheduled:
+                stepTitle(startsText, detail: readinessText)
+                if showReschedule {
+                    DatePicker("Starts", selection: $job.startDate)
+                        .onChange(of: job.startDate) { _, _ in scheduleSave() }
+                    DatePicker("Ends", selection: $job.endDate, in: job.startDate...)
+                        .onChange(of: job.endDate) { _, _ in scheduleSave() }
+                }
+                HStack(spacing: 10) {
+                    Button { startJob() } label: { Label("Start Job", systemImage: "play.fill") }
+                        .sbwProminentButton()
+                    Button { showReschedule.toggle() } label: {
+                        Label(showReschedule ? "Done" : "Reschedule", systemImage: "calendar")
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+            case .inProgress:
+                stepTitle(
+                    "Job in progress",
+                    detail: "\(jobWhenText). Take before and after photos as you go."
+                )
+                HStack(spacing: 10) {
+                    Button { completeJob() } label: { Label("Complete Job", systemImage: "checkmark") }
+                        .sbwProminentButton(SBWTheme.brandGreen)
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button { showJobCamera = true } label: { Label("Take Photo", systemImage: "camera") }
+                            .buttonStyle(.bordered)
+                    }
+                }
+
+            case .completed:
+                if let invoice = finalInvoice {
+                    stepTitle(
+                        invoice.isPaid ? "Paid" : "Invoice \(invoice.invoiceNumber) is out",
+                        detail: invoice.isPaid
+                            ? "This job is done and paid for."
+                            : "\(currency(invoice.total)) \(isOverdue(invoice) ? "overdue" : "unpaid")."
+                    )
+                    HStack(spacing: 10) {
+                        Button { invoiceRoute = invoice } label: { Label("Open Invoice", systemImage: "doc.plaintext") }
+                            .sbwProminentButton()
+                        Button { shareSummary() } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                            .buttonStyle(.bordered)
+                    }
+                } else {
+                    stepTitle("Bill for it", detail: billingDetailText)
+                    HStack(spacing: 10) {
+                        Button { createJobInvoice() } label: { Label("Create Invoice", systemImage: "doc.badge.plus") }
+                            .sbwProminentButton()
+                        Button { shareSummary() } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                            .buttonStyle(.bordered)
+                    }
+                }
+
+            case .canceled:
+                stepTitle(jobWhenText, detail: "It's off your calendar. Reopen it if the work is back on.")
+                Button { reopenJob() } label: { Label("Reopen Job", systemImage: "arrow.uturn.backward") }
+                    .sbwProminentButton()
+            }
+
+            if let calendarError, !calendarError.isEmpty {
+                Text(calendarError)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sbwJobCardRow()
+    }
+
+    private func stepTitle(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.headline)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var startsText: String {
+        let time = job.startDate.formatted(date: .omitted, time: .shortened)
+        let calendar = Calendar.current
+        if calendar.isDateInToday(job.startDate) { return "Starts today at \(time)" }
+        if calendar.isDateInTomorrow(job.startDate) { return "Starts tomorrow at \(time)" }
+        if job.startDate < .now { return "Was set for \(job.startDate.formatted(date: .abbreviated, time: .shortened))" }
+        return "Starts \(job.startDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) at \(time)"
+    }
+
+    /// Deposit and contract state, the two things worth knowing before you
+    /// head out. Soft reminders, never a gate.
+    private var readinessText: String {
+        var parts: [String] = []
+        if let cents = job.depositAmountCents, cents > 0 {
+            parts.append(job.depositPaidAtMs != nil ? "Deposit paid." : "Deposit of \(currency(Double(cents) / 100)) not paid yet.")
+        }
+        if let contract = jobContracts.first {
+            parts.append(contract.status == .signed ? "Contract signed." : "Contract not signed yet.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var billingDetailText: String {
+        guard JobInvoiceBuilder.sourceEstimate(for: job, in: modelContext) != nil else {
+            return "Creates an invoice for this job and client."
+        }
+        if job.depositPaidAtMs != nil, let cents = job.depositAmountCents, cents > 0 {
+            return "Uses the estimate's line items, minus the \(currency(Double(cents) / 100)) deposit already paid."
+        }
+        return "Uses the estimate's line items."
+    }
+
+    // MARK: Contact
+
+    private var clientPhoneDigits: String? {
+        let raw = linkedClient?.phone ?? ""
+        let digits = raw.filter { "+0123456789".contains($0) }
+        return digits.isEmpty ? nil : digits
+    }
+
+    private var directionsURL: URL? {
+        var comps = URLComponents(string: "http://maps.apple.com/")
+        if let latitude = job.latitude, let longitude = job.longitude {
+            comps?.queryItems = [URLQueryItem(name: "daddr", value: "\(latitude),\(longitude)")]
+        } else {
+            let place = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let address = place.isEmpty ? (linkedClient?.address.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") : place
+            guard !address.isEmpty else { return nil }
+            comps?.queryItems = [URLQueryItem(name: "daddr", value: address)]
+        }
+        return comps?.url
+    }
+
+    private var hasCalendarEvent: Bool {
+        !(job.calendarEventId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var contactRow: some View {
+        HStack {
+            contactButton("Call", icon: "phone.fill", enabled: clientPhoneDigits != nil) {
+                if let digits = clientPhoneDigits, let url = URL(string: "tel:\(digits)") { openURL(url) }
+            }
+            contactButton("Text", icon: "message.fill", enabled: clientPhoneDigits != nil) {
+                if let digits = clientPhoneDigits, let url = URL(string: "sms:\(digits)") { openURL(url) }
+            }
+            contactButton("Directions", icon: "location.fill", enabled: directionsURL != nil) {
+                if let url = directionsURL { openURL(url) }
+            }
+            contactButton(
+                hasCalendarEvent ? "Calendar" : "Add to Cal",
+                icon: hasCalendarEvent ? "calendar" : "calendar.badge.plus",
+                enabled: displayStatus != .needsScheduling && displayStatus != .canceled
+            ) {
+                Task { await syncCalendarEvent(viewAfter: hasCalendarEvent) }
+            }
+        }
+        .buttonStyle(.borderless)
+        .sbwJobCardRow()
+    }
+
+    private func contactButton(_ title: String, icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.title3)
+                Text(title)
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(enabled ? SBWTheme.brandBlue : Color.secondary.opacity(0.5))
+        }
+        .disabled(!enabled)
+    }
+
+    // MARK: Paperwork
+
+    private var jobDocuments: [Invoice] {
+        (job.invoices ?? []).sorted { $0.issueDate > $1.issueDate }
+    }
+
+    private var jobEstimates: [Invoice] {
+        jobDocuments.filter { $0.documentType == "estimate" }
+    }
+
+    private var depositInvoice: Invoice? {
+        guard let id = job.depositInvoiceId else { return nil }
+        return jobDocuments.first { $0.id.uuidString == id }
+    }
+
+    /// Real invoices for the work, not the deposit invoice.
+    private var finalInvoices: [Invoice] {
+        jobDocuments.filter { $0.documentType != "estimate" && $0.id.uuidString != job.depositInvoiceId }
+    }
+
+    private var finalInvoice: Invoice? { finalInvoices.first }
+
+    /// Every contract tied to this job: linked directly, drafted with its
+    /// estimate (the job screen couldn't see these before), or listing it
+    /// among several linked jobs.
+    private var jobContracts: [Contract] {
+        var seen = Set<UUID>()
+        var result: [Contract] = []
+        func add(_ contract: Contract) {
+            if seen.insert(contract.id).inserted { result.append(contract) }
+        }
+        (job.contracts ?? []).forEach(add)
+        for document in jobDocuments {
+            (document.contracts ?? []).forEach(add)
+            (document.estimateContracts ?? []).forEach(add)
+        }
+        let businessID = job.businessID
+        let jobKey = job.id.uuidString
+        let others = (try? modelContext.fetch(FetchDescriptor<Contract>(
+            predicate: #Predicate<Contract> { $0.businessID == businessID }
+        ))) ?? []
+        others.filter { $0.linkedJobIDsCSV.contains(jobKey) }.forEach(add)
+        return result
+    }
+
+    private var paperworkCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Paperwork")
+                .font(.headline)
+
+            let contracts = jobContracts
+            if jobEstimates.isEmpty && depositInvoice == nil && contracts.isEmpty && finalInvoices.isEmpty {
+                Text("No estimate, contract or invoice yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button { createJobEstimate() } label: { Label("New Estimate", systemImage: "doc.text.magnifyingglass") }
+                    .buttonStyle(.bordered)
+            }
+
+            ForEach(jobEstimates) { estimate in
+                paperworkRow(
+                    icon: "doc.text.magnifyingglass",
+                    title: "Estimate \(estimate.invoiceNumber)",
+                    status: "\(estimateStatusLabel(estimate)) \(currency(estimate.total))",
+                    tint: estimateTint(estimate)
+                ) { invoiceRoute = estimate }
+            }
+
+            if let cents = job.depositAmountCents, cents > 0 {
+                paperworkRow(
+                    icon: "banknote",
+                    title: "Deposit",
+                    status: "\(job.depositPaidAtMs != nil ? "Paid" : "Unpaid") \(currency(Double(cents) / 100))",
+                    tint: job.depositPaidAtMs != nil ? SBWTheme.brandGreen : .orange
+                ) {
+                    if let depositInvoice { invoiceRoute = depositInvoice }
+                }
+            }
+
+            ForEach(contracts) { contract in
+                paperworkRow(
+                    icon: "signature",
+                    title: contract.title.isEmpty ? "Contract" : contract.title,
+                    status: statusLabel(contract.status),
+                    tint: contract.status == .signed ? SBWTheme.brandGreen : SBWTheme.brandBlue
+                ) { selectedContract = contract }
+            }
+
+            ForEach(finalInvoices) { invoice in
+                paperworkRow(
+                    icon: "doc.plaintext",
+                    title: "Invoice \(invoice.invoiceNumber)",
+                    status: "\(invoice.isPaid ? "Paid" : (isOverdue(invoice) ? "Overdue" : "Unpaid")) \(currency(invoice.total))",
+                    tint: invoice.isPaid ? SBWTheme.brandGreen : (isOverdue(invoice) ? .red : .orange)
+                ) { invoiceRoute = invoice }
+            }
+        }
+        .buttonStyle(.borderless)
+        .sbwJobCardRow()
+    }
+
+    private func paperworkRow(icon: String, title: String, status: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                // Explicit colors: inside a borderless button, .primary and
+                // .secondary resolve to the button's blue tint.
+                Image(systemName: icon)
+                    .foregroundStyle(Color.secondary)
+                    .frame(width: 22)
+                Text(title)
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(status)
+                    .font(.caption.weight(.semibold))
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 8)
+                    .background(Capsule().fill(tint.opacity(0.15)))
+                    .foregroundStyle(tint)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(Color.secondary)
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+    }
+
+    private func estimateStatusLabel(_ estimate: Invoice) -> String {
+        let status = estimate.estimateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch status {
+        case "sent": return "Sent"
+        case "accepted": return "Accepted"
+        case "declined": return "Declined"
+        default: return "Draft"
+        }
+    }
+
+    private func estimateTint(_ estimate: Invoice) -> Color {
+        switch estimateStatusLabel(estimate) {
+        case "Accepted": return SBWTheme.brandGreen
+        case "Declined": return .red
+        case "Sent": return SBWTheme.brandBlue
+        default: return .secondary
+        }
+    }
+
+    private func isOverdue(_ invoice: Invoice) -> Bool {
+        !invoice.isPaid && invoice.dueDate < Calendar.current.startOfDay(for: .now)
+    }
+
+    private func currency(_ amount: Double) -> String {
+        amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+    }
+
+    // MARK: Collapsed groups
+
+    private var detailsGroup: some View {
+        Section {
+            DisclosureGroup(isExpanded: $showDetails) {
+                jobEssentialsCard
+                scheduleCard
+                locationCard
+                calendarCard
+            } label: {
+                groupLabel("Details", icon: "square.and.pencil", detail: "Title, client, schedule, location")
+            }
+            .sbwJobCardRow()
+        }
+    }
+
+    private var measurementsGroup: some View {
+        Section {
+            DisclosureGroup(isExpanded: $showMeasurements) {
+                measurementsCard
+            } label: {
+                groupLabel("Measurements", icon: "ruler", detail: job.measurements.isEmpty ? "None yet" : "\(job.measurements.count)")
+            }
+            .sbwJobCardRow()
+        }
+    }
+
+    private var folderGroup: some View {
+        Section {
+            DisclosureGroup(isExpanded: $showFolder) {
+                filesCard
+            } label: {
+                groupLabel("Job Folder", icon: "folder", detail: "Files for this job")
+            }
+            .sbwJobCardRow()
+        }
+    }
+
+    private func groupLabel(_ title: String, icon: String, detail: String) -> some View {
+        HStack {
+            Label(title, systemImage: icon)
+                .font(.headline)
+            Spacer()
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    // MARK: Toolbar menu
+
+    private var jobMenu: some View {
+        Menu {
+            if displayStatus != .needsScheduling && displayStatus != .canceled {
+                Button {
+                    Task { await syncCalendarEvent(viewAfter: hasCalendarEvent) }
+                } label: {
+                    Label(hasCalendarEvent ? "View Calendar Event" : "Add to Calendar", systemImage: "calendar")
+                }
+            }
+            Button { shareSummary() } label: { Label("Share Summary", systemImage: "square.and.arrow.up") }
+            Button { openFolder(kind: nil) } label: { Label("Job Folder", systemImage: "folder") }
+            if jobEstimates.isEmpty {
+                Button { createJobEstimate() } label: { Label("New Estimate", systemImage: "doc.text.magnifyingglass") }
+            }
+            if finalInvoice == nil {
+                Button { createJobInvoice() } label: { Label("New Invoice", systemImage: "doc.badge.plus") }
+            }
+
+            Menu {
+                Button("Scheduled") { setStage(.booked) }
+                Button("In Progress") { setStage(.inProgress) }
+                Button("Completed") { setStage(.completed) }
+            } label: {
+                Label("Change Stage", systemImage: "arrow.left.arrow.right")
+            }
+
+            Divider()
+
+            if displayStatus == .canceled {
+                Button { reopenJob() } label: { Label("Reopen Job", systemImage: "arrow.uturn.backward") }
+            } else {
+                Button(role: .destructive) { confirmCancelJob = true } label: {
+                    Label("Cancel Job", systemImage: "xmark.circle")
+                }
+            }
+            Button(role: .destructive) { confirmDeleteJob = true } label: {
+                Label("Delete Job", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More")
+    }
+
+    // MARK: Actions
+
+    static func defaultScheduleStart() -> Date {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
+        return Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+    }
+
+    private func applySchedule() {
+        job.startDate = scheduleStart
+        job.endDate = max(scheduleEnd, scheduleStart.addingTimeInterval(15 * 60))
+        job.needsScheduling = false
+        saveNow()
+        Task { await syncCalendarEvent(viewAfter: false) }
+    }
+
+    private func startJob() {
+        JobLifecycle.start(job)
+        showReschedule = false
+        saveNow()
+        Haptics.success()
+    }
+
+    private func completeJob() {
+        JobLifecycle.complete(job)
+        saveNow()
+        Haptics.success()
+    }
+
+    private func cancelJob() {
+        Task {
+            await JobLifecycle.cancel(job)
+            saveNow()
+        }
+    }
+
+    private func reopenJob() {
+        JobLifecycle.reopen(job)
+        saveNow()
+    }
+
+    private func setStage(_ stage: JobStage) {
+        JobLifecycle.setStage(job, to: stage)
+        saveNow()
+    }
+
+    private var deleteImpactText: String {
+        JobDeletion.impactMessage(for: job)
+    }
+
+    private func deleteJob() {
+        let eventID = job.calendarEventId
+        isDeleted = true
+        pendingSaveTask?.cancel()
+        pendingWorkspaceRenameTask?.cancel()
+        pendingCalendarRefreshTask?.cancel()
+        Task {
+            try? await CalendarEventService.shared.removeEvent(identifier: eventID)
+        }
+        modelContext.delete(job)
+        try? modelContext.save()
+        dismiss()
+    }
+
+    private func createJobInvoice() {
+        let businessID = job.businessID
+        let profile = try? modelContext.fetch(
+            FetchDescriptor<BusinessProfile>(predicate: #Predicate { $0.businessID == businessID })
+        ).first
+        do {
+            invoiceRoute = try JobInvoiceBuilder.makeInvoice(
+                for: job,
+                client: linkedClient,
+                profile: profile,
+                context: modelContext
+            )
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func createJobEstimate() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let estimate = Invoice(
+            businessID: job.businessID,
+            invoiceNumber: "EST-\(formatter.string(from: Date()))",
+            issueDate: Date(),
+            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date(),
+            isPaid: false,
+            documentType: "estimate",
+            client: linkedClient,
+            job: job,
+            items: []
+        )
+        modelContext.insert(estimate)
+        do {
+            try modelContext.save()
+            invoiceRoute = estimate
+        } catch {
+            modelContext.delete(estimate)
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func shareSummary() {
+        let lines = [
+            "Job: \(jobTitleText)",
+            "Status: \(displayStatus.label)",
+            jobPlaceText.isEmpty ? nil : jobPlaceText,
+            displayStatus == .needsScheduling ? nil : jobWhenText,
+            job.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : "Notes: \(job.notes)"
+        ]
+        shareItems = [lines.compactMap { $0 }.joined(separator: "\n")]
+    }
+
+    private func scheduleCalendarRefresh() {
+        guard !isDraft, !isDeleted, hasCalendarEvent, !job.needsScheduling, job.stage != .canceled else { return }
+        pendingCalendarRefreshTask?.cancel()
+        pendingCalendarRefreshTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
+            await syncCalendarEvent(viewAfter: false)
+        }
     }
 
     private var jobEssentialsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Essentials")
+            Text("Job")
                 .font(.headline)
 
             TextField("Title", text: $job.title)
@@ -363,17 +1080,6 @@ struct JobDetailView: View {
                     // ✅ Live rename (debounced)
                     scheduleWorkspaceRename()
                 }
-
-            Picker("Stage", selection: $job.stageRaw) {
-                Text("Booked").tag(JobStage.booked.rawValue)
-                Text("In Progress").tag(JobStage.inProgress.rawValue)
-                Text("Completed").tag(JobStage.completed.rawValue)
-                Text("Canceled").tag(JobStage.canceled.rawValue)
-            }
-            .pickerStyle(.menu)
-            .onChange(of: job.stageRaw) { _, _ in
-                scheduleSave()
-            }
 
             Picker("Client", selection: Binding<UUID?>(
                 get: { job.clientID },
@@ -473,24 +1179,31 @@ struct JobDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
+            // Label on its own line, value and unit below: side by side at
+            // 64pt and 50pt, values and units were cut off on smaller phones.
             ForEach($job.measurements) { $measurement in
-                HStack(spacing: 8) {
-                    TextField("e.g. Fence length", text: $measurement.label)
-                    TextField("0", value: $measurement.value, format: .number)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 64)
-                    TextField("unit", text: $measurement.unit)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 50)
-                    Button {
-                        job.measurements.removeAll { $0.id == measurement.id }
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .foregroundStyle(.red)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TextField("What you measured, e.g. Fence length", text: $measurement.label)
+                        Button {
+                            job.measurements.removeAll { $0.id == measurement.id }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove measurement")
                     }
-                    .buttonStyle(.plain)
+                    HStack(spacing: 8) {
+                        TextField("Value", value: $measurement.value, format: .number)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Unit, e.g. ft", text: $measurement.unit)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 120)
+                    }
                 }
+                .padding(.vertical, 4)
             }
             .onChange(of: job.measurements) { _, _ in scheduleSave() }
 
@@ -560,8 +1273,7 @@ struct JobDetailView: View {
                 Button("Update Calendar Event") {
                     Task { await syncCalendarEvent(viewAfter: false) }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .sbwProminentButton()
 
                 Button("View Calendar Event") {
                     Task { await syncCalendarEvent(viewAfter: true) }
@@ -571,8 +1283,7 @@ struct JobDetailView: View {
                 Button("Add to Calendar") {
                     Task { await syncCalendarEvent(viewAfter: false) }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .sbwProminentButton()
             }
 
             if calendarPermissionDenied {
@@ -597,11 +1308,23 @@ struct JobDetailView: View {
 
     private var attachmentsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Attachments")
-                .font(.headline)
+            HStack {
+                Text("Photos and Files")
+                    .font(.headline)
+                Spacer()
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button {
+                        showJobCamera = true
+                    } label: {
+                        Label("Photo", systemImage: "camera")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
 
             if attachments.isEmpty {
-                Text("No attachments yet")
+                Text("No photos or files yet")
                     .foregroundStyle(.secondary)
             } else {
                 LazyVGrid(
@@ -739,38 +1462,32 @@ struct JobDetailView: View {
 
     private var filesCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Job Files")
-                .font(.headline)
+            // One button and a menu: seven grey folder buttons weighed more
+            // on the page than anything else for something rarely opened.
+            HStack(spacing: 10) {
+                Button {
+                    openFolder(kind: nil)
+                } label: {
+                    Label("Open Job Folder", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
 
-            Button("Open Job Folder") {
-                openFolder(kind: nil)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(SBWTheme.brandBlue)
-
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 10),
-                GridItem(.flexible(), spacing: 10)
-            ], spacing: 10) {
-                quickFolderButton(title: "Contracts", kind: .contracts)
-                quickFolderButton(title: "Invoices", kind: .invoices)
-                quickFolderButton(title: "Estimates", kind: .estimates)
-                quickFolderButton(title: "Photos", kind: .photos)
-                quickFolderButton(title: "Attachments", kind: .attachments)
-                quickFolderButton(title: "Deliverables", kind: .deliverables)
-                quickFolderButton(title: "Other", kind: .other)
+                Menu {
+                    Button("Contracts") { openFolder(kind: .contracts) }
+                    Button("Invoices") { openFolder(kind: .invoices) }
+                    Button("Estimates") { openFolder(kind: .estimates) }
+                    Button("Photos") { openFolder(kind: .photos) }
+                    Button("Attachments") { openFolder(kind: .attachments) }
+                    Button("Deliverables") { openFolder(kind: .deliverables) }
+                    Button("Other") { openFolder(kind: .other) }
+                } label: {
+                    Label("Subfolder", systemImage: "chevron.down")
+                }
+                .buttonStyle(.bordered)
             }
         }
+        .buttonStyle(.borderless)
         .sbwJobCardRow()
-    }
-
-    @ViewBuilder
-    private func quickFolderButton(title: String, kind: JobWorkspaceSubfolder) -> some View {
-        Button(title) {
-            openFolder(kind: kind)
-        }
-        .buttonStyle(.bordered)
-        .tint(.gray)
     }
 
     private func saveNewClientAndLink() {
@@ -800,7 +1517,7 @@ struct JobDetailView: View {
         case .draft: return "Draft"
         case .sent: return "Sent"
         case .signed: return "Signed"
-        case .cancelled: return "Cancelled"
+        case .cancelled: return "Canceled"
         }
     }
 

@@ -33,6 +33,7 @@
 		B7A000000000000000000040 /* ContractBundlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000041 /* ContractBundlingTests.swift */; };
 		B7A000000000000000000042 /* EstimateAcceptancePullServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000043 /* EstimateAcceptancePullServiceTests.swift */; };
 		B7A000000000000000000044 /* JobMeasurementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000045 /* JobMeasurementTests.swift */; };
+		B7A000000000000000000046 /* JobLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000047 /* JobLifecycleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 		B7A000000000000000000041 /* ContractBundlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractBundlingTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000043 /* EstimateAcceptancePullServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstimateAcceptancePullServiceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000045 /* JobMeasurementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobMeasurementTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000047 /* JobLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobLifecycleTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -142,6 +144,7 @@
 				B7A000000000000000000041 /* ContractBundlingTests.swift */,
 				B7A000000000000000000043 /* EstimateAcceptancePullServiceTests.swift */,
 				B7A000000000000000000045 /* JobMeasurementTests.swift */,
+				B7A000000000000000000047 /* JobLifecycleTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -296,6 +299,7 @@
 				B7A000000000000000000040 /* ContractBundlingTests.swift in Sources */,
 				B7A000000000000000000042 /* EstimateAcceptancePullServiceTests.swift in Sources */,
 				B7A000000000000000000044 /* JobMeasurementTests.swift in Sources */,
+				B7A000000000000000000046 /* JobLifecycleTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

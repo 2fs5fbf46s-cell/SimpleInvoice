@@ -1433,12 +1433,10 @@ struct InvoiceDetailView: View {
         HStack(spacing: 10) {
             if let job = invoice.job {
                 Button { estimateJobRoute = job } label: { Label("Open Job", systemImage: "hammer") }
-                    .buttonStyle(.borderedProminent)
-                    .tint(SBWTheme.brandBlue)
+                    .sbwProminentButton()
             } else {
                 Button { acceptEstimateAndCreateJob() } label: { Label("Create Job", systemImage: "hammer.fill") }
-                    .buttonStyle(.borderedProminent)
-                    .tint(SBWTheme.brandBlue)
+                    .sbwProminentButton()
                     .disabled(invoice.client == nil)
             }
 
@@ -1465,8 +1463,7 @@ struct InvoiceDetailView: View {
         Button { reopenDeclinedEstimate() } label: {
             Label("Revise and Resend", systemImage: "arrow.uturn.backward")
         }
-        .buttonStyle(.borderedProminent)
-        .tint(SBWTheme.brandBlue)
+        .sbwProminentButton()
     }
 
     private func estimateStepTitle(_ title: String, detail: String) -> some View {
@@ -1778,7 +1775,7 @@ struct InvoiceDetailView: View {
         .disabled(sendingEstimate || openingPortal || !invoice.canBeSent)
 
         if prominent {
-            button.buttonStyle(.borderedProminent).tint(SBWTheme.brandBlue)
+            button.sbwProminentButton()
         } else {
             button.buttonStyle(.bordered).tint(SBWTheme.brandBlue)
         }

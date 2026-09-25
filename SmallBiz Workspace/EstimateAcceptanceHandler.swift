@@ -24,12 +24,15 @@ enum EstimateAcceptanceHandler {
             notes: "Created from estimate \(safeEstimateNumber)",
             startDate: estimate.issueDate,
             endDate: estimate.dueDate,
-            locationName: "",
+            locationName: estimate.client?.address.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             latitude: nil,
             longitude: nil,
             status: "scheduled",
             sourceEstimateId: estimate.id.uuidString
         )
+        // The estimate's dates are when it was written and how long it was
+        // valid — not when the work happens. Wait for a real date.
+        job.needsScheduling = true
 
         context.insert(job)
         estimate.job = job

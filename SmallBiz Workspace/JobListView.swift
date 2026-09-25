@@ -7,6 +7,12 @@ import OSLog
 import SwiftUI
 import SwiftData
 
+/// The Work tab's job list, grouped the way the day actually goes: what
+/// needs a date, what's underway, today, what's coming, and what's done.
+///
+/// It used to be one list sorted by start date, newest first — so next
+/// month's job sat above today's — with the status buried in a subtitle and
+/// a swipe that deleted a job (and orphaned its invoices) without asking.
 struct JobsListView: View {
     @Environment(\.modelContext) private var modelContext
     private let businessID: UUID?
@@ -16,9 +22,9 @@ struct JobsListView: View {
 
     @State private var searchText: String = ""
     @State private var selectedJob: Job? = nil
-    @State private var filter: Filter = .all
+    @State private var filter: Filter = .active
+    @State private var pendingDelete: Job? = nil
 
-    // ✅ New Job sheet (Clients-style)
     @State private var showingNewJob = false
     @State private var newJobDraft: Job? = nil
 
@@ -29,7 +35,7 @@ struct JobsListView: View {
                 filter: #Predicate<Job> { job in
                     job.businessID == businessID
                 },
-                sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+                sort: [SortDescriptor(\Job.startDate, order: .forward)]
             )
             _clients = Query(
                 filter: #Predicate<Client> { client in
@@ -38,67 +44,79 @@ struct JobsListView: View {
                 sort: [SortDescriptor(\Client.name, order: .forward)]
             )
         } else {
-            _jobs = Query(sort: [SortDescriptor(\Job.startDate, order: .reverse)])
+            _jobs = Query(sort: [SortDescriptor(\Job.startDate, order: .forward)])
             _clients = Query(sort: [SortDescriptor(\Client.name, order: .forward)])
         }
     }
 
-    private var effectiveBusinessID: UUID? {
-        businessID
-    }
-
-    private var clientNameByID: [UUID: String] {
-        Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.name.trimmingCharacters(in: .whitespacesAndNewlines)) })
-    }
-
-    private enum Filter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case booked = "Scheduled"
-        case inProgress = "In Progress"
-        case completed = "Done"
+    private enum Filter: String, CaseIterable, Hashable {
+        case active = "Active"
+        case completed = "Completed"
         case canceled = "Canceled"
-
-        var id: String { rawValue }
+        case all = "All"
     }
 
-    // MARK: - Scoped jobs (active business)
-
-    private var scopedJobs: [Job] {
-        jobs.scoped(to: effectiveBusinessID)
+    private struct JobGroup: Identifiable {
+        let title: String
+        let jobs: [Job]
+        var id: String { title }
     }
 
-    private var filteredJobs: [Job] {
-        let byFilter: [Job]
-        switch filter {
-        case .all:
-            byFilter = scopedJobs
-        case .booked:
-            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .booked }
-        case .inProgress:
-            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .inProgress }
-        case .completed:
-            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .completed }
-        case .canceled:
-            byFilter = scopedJobs.filter { resolvedFilter(for: $0) == .canceled }
-        }
+    private var clientByID: [UUID: Client] {
+        Dictionary(clients.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
 
+    private var searchedJobs: [Job] {
+        let scoped = jobs.scoped(to: businessID)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return byFilter }
-
-        return byFilter.filter { job in
-            if job.title.localizedCaseInsensitiveContains(query) { return true }
-            if let clientName = clientName(for: job),
-               clientName.localizedCaseInsensitiveContains(query) { return true }
-            return false
+        guard !query.isEmpty else { return scoped }
+        return scoped.filter { job in
+            job.title.localizedCaseInsensitiveContains(query)
+                || job.locationName.localizedCaseInsensitiveContains(query)
+                || (clientName(for: job)?.localizedCaseInsensitiveContains(query) ?? false)
         }
+    }
+
+    private var groups: [JobGroup] {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: .now)
+        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday
+        let all = searchedJobs
+
+        func status(_ job: Job) -> JobDisplayStatus { JobDisplayStatus(job) }
+        let scheduled = all.filter { status($0) == .scheduled }
+
+        let active: [JobGroup] = [
+            JobGroup(title: "Needs scheduling", jobs: all.filter { status($0) == .needsScheduling }),
+            JobGroup(title: "In progress", jobs: all.filter { status($0) == .inProgress }),
+            JobGroup(title: "Today", jobs: scheduled.filter { $0.startDate >= startOfToday && $0.startDate < startOfTomorrow }),
+            JobGroup(title: "Upcoming", jobs: scheduled.filter { $0.startDate >= startOfTomorrow }),
+            JobGroup(title: "Missed start", jobs: scheduled.filter { $0.startDate < startOfToday }.reversed()),
+        ]
+        let completed = JobGroup(
+            title: "Completed",
+            jobs: all.filter { status($0) == .completed }
+                .sorted { ($0.completedAt ?? $0.endDate) > ($1.completedAt ?? $1.endDate) }
+        )
+        let canceled = JobGroup(
+            title: "Canceled",
+            jobs: all.filter { status($0) == .canceled }
+                .sorted { ($0.canceledAt ?? $0.startDate) > ($1.canceledAt ?? $1.startDate) }
+        )
+
+        let result: [JobGroup]
+        switch filter {
+        case .active: result = active
+        case .completed: result = [completed]
+        case .canceled: result = [canceled]
+        case .all: result = active + [completed, canceled]
+        }
+        return result.filter { !$0.jobs.isEmpty }
     }
 
     var body: some View {
         ZStack {
-            // Background
             Color(.systemGroupedBackground).ignoresSafeArea()
-
-            // Subtle header wash (Option A)
             SBWTheme.headerWash()
 
             List {
@@ -106,7 +124,7 @@ struct JobsListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search jobs", text: $searchText)
+                        TextField("Search jobs, clients, places", text: $searchText)
                             .textInputAutocapitalization(.never)
 
                         Button {
@@ -118,55 +136,49 @@ struct JobsListView: View {
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("New Job")
                     }
-                }
+                    .padding(.vertical, 4)
 
-                Section {
-                    // Was a horizontal ScrollView with no fade, so "Cancelled"
-                    // rendered as "Car" sliced mid-glyph at the screen edge.
                     SBWFilterChips(
                         options: Filter.allCases,
                         title: { $0.rawValue },
                         selection: $filter
                     )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 }
 
-                if effectiveBusinessID == nil {
-                    ContentUnavailableView(
-                        "No Business Selected",
-                        systemImage: "building.2",
-                        description: Text("Select a business to view jobs.")
-                    )
-                } else if filteredJobs.isEmpty {
-                    let isFiltered = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || filter != .all
-                    SBWEmptyState(
-                        title: scopedJobs.isEmpty ? "No Jobs Yet" : "No Results",
-                        message: scopedJobs.isEmpty
-                            ? SBWEmptyStateCopy.message(noun: "job", pluralNoun: "jobs", isFiltered: false)
-                            : SBWEmptyStateCopy.message(noun: "job", pluralNoun: "jobs", isFiltered: true),
-                        systemImage: "briefcase",
-                        actionTitle: scopedJobs.isEmpty ? "Create Job" : nil,
-                        action: scopedJobs.isEmpty ? { addJobAndOpenSheet() } : nil,
-                        secondaryTitle: isFiltered ? "Clear Filters" : nil,
-                        secondaryAction: isFiltered ? {
-                            searchText = ""
-                            filter = .all
-                        } : nil
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                } else {
-                    ForEach(filteredJobs) { job in
-                        Button {
-                            selectedJob = job
-                        } label: {
-                            jobRow(job)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                if groups.isEmpty {
+                    Section {
+                        emptyState
                     }
-                    .onDelete(perform: deleteJobs)
+                } else {
+                    ForEach(groups) { group in
+                        Section {
+                            ForEach(group.jobs) { job in
+                                Button {
+                                    selectedJob = job
+                                } label: {
+                                    JobListRow(job: job, clientName: clientName(for: job))
+                                }
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    stageSwipeAction(for: job)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        pendingDelete = job
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    .tint(.red)
+                                }
+                            }
+                        } header: {
+                            Text(group.title)
+                        }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -177,193 +189,272 @@ struct JobsListView: View {
         .navigationDestination(item: $selectedJob) { job in
             JobSummaryView(job: job)
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                EditButton()
+        .confirmationDialog(
+            "Delete \(pendingDelete.map(jobTitle) ?? "this job")?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Job", role: .destructive) {
+                if let job = pendingDelete { delete(job) }
+                pendingDelete = nil
             }
-
+            Button("Keep Job", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text(deleteMessage(for: pendingDelete))
         }
-        .sheet(isPresented: $showingNewJob, onDismiss: { newJobDraft = nil }) {
+        .sheet(isPresented: $showingNewJob, onDismiss: { discardEmptyDraft() }) {
             NavigationStack {
                 if let newJobDraft {
-                    JobDetailView(job: newJobDraft)
-                        .navigationTitle("New Job")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .sbwNavigationBarBackdrop()
+                    // isDraft: nothing is provisioned or auto-saved until
+                    // Done, like the Create menu's New Job.
+                    JobDetailView(job: newJobDraft, isDraft: true)
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
-                                Button("Cancel") { deleteIfEmptyAndClose() }
+                                Button("Cancel") {
+                                    discardDraft()
+                                    showingNewJob = false
+                                }
                             }
                             ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") {
-                                    if newJobDraft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                        deleteIfEmptyAndClose()
-                                        return
-                                    }
-
-                                    do {
-                                        try modelContext.save()
-                                        searchText = ""
-                                        Haptics.success()
-                                        showingNewJob = false
-                                    } catch {
-                                        Haptics.error()
-                                        SBWLog.ui.problem("Failed to save new job: \(error)")
-                                    }
-                                }
+                                Button("Done") { saveNewJob() }
+                                    .fontWeight(.semibold)
+                                    .disabled(newJobDraft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             }
                         }
                 } else {
                     ProgressView("Loading…")
-                        .navigationTitle("New Job")
                 }
             }
-            .presentationDetents([.large])
+            .interactiveDismissDisabled()
         }
-
-        // Manual Test Steps:
-        // 1) Switch business and verify jobs + client names stay scoped with no stale rows.
-        // 2) Open/edit/close/reopen a job sheet rapidly and confirm correct selection.
-        // 3) Scroll long jobs list and verify smooth row rendering.
     }
 
-    // MARK: - Row UI (Option A polish parity)
-
-    private func jobRow(_ job: Job) -> some View {
-        let contractCount = job.contracts?.count ?? 0
-
-        let statusText = normalizedJobStatusLabel(for: resolvedFilter(for: job))
-        let location = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let date = job.startDate.formatted(date: .abbreviated, time: .omitted)
-        let clientText = clientName(for: job)
-        let contractText = contractCount > 0 ? "\(contractCount) contract\(contractCount == 1 ? "" : "s")" : nil
-        let subtitle = [statusText, clientText, location.isEmpty ? nil : location, contractText, date]
-            .compactMap { $0 }
-            .joined(separator: " • ")
-
-        return JobRowView(
-            title: job.title.isEmpty ? "Job" : job.title,
-            subtitle: subtitle.isEmpty ? " " : subtitle
-        )
+    @ViewBuilder
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "hammer")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(searchText.isEmpty ? emptyTitle : "No jobs match \"\(searchText)\"")
+                .font(.headline)
+            if searchText.isEmpty && filter == .active {
+                Text("New jobs and jobs from accepted estimates show up here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    addJobAndOpenSheet()
+                } label: {
+                    Label("New Job", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SBWTheme.brandBlue)
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 
-    private func normalizedJobStatusLabel(for filter: Filter) -> String {
+    private var emptyTitle: String {
         switch filter {
-        case .booked:
-            return "SCHEDULED"
+        case .active: return "No active jobs"
+        case .completed: return "No completed jobs"
+        case .canceled: return "No canceled jobs"
+        case .all: return "No jobs yet"
+        }
+    }
+
+    @ViewBuilder
+    private func stageSwipeAction(for job: Job) -> some View {
+        switch JobDisplayStatus(job) {
+        case .scheduled, .needsScheduling:
+            Button {
+                JobLifecycle.start(job)
+                save()
+                Haptics.success()
+            } label: {
+                Label("Start", systemImage: "play.fill")
+            }
+            .tint(SBWTheme.brandBlue)
         case .inProgress:
-            return "IN PROGRESS"
-        case .completed:
-            return "COMPLETED"
+            Button {
+                JobLifecycle.complete(job)
+                save()
+                Haptics.success()
+            } label: {
+                Label("Complete", systemImage: "checkmark")
+            }
+            .tint(SBWTheme.brandGreen)
         case .canceled:
-            return "CANCELED"
-        case .all:
-            return "SCHEDULED"
+            Button {
+                JobLifecycle.reopen(job)
+                save()
+            } label: {
+                Label("Reopen", systemImage: "arrow.uturn.backward")
+            }
+            .tint(SBWTheme.brandBlue)
+        case .completed:
+            EmptyView()
         }
     }
 
-    // MARK: - Add / Delete
+    // MARK: - Helpers
 
-    private func addJobAndOpenSheet() {
-        guard let bizID = effectiveBusinessID else {
-            SBWLog.ui.problem("❌ No active business selected")
-            return
-        }
-
-        let job = Job(
-            businessID: bizID,
-            startDate: .now,
-            endDate: Calendar.current.date(byAdding: .hour, value: 2, to: .now) ?? .now
-        )
-
-        job.title = ""
-        job.status = "scheduled"
-        job.stage = .booked
-
-        modelContext.insert(job)
-        newJobDraft = job
-        showingNewJob = true
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save new job draft: \(error)") }
-        Haptics.lightTap()
+    private func clientName(for job: Job) -> String? {
+        guard let id = job.clientID else { return nil }
+        let name = clientByID[id]?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
     }
 
-    private func deleteIfEmptyAndClose() {
-        guard let job = newJobDraft else {
-            showingNewJob = false
-            return
-        }
-
-        if job.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            modelContext.delete(job)
-        }
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save after cancel: \(error)") }
-
-        showingNewJob = false
+    private func jobTitle(_ job: Job) -> String {
+        let title = job.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "this job" : "\"\(title)\""
     }
 
-    private func deleteJobs(at offsets: IndexSet) {
-        let toDelete: [Job] = offsets.compactMap { idx -> Job? in
-            guard idx < filteredJobs.count else { return nil }
-            return filteredJobs[idx]
-        }
+    private func deleteMessage(for job: Job?) -> String {
+        JobDeletion.impactMessage(for: job)
+    }
 
-        for job in toDelete {
-            modelContext.delete(job)
-        }
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
+    private func delete(_ job: Job) {
+        let eventID = job.calendarEventId
+        Task { try? await CalendarEventService.shared.removeEvent(identifier: eventID) }
+        modelContext.delete(job)
+        save()
         Haptics.success()
     }
 
-    private func resolvedFilter(for job: Job) -> Filter {
-        let rawStage = job.stageRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if rawStage == JobStage.booked.rawValue.lowercased() { return .booked }
-        if rawStage == JobStage.inProgress.rawValue.lowercased() { return .inProgress }
-        if rawStage == JobStage.completed.rawValue.lowercased() { return .completed }
-        if rawStage == JobStage.canceled.rawValue.lowercased() { return .canceled }
-
-        let status = job.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if status == "booked" || status == "scheduled" { return .booked }
-        if status == "in_progress" || status == "in progress" { return .inProgress }
-        if status == "completed" { return .completed }
-        if status == "canceled" || status == "cancelled" { return .canceled }
-        return .booked
+    private func save() {
+        do { try modelContext.save() }
+        catch { SBWLog.ui.problem("Failed to save jobs: \(error)") }
     }
 
-    private func clientName(for job: Job) -> String? {
-        guard let clientID = job.clientID else { return nil }
-        let name = clientNameByID[clientID]
-        if let name, !name.isEmpty {
-            return name
+    // MARK: - New job
+
+    private func addJobAndOpenSheet() {
+        guard let bizID = businessID else {
+            SBWLog.ui.problem("❌ No active business selected")
+            return
         }
-        return nil
+        let start = JobDetailView.defaultScheduleStart()
+        let job = Job(
+            businessID: bizID,
+            startDate: start,
+            endDate: start.addingTimeInterval(2 * 3600)
+        )
+        job.stage = .booked
+        modelContext.insert(job)
+        newJobDraft = job
+        showingNewJob = true
+    }
+
+    private func saveNewJob() {
+        guard let job = newJobDraft else { return }
+        do {
+            try modelContext.save()
+            newJobDraft = nil
+            searchText = ""
+            showingNewJob = false
+            Haptics.success()
+            selectedJob = job
+        } catch {
+            Haptics.error()
+            SBWLog.ui.problem("Failed to save new job: \(error)")
+        }
+    }
+
+    private func discardDraft() {
+        guard let job = newJobDraft else { return }
+        modelContext.delete(job)
+        try? modelContext.save()
+        newJobDraft = nil
+    }
+
+    /// Covers any way the sheet closes without Done.
+    private func discardEmptyDraft() {
+        guard let job = newJobDraft else { return }
+        if job.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            discardDraft()
+        } else {
+            newJobDraft = nil
+        }
     }
 }
 
-private struct JobRowView: View {
-    let title: String
-    let subtitle: String
+/// A date block, the job, who and where, and its status.
+private struct JobListRow: View {
+    let job: Job
+    let clientName: String?
+
+    private var status: JobDisplayStatus { JobDisplayStatus(job) }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Jobs"))
-                Image(systemName: "tray.full")
-                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
-                    .foregroundStyle(.primary)
-            }
-            .frame(width: 36, height: 36)
+        HStack(spacing: 12) {
+            dateBlock
+                .frame(width: 48)
 
-            SBWNavigationRow(title: title, subtitle: subtitle)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(job.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled job" : job.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            Text(status.label)
+                .font(.caption2.weight(.semibold))
+                .padding(.vertical, 3)
+                .padding(.horizontal, 8)
+                .background(Capsule().fill(status.foreground.opacity(0.15)))
+                .foregroundStyle(status.foreground)
+                .fixedSize()
         }
         .padding(.vertical, 4)
-        .frame(minHeight: 56, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var subtitle: String {
+        let place = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [clientName, place.isEmpty ? nil : place].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    @ViewBuilder
+    private var dateBlock: some View {
+        switch status {
+        case .needsScheduling:
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.title3)
+                .foregroundStyle(.orange)
+        case .inProgress:
+            Image(systemName: "hammer.fill")
+                .font(.title3)
+                .foregroundStyle(SBWTheme.brandGreen)
+        default:
+            let date = status == .completed ? (job.completedAt ?? job.endDate) : job.startDate
+            VStack(spacing: 1) {
+                if Calendar.current.isDateInToday(date) && status == .scheduled {
+                    Text(date.formatted(.dateTime.hour().minute()))
+                        .font(.subheadline.weight(.semibold))
+                } else {
+                    Text(date.formatted(.dateTime.weekday(.abbreviated)))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(date.formatted(.dateTime.day()))
+                        .font(.headline)
+                    Text(date.formatted(.dateTime.month(.abbreviated)))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 

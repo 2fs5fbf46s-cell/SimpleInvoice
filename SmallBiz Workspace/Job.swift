@@ -57,6 +57,18 @@ final class Job {
     var depositInvoiceId: String? = nil
     var depositPaidAtMs: Int64? = nil
 
+    /// No real date yet. A job made from an accepted estimate used to borrow
+    /// the estimate's issue/due dates — in the past — and show as
+    /// "Scheduled". It now waits here, off the calendar, until the owner
+    /// picks a date. startDate/endDate still hold placeholders because
+    /// they're non-optional; nothing should read them while this is true.
+    var needsScheduling: Bool = false
+
+    /// When the owner tapped Start / Complete / Cancel on the job screen.
+    var startedAt: Date? = nil
+    var completedAt: Date? = nil
+    var canceledAt: Date? = nil
+
     /// JSON-encoded `[JobMeasurement]` — a snapshot, not a live relationship,
     /// same reasoning and same idiom as
     /// `RecurringInvoiceSchedule.lineItemsData`/`Expense.categoryRaw`:
