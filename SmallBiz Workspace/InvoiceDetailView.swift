@@ -2711,6 +2711,20 @@ struct InvoiceDetailView: View {
     }
 }
 
+// Froze the app when a line item was tapped. This screen is itself a
+// navigationDestination (of the invoice/estimate summary and others), so
+// pushing a line item made NavigationStack re-resolve its destinations and
+// rebuild this view. With @Query and @State inside, SwiftUI can't compare the
+// rebuilt value field-by-field, so it re-rendered — which re-published this
+// screen's own destinations and rebuilt it again (~400 renders/sec). Same
+// class of bug as AttachmentsManagerView. The invoice is the only input; its
+// edits, queries and state drive their own updates.
+extension InvoiceDetailView: Equatable {
+    static func == (lhs: InvoiceDetailView, rhs: InvoiceDetailView) -> Bool {
+        lhs.invoice.persistentModelID == rhs.invoice.persistentModelID
+    }
+}
+
 private struct SBWCardRow: ViewModifier {
     func body(content: Content) -> some View {
         content
