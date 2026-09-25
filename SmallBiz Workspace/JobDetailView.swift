@@ -1089,7 +1089,7 @@ struct JobDetailView: View {
                 })
             ) {
                 Text("No Client").tag(nil as UUID?)
-                ForEach(clients) { client in
+                ForEach(clients.filter { !$0.isArchived || $0.id == job.clientID }) { client in
                     Text(client.name.isEmpty ? "Client" : client.name)
                         .tag(Optional(client.id))
                 }

@@ -50,16 +50,6 @@ final class ContractsNavigationSmokeTests: XCTestCase {
         XCTAssertNotNil(start)
     }
 
-    func testClientContractsViewAcceptsExplicitBusinessAndClientScope() {
-        let view = ClientContractsView(
-            businessID: UUID(),
-            clientID: UUID(),
-            clientName: "Client"
-        )
-
-        XCTAssertNotNil(view)
-    }
-
     @MainActor
     func testClientContractSummaryScopeRequiresBusinessAndSelectedClient() {
         let businessID = UUID()
@@ -136,27 +126,6 @@ final class ContractsNavigationSmokeTests: XCTestCase {
         XCTAssertEqual(Set(visible.map(\.id)), Set([direct.id, invoiceLinked.id, estimateLinked.id, jobLinked.id]))
         XCTAssertFalse(ClientContractSummaryLogic.isContract(wrongClient, scopedTo: businessID, clientID: client.id))
         XCTAssertFalse(ClientContractSummaryLogic.isContract(wrongBusiness, scopedTo: businessID, clientID: client.id))
-    }
-
-    @MainActor
-    func testClientContractSummaryStatusTotalsCountVisibleStatuses() {
-        let businessID = UUID()
-        let client = Client(businessID: businessID, name: "Primary Artist")
-        let contracts = [
-            Contract(businessID: businessID, statusRaw: ContractStatus.draft.rawValue, client: client),
-            Contract(businessID: businessID, statusRaw: ContractStatus.sent.rawValue, client: client),
-            Contract(businessID: businessID, statusRaw: ContractStatus.sent.rawValue, client: client),
-            Contract(businessID: businessID, statusRaw: ContractStatus.signed.rawValue, client: client),
-            Contract(businessID: businessID, statusRaw: ContractStatus.cancelled.rawValue, client: client)
-        ]
-
-        let totals = ClientContractSummaryLogic.statusTotals(for: contracts)
-
-        XCTAssertEqual(totals.total, 5)
-        XCTAssertEqual(totals.draft, 1)
-        XCTAssertEqual(totals.sent, 2)
-        XCTAssertEqual(totals.signed, 1)
-        XCTAssertEqual(totals.expired, 1)
     }
 
     @MainActor

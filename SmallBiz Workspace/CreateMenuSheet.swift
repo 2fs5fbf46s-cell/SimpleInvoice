@@ -14,7 +14,6 @@ struct CreateMenuSheet: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
 
     @Query private var profiles: [BusinessProfile]
-    @Query private var businesses: [Business]
 
     // Navigation target created here
     @State private var createdInvoice: Invoice? = nil
@@ -25,11 +24,9 @@ struct CreateMenuSheet: View {
     @State private var draftEstimateName: String = ""
     @State private var draftEstimateClient: Client? = nil
 
-    // New Client (Clients-style)
+    // New Client
     @State private var newClientDraft: Client? = nil
-    @State private var newClientSaveError: String? = nil
     @State private var openExistingClient: Client? = nil
-    @State private var showOpenExistingBanner = false
 
     // New Job (Clients-style)
     @State private var showNewJobSheet = false
@@ -149,7 +146,7 @@ struct CreateMenuSheet: View {
                 ContractDetailView(contract: contract)
             }
             .navigationDestination(item: $openExistingClient) { client in
-                ClientEditView(client: client)
+                ClientDetailView(client: client)
             }
 
             // New estimate: name + client sheet
@@ -178,63 +175,14 @@ struct CreateMenuSheet: View {
                 }
             }
 
-            // New client flow (uses ClientEditView)
-            .sheet(item: $newClientDraft, onDismiss: {
-                newClientSaveError = nil
-            }) { draft in
-                NavigationStack {
-                    ClientEditView(
-                        client: draft,
-                        isDraft: true,
-                        onOpenExisting: { existing in
-                            deleteClientIfEmptyAndClose()
-                            DispatchQueue.main.async {
-                                openExistingClient = existing
-                                showOpenExistingBanner = true
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                                    showOpenExistingBanner = false
-                                }
-                            }
-                        }
-                    )
-                        .navigationTitle("New Client")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .sbwNavigationBarBackdrop()
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Cancel") { deleteClientIfEmptyAndClose() }
-                            }
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") {
-                                    let trimmed = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    if trimmed.isEmpty {
-                                        deleteClientIfEmptyAndClose()
-                                        return
-                                    }
-                                    do {
-                                        // Client draft is inserted up-front; just save.
-                                        try modelContext.save()
-                                        newClientDraft = nil
-                                    } catch {
-                                        newClientSaveError = error.localizedDescription
-                                        SBWLog.ui.problem("Failed to save new client: \(error)")
-                                    }
-                                }
-                            }
-                        }
-                        .alert("Couldn’t Save Client", isPresented: Binding(get: { newClientSaveError != nil }, set: { if !$0 { newClientSaveError = nil } })) {
-                            Button("OK", role: .cancel) { newClientSaveError = nil }
-                        } message: {
-                            Text(newClientSaveError ?? "Unknown error")
-                        }
-                }
-                .presentationDetents([.medium, .large])
-            }
-            .overlay(alignment: .top) {
-                if showOpenExistingBanner {
-                    OpenExistingClientBanner()
-                        .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+            // New client: the same sheet the estimate and invoice forms use,
+            // then open the client so the next step is right there.
+            .sheet(item: $newClientDraft) { draft in
+                NewClientSheet(draft: draft) { saved in
+                    newClientDraft = nil
+                    if let saved {
+                        DispatchQueue.main.async { openExistingClient = saved }
+                    }
                 }
             }
 
@@ -316,34 +264,6 @@ struct CreateMenuSheet: View {
 
     private func preloadDefaults(into invoice: Invoice) {
         guard let p = getOrCreateProfileForActiveBusiness() else { return }
-        let business = businesses.first(where: { $0.id == invoice.businessID })
-
-        if invoice.documentType == "estimate" {
-            let validityDays = max(1, business?.defaultEstimateValidityDays ?? 14)
-            let defaultTermsText = p.defaultEstimatePaymentTerms.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if invoice.dueDate <= invoice.issueDate {
-                invoice.dueDate = Calendar.current.date(byAdding: .day, value: validityDays, to: invoice.issueDate) ?? invoice.issueDate
-            }
-            if invoice.paymentTerms.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                invoice.paymentTerms = defaultTermsText.isEmpty
-                    ? "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")"
-                    : defaultTermsText
-            }
-            if invoice.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                invoice.notes = p.defaultEstimateNotes
-            }
-            if invoice.thankYou.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                invoice.thankYou = p.defaultEstimateThankYou
-            }
-            if invoice.termsAndConditions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                invoice.termsAndConditions = p.defaultEstimateTerms
-            }
-            if invoice.taxRate == 0 {
-                invoice.taxRate = max(0, NSDecimalNumber(decimal: business?.defaultTaxRate ?? 0).doubleValue)
-            }
-            return
-        }
 
         if invoice.thankYou.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             invoice.thankYou = p.defaultThankYou
@@ -380,57 +300,30 @@ struct CreateMenuSheet: View {
             SBWLog.ui.problem("❌ No active business selected"); return
         }
 
-        let trimmedName = draftEstimateName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let numberOrName = trimmedName.isEmpty ? generateEstimateDraftNumber() : trimmedName
-
-        let est = Invoice(
-            businessID: bizID,
-            invoiceNumber: numberOrName,
-            documentType: "estimate",
-            client: draftEstimateClient,
-            items: []
-        )
-
-        est.estimateStatus = "draft"
-        est.estimateAcceptedAt = nil
-
-        preloadDefaults(into: est)
-
-        modelContext.insert(est)
-        try? modelContext.save()
+        let est: Invoice
+        do {
+            est = try EstimateDrafts.make(
+                name: draftEstimateName,
+                client: draftEstimateClient,
+                businessID: bizID,
+                context: modelContext
+            )
+        } catch {
+            SBWLog.ui.problem("Failed to create estimate: \(error)")
+            return
+        }
 
         showNewEstimateSheet = false
         createdInvoice = est
     }
 
-    // MARK: - New Client (match ClientListView behavior)
+    // MARK: - New Client
 
     private func addClientAndOpenSheet() {
         guard let bizID = activeBiz.activeBusinessID else {
             SBWLog.ui.problem("❌ No active business selected"); return
         }
-
-        let c = Client(businessID: bizID)
-        // Insert the draft up-front so edits (including Contacts import) are tracked reliably.
-        modelContext.insert(c)
-        try? modelContext.save()
-
-        newClientDraft = c
-    }
-
-    private func deleteClientIfEmptyAndClose() {
-        if let draft = newClientDraft {
-            let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let email = draft.email.trimmingCharacters(in: .whitespacesAndNewlines)
-            let phone = draft.phone.trimmingCharacters(in: .whitespacesAndNewlines)
-            let address = draft.address.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if name.isEmpty && email.isEmpty && phone.isEmpty && address.isEmpty {
-                modelContext.delete(draft)
-                try? modelContext.save()
-            }
-        }
-        newClientDraft = nil
+        newClientDraft = NewClientSheet.makeDraft(businessID: bizID, in: modelContext)
     }
 
     // MARK: - New Job (match JobsListView Clients-style)
@@ -465,11 +358,6 @@ struct CreateMenuSheet: View {
         return df.string(from: Date())
     }
 
-    private func generateEstimateDraftNumber() -> String {
-        let df = DateFormatter()
-        df.dateFormat = "EST-DRAFT-yyyyMMdd-HHmmss"
-        return df.string(from: Date())
-    }
 }
 private func hapticTap() {
     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -569,24 +457,4 @@ struct CreateActionRow: View {
         }
     }
 
-}
-
-private struct OpenExistingClientBanner: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.turn.down.right")
-                .foregroundStyle(SBWTheme.brandBlue)
-            Text("Opened existing client")
-                .font(.footnote.weight(.semibold))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(.thinMaterial)
-                .overlay(Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1))
-        )
-        .foregroundStyle(.primary)
-        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
-    }
 }

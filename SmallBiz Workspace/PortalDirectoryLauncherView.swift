@@ -110,7 +110,7 @@ struct PortalDirectoryLauncherView: View {
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .navigationDestination(item: $navigateToClientSettings) { client in
-            ClientEditView(client: client)
+            ClientDetailView(client: client)
         }
         .sheet(isPresented: $showPortal) {
             if let url = portalURL {

@@ -43,7 +43,9 @@ struct NewEstimateSheet: View {
         )
     }
 
-    private var scopedClients: [Client] { allClients }
+    private var scopedClients: [Client] {
+        allClients.filter { !$0.isArchived || $0.id == client?.id }
+    }
 
     private var effectiveBusinessID: UUID? { businessID ?? activeBiz.activeBusinessID }
 

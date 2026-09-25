@@ -20,7 +20,7 @@ struct CreateContractStartView: View {
 
     private var scopedClients: [Client] {
         guard let bizID = businessID else { return [] }
-        return clients.filter { $0.businessID == bizID }
+        return clients.filter { $0.businessID == bizID && (!$0.isArchived || $0.id == selectedClient?.id) }
     }
 
 
@@ -47,12 +47,18 @@ struct CreateContractStartView: View {
 
     init(
         businessID: UUID? = nil,
+        client: Client? = nil,
         onCreated: @escaping (Contract) -> Void = { _ in },
         onCancel: @escaping () -> Void = {}
     ) {
         self.businessID = businessID
         self.onCreated = onCreated
         self.onCancel = onCancel
+        // Started from a client: fill from that client, not an invoice.
+        if let client {
+            _selectedClient = State(initialValue: client)
+            _useInvoice = State(initialValue: false)
+        }
 
         let scopedID = BusinessScoped.queryBusinessID(businessID)
         _invoices = Query(

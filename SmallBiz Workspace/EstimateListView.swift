@@ -69,8 +69,6 @@ struct EstimateListView: View {
 
     @Query private var invoices: [Invoice]
 
-    @Query private var profiles: [BusinessProfile]
-    @Query private var businesses: [Business]
 
     // Navigate to the estimate we just created
     @State private var navigateToEstimate: EstimateListSelection? = nil
@@ -527,12 +525,6 @@ struct EstimateListView: View {
 
     // MARK: - Create
 
-    private func generateEstimateNumber() -> String {
-        let df = DateFormatter()
-        df.dateFormat = "yyyyMMdd-HHmmss"
-        return "EST-\(df.string(from: Date()))"
-    }
-
     private func createEstimateFromDraft() {
         do {
             guard let bizID = effectiveBusinessID else {
@@ -540,44 +532,12 @@ struct EstimateListView: View {
                 return
             }
 
-            let trimmedName = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let numberOrName = trimmedName.isEmpty ? generateEstimateNumber() : trimmedName
-
-            let profile = profiles.first(where: { $0.businessID == bizID })
-            let business = businesses.first(where: { $0.id == bizID })
-            let validityDays = max(1, business?.defaultEstimateValidityDays ?? 14)
-            let defaultTaxRate = max(0, NSDecimalNumber(decimal: business?.defaultTaxRate ?? 0).doubleValue)
-            let defaultPaymentTermsRaw = profile?.defaultEstimatePaymentTerms.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let defaultPaymentTerms = defaultPaymentTermsRaw.isEmpty
-                ? "Valid for \(validityDays) day\(validityDays == 1 ? "" : "s")"
-                : defaultPaymentTermsRaw
-            let defaultNotes = profile?.defaultEstimateNotes ?? ""
-            let defaultThankYou = profile?.defaultEstimateThankYou ?? ""
-            let defaultTerms = profile?.defaultEstimateTerms ?? ""
-
-            let estimate = Invoice(
-                businessID: bizID,
-                invoiceNumber: numberOrName,
-                issueDate: .now,
-                dueDate: Calendar.current.date(byAdding: .day, value: validityDays, to: .now) ?? .now,
-                paymentTerms: defaultPaymentTerms,
-                notes: defaultNotes,
-                thankYou: defaultThankYou,
-                termsAndConditions: defaultTerms,
-                taxRate: defaultTaxRate,
-                discountAmount: 0,
-                isPaid: false,
-                documentType: "estimate",
+            let estimate = try EstimateDrafts.make(
+                name: draftName,
                 client: draftClient,
-                job: nil,
-                items: []
+                businessID: bizID,
+                context: modelContext
             )
-
-            estimate.estimateStatus = "draft"
-            estimate.estimateAcceptedAt = nil
-
-            modelContext.insert(estimate)
-            try modelContext.save()
 
             showingCreateEstimate = false
             newEstimate = estimate

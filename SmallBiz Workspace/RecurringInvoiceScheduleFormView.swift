@@ -59,7 +59,7 @@ struct RecurringInvoiceScheduleFormView: View {
 
             Section("Client") {
                 Picker("Client", selection: $schedule.clientID) {
-                    ForEach(clients) { client in
+                    ForEach(clients.filter { !$0.isArchived || $0.id == schedule.clientID }) { client in
                         Text(client.name.isEmpty ? "Client" : client.name).tag(client.id)
                     }
                 }

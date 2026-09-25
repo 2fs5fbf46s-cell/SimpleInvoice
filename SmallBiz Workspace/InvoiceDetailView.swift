@@ -222,7 +222,7 @@ struct InvoiceDetailView: View {
             ContractDetailView(contract: c)
         }
         .navigationDestination(item: $navigateToClientSettings) { client in
-            ClientEditView(client: client)
+            ClientDetailView(client: client)
         }
         .navigationDestination(item: $selectedLineItem) { item in
             LineItemEditView(item: item, businessID: invoice.businessID)
@@ -1092,7 +1092,7 @@ struct InvoiceDetailView: View {
             )
         } else if email.isEmpty {
             estimateStepTitle("Add an email for \(invoiceClientName)", detail: "The invoice is emailed with a link to pay online.")
-            Button { navigateToClientSettings = invoice.client } label: { Label("Edit Client", systemImage: "person.crop.circle") }
+            Button { navigateToClientSettings = invoice.client } label: { Label("Open Client", systemImage: "person.crop.circle") }
                 .buttonStyle(.bordered)
         } else if !isClientPortalEnabled {
             estimateStepTitle("Turn on the client portal", detail: "\(invoiceClientName) views and pays invoices in their client portal.")
@@ -1567,7 +1567,7 @@ struct InvoiceDetailView: View {
         } else if estimateClientEmail.isEmpty {
             estimateStepTitle("Add an email for \(estimateClientName)", detail: "The estimate is emailed to your client with a link to accept or decline.")
             Button { navigateToClientSettings = invoice.client } label: {
-                Label("Edit Client", systemImage: "person.crop.circle")
+                Label("Open Client", systemImage: "person.crop.circle")
             }
             .buttonStyle(.bordered)
         } else if !isClientPortalEnabled {

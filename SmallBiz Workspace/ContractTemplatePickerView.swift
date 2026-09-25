@@ -344,7 +344,7 @@ private struct ContractDraftSetupView: View {
                 Section("Autofill Sources (Optional)") {
                     Picker("Client", selection: $selectedClient) {
                         Text("None").tag(Client?.none)
-                        ForEach(clients) { c in
+                        ForEach(clients.filter { !$0.isArchived || $0.id == selectedClient?.id }) { c in
                             Text(c.name.isEmpty ? "Client" : c.name).tag(Client?.some(c))
                         }
                     }

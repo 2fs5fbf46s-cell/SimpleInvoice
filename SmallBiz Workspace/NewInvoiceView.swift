@@ -10,7 +10,7 @@ struct NewInvoiceView: View {
     
     private var scopedClients: [Client] {
         guard let bizID = effectiveBusinessID else { return [] }
-        return clients.filter { $0.businessID == bizID }
+        return clients.filter { $0.businessID == bizID && (!$0.isArchived || $0.id == selectedClient?.id) }
     }
 
 
@@ -34,9 +34,10 @@ struct NewInvoiceView: View {
     /// to close back to the list, leaving you to find what you just made.
     private let onCreated: ((Invoice) -> Void)?
 
-    init(businessID: UUID? = nil, onCreated: ((Invoice) -> Void)? = nil) {
+    init(businessID: UUID? = nil, client: Client? = nil, onCreated: ((Invoice) -> Void)? = nil) {
         self.businessID = businessID
         self.onCreated = onCreated
+        _selectedClient = State(initialValue: client)
         if let businessID {
             _clients = Query(
                 filter: #Predicate<Client> { client in

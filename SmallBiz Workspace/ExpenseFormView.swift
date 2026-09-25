@@ -93,7 +93,7 @@ struct ExpenseFormView: View {
                     set: { expense.clientID = $0; saveIfEditing() }
                 )) {
                     Text("No Client").tag(nil as UUID?)
-                    ForEach(clients) { client in
+                    ForEach(clients.filter { !$0.isArchived || $0.id == expense.clientID }) { client in
                         Text(client.name.isEmpty ? "Client" : client.name)
                             .tag(Optional(client.id))
                     }

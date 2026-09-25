@@ -182,7 +182,12 @@ final class Client {
     var email: String = ""
     var phone: String = ""
     var address: String = ""
-    
+    /// The owner's own notes (gate codes, preferences). Never sent to the client.
+    var notes: String = ""
+    /// Set when archived: out of the Clients list and pickers, records kept.
+    var archivedAt: Date? = nil
+    /// Nil for clients made before this was tracked.
+    var createdAt: Date? = nil
 
     // ✅ ARRAY-side inverses for CloudKit (avoid circular macro issues)
     @Relationship(inverse: \Invoice.client)
@@ -213,8 +218,10 @@ final class Client {
         self.email = email
         self.phone = phone
         self.address = address
+        self.createdAt = .now
     }
-    
+
+    var isArchived: Bool { archivedAt != nil }
 }
 
 // MARK: - Invoice

@@ -107,7 +107,7 @@ struct ContractDetailView: View {
         .sbwNavigationBarBackdrop()
         .toolbar { toolbarContent }
         .navigationDestination(item: $navigateToClientSettings) { client in
-            ClientEditView(client: client)
+            ClientDetailView(client: client)
         }
         .navigationDestination(item: $navigateToInvoice) { invoice in
             InvoiceDetailView(invoice: invoice)

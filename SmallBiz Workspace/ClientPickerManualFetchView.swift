@@ -194,7 +194,7 @@ struct ClientPickerManualFetchView: View {
             }
         }
         .navigationDestination(item: $openExistingClient) { client in
-            ClientEditView(client: client)
+            ClientDetailView(client: client)
         }
         .overlay(alignment: .top) {
             if showOpenExistingBanner {
@@ -252,7 +252,8 @@ struct ClientPickerManualFetchView: View {
             }
 
             let results = try modelContext.fetch(descriptor)
-            clients = results
+            // Archived clients stay out of pickers.
+            clients = results.filter { !$0.isArchived }
             isLoading = false
         } catch {
             isLoading = false
