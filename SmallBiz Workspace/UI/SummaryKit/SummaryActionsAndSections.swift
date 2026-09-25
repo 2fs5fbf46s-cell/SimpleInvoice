@@ -26,34 +26,58 @@ struct PrimaryActionRow: View {
 
     let actions: [ActionItem]
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // Icon above a label that may wrap to two lines: side by side, a label
+    // like "Create Estimate" only got a third or a quarter of the row and
+    // truncated to "C…". At accessibility text sizes even stacked tiles
+    // don't fit four across, so they drop to two columns.
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(actions) { item in
-                actionButton(for: item)
+        if dynamicTypeSize.isAccessibilitySize {
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(actions) { item in
+                    actionButton(for: item)
+                }
             }
+        } else {
+            HStack(spacing: 8) {
+                ForEach(actions) { item in
+                    actionButton(for: item)
+                }
+            }
+            // Every tile matches the tallest, whether its label took one
+            // line or two.
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     @ViewBuilder
     private func actionButton(for item: ActionItem) -> some View {
-        let label = HStack(spacing: 6) {
+        let label = VStack(spacing: 4) {
             Image(systemName: item.systemImage)
+                .font(.body.weight(.semibold))
             Text(item.title)
-                .lineLimit(1)
+                .font(.footnote.weight(.semibold))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.85)
         }
-        .font(.subheadline.weight(.semibold))
-        .frame(maxWidth: .infinity, minHeight: 48, maxHeight: 48)
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 4)
 
         switch item.prominence {
         case .primary:
             Button(role: item.role, action: item.action) { label }
                 .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 14))
                 .tint(SBWTheme.brandBlue)
         case .secondary:
             Button(role: item.role, action: item.action) { label }
                 .buttonStyle(.bordered)
+                .buttonBorderShape(.roundedRectangle(radius: 14))
                 .tint(SBWTheme.brandBlue)
         }
     }
