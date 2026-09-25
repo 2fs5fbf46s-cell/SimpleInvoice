@@ -161,15 +161,17 @@ struct PullRecurringResponseDTO: Decodable {
     let invoices: [GeneratedRecurringInvoiceDTO]
 }
 
-struct PullAcceptedEstimatesResponseDTO: Decodable {
+struct PullEstimateDecisionsResponseDTO: Decodable {
     let ok: Bool?
-    let accepted: [AcceptedEstimateDTO]
+    let decisions: [EstimateDecisionDTO]
 }
 
-struct AcceptedEstimateDTO: Decodable {
+struct EstimateDecisionDTO: Decodable {
     let estimateId: String
     let businessId: String
     let clientId: String
+    /// "accepted" or "declined".
+    let status: String
     let decidedAtMs: Double
     let updatedAtMs: Double
 }
@@ -1852,16 +1854,16 @@ final class PortalBackend {
         return decoded.invoices
     }
 
-    /// Estimates accepted since `since` that this device hasn't materialized
-    /// yet. See the backend's `/api/estimate/accepted/pull` — unlike the
-    /// recurring-invoice pull above, nothing here needs generating: the
-    /// estimate and any bundled draft contract already exist locally, so
-    /// this only answers "did estimate X get accepted, and when."
-    func pullAcceptedEstimates(since: Date) async throws -> [AcceptedEstimateDTO] {
+    /// Estimates accepted or declined since `since`, oldest first. See the
+    /// backend's `/api/estimate/decisions/pull` — unlike the recurring-invoice
+    /// pull above, nothing here needs generating: the estimate and any bundled
+    /// draft contract already exist locally, so this only answers "was
+    /// estimate X accepted or declined, and when."
+    func pullEstimateDecisions(since: Date) async throws -> [EstimateDecisionDTO] {
         let adminKey = try requireAdminKey()
 
         var comps = URLComponents(
-            url: baseURL.appendingPathComponent("/api/estimate/accepted/pull"),
+            url: baseURL.appendingPathComponent("/api/estimate/decisions/pull"),
             resolvingAgainstBaseURL: false
         )!
         let sinceMs = Int((since.timeIntervalSince1970 * 1000).rounded())
@@ -1880,8 +1882,8 @@ final class PortalBackend {
             throw PortalBackendError.http(http.statusCode, body: raw)
         }
 
-        let decoded = try decoder().decode(PullAcceptedEstimatesResponseDTO.self, from: data)
-        return decoded.accepted
+        let decoded = try decoder().decode(PullEstimateDecisionsResponseDTO.self, from: data)
+        return decoded.decisions
     }
 
     // MARK: - Payment status

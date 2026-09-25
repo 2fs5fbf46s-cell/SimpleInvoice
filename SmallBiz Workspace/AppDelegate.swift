@@ -31,6 +31,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         SBWLog.launch.problem("⚠️ APNs registration failed: \(error)")
     }
 
+    /// Every push the backend sends carries content-available, so this runs
+    /// for each one — in the background, and in the foreground alongside
+    /// willPresent — letting the app pull what changed without being opened.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        if NotificationInboxService.payloadSuggestsInboxRefresh(userInfo) {
+            NotificationInboxService.shared.markNeedsRefresh()
+        }
+        return await PushSyncCoordinator.shared.syncForRemoteNotification()
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,

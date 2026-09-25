@@ -1,11 +1,12 @@
 import Foundation
 import SwiftData
 
-/// Turns the backend's durable "estimate accepted" events into local state:
-/// flips the local Invoice's estimateStatus (same as the old foreground-poll
-/// path in EstimatePortalSyncService did), creates the Job via the existing
-/// EstimateAcceptanceHandler, and activates any bundled draft Contract so it
-/// becomes visible/signable in the portal. Nothing is generated server-side
+/// Turns the backend's durable estimate-decision events into local state —
+/// the only path by which a client's portal decision reaches the device
+/// (push-triggered, plus a pull on every launch/foreground as the fallback).
+/// A decline just flips the local estimateStatus. An acceptance also creates
+/// the Job via the existing EstimateAcceptanceHandler, and activates any
+/// bundled draft Contract so it becomes visible/signable in the portal. Nothing is generated server-side
 /// for this — the device already holds the estimate and any bundled
 /// contract, drafted before the estimate was ever sent (see
 /// ContractCreation.create); the server only durably records that an
@@ -39,21 +40,23 @@ enum EstimateAcceptancePullService {
             ? Date(timeIntervalSince1970: watermarkMs / 1000)
             : Date(timeIntervalSince1970: 0)
 
-        let accepted: [AcceptedEstimateDTO]
+        let decisions: [EstimateDecisionDTO]
         do {
-            accepted = try await PortalBackend.shared.pullAcceptedEstimates(since: since)
+            decisions = try await PortalBackend.shared.pullEstimateDecisions(since: since)
         } catch {
             SBWLog.ui.problem("[EstimateAcceptance] pull failed: \(error)")
             return
         }
 
-        guard !accepted.isEmpty else { return }
+        guard !decisions.isEmpty else { return }
 
         var latestUpdatedAtMs = watermarkMs
         var materializedCount = 0
         var contractsToUpload: [UUID] = []
         var invoicesToUpload: [UUID] = []
-        for item in accepted {
+        // Oldest first: an estimate decided twice (accepted, then declined)
+        // must end on the later decision.
+        for item in decisions.sorted(by: { $0.updatedAtMs < $1.updatedAtMs }) {
             let result = materialize(item, businessID: businessID, context: context)
             if result.didChange { materializedCount += 1 }
             if let contractID = result.activatedContractID { contractsToUpload.append(contractID) }
@@ -95,19 +98,40 @@ enum EstimateAcceptancePullService {
     /// with a hand-built DTO instead of mocking the network call.
     @discardableResult
     static func materialize(
-        _ item: AcceptedEstimateDTO,
+        _ item: EstimateDecisionDTO,
         businessID: UUID,
         context: ModelContext
     ) -> MaterializeResult {
-        guard let estimateUUID = UUID(uuidString: item.estimateId) else {
-            return MaterializeResult(didChange: false, activatedContractID: nil, depositInvoiceID: nil)
-        }
+        let unchanged = MaterializeResult(didChange: false, activatedContractID: nil, depositInvoiceID: nil)
+        guard let estimateUUID = UUID(uuidString: item.estimateId) else { return unchanged }
 
         let estimate = (try? context.fetch(
             FetchDescriptor<Invoice>(predicate: #Predicate { $0.id == estimateUUID })
         ))?.first
         guard let estimate, estimate.documentType == "estimate", estimate.businessID == businessID else {
-            return MaterializeResult(didChange: false, activatedContractID: nil, depositInvoiceID: nil)
+            return unchanged
+        }
+
+        let localStatus = estimate.estimateStatus
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch item.status {
+        case "accepted":
+            break
+        case "declined":
+            // Only the status moves. A Job already created by an earlier
+            // acceptance is left alone — deleting the owner's work on a
+            // client's change of mind isn't this sync's call.
+            guard localStatus != "declined" else { return unchanged }
+            EstimateDecisionSync.setEstimateDecision(
+                estimate: estimate,
+                status: "declined",
+                decidedAtMs: Int64(item.decidedAtMs)
+            )
+            return MaterializeResult(didChange: true, activatedContractID: nil, depositInvoiceID: nil)
+        default:
+            return unchanged
         }
 
         let wasAlreadyProcessed = estimate.estimateStatus

@@ -3,8 +3,9 @@ import SwiftData
 @testable import SmallBizWorkspace
 
 /// Covers `EstimateAcceptancePullService.materialize`: turning a durable
-/// "estimate accepted" event (from GET /api/estimate/accepted/pull) into
-/// local state — the local Invoice's estimateStatus, a Job via the existing
+/// estimate-decision event (from GET /api/estimate/decisions/pull) into local
+/// state. A decline only flips estimateStatus. An acceptance sets the local
+/// Invoice's estimateStatus, a Job via the existing
 /// EstimateAcceptanceHandler, and flipping any bundled draft Contract to
 /// .sent (see ContractBundlingTests for the bundling side). `materialize`
 /// itself never touches the network — the portal upload happens afterward
@@ -57,14 +58,28 @@ final class EstimateAcceptancePullServiceTests: XCTestCase {
         return estimate
     }
 
-    private func makeAcceptedEvent(estimate: Invoice, businessID: UUID, clientID: UUID) -> AcceptedEstimateDTO {
-        AcceptedEstimateDTO(
-            estimateId: estimate.id.uuidString,
+    private func makeEvent(
+        estimateId: String,
+        businessID: UUID,
+        clientID: UUID = UUID(),
+        status: String
+    ) -> EstimateDecisionDTO {
+        EstimateDecisionDTO(
+            estimateId: estimateId,
             businessId: businessID.uuidString,
             clientId: clientID.uuidString,
+            status: status,
             decidedAtMs: Date().timeIntervalSince1970 * 1000,
             updatedAtMs: Date().timeIntervalSince1970 * 1000
         )
+    }
+
+    private func makeAcceptedEvent(estimate: Invoice, businessID: UUID, clientID: UUID) -> EstimateDecisionDTO {
+        makeEvent(estimateId: estimate.id.uuidString, businessID: businessID, clientID: clientID, status: "accepted")
+    }
+
+    private func makeDeclinedEvent(estimate: Invoice, businessID: UUID) -> EstimateDecisionDTO {
+        makeEvent(estimateId: estimate.id.uuidString, businessID: businessID, status: "declined")
     }
 
     // MARK: - Core materialization
@@ -107,13 +122,8 @@ final class EstimateAcceptancePullServiceTests: XCTestCase {
 
     func testMaterializeSkipsAnEstimateNotFoundLocally() throws {
         let businessID = UUID()
-        let event = AcceptedEstimateDTO(
-            estimateId: UUID().uuidString, // no such estimate exists on this device
-            businessId: businessID.uuidString,
-            clientId: UUID().uuidString,
-            decidedAtMs: Date().timeIntervalSince1970 * 1000,
-            updatedAtMs: Date().timeIntervalSince1970 * 1000
-        )
+        // No such estimate exists on this device.
+        let event = makeEvent(estimateId: UUID().uuidString, businessID: businessID, status: "accepted")
 
         let result = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
         XCTAssertFalse(result.didChange)
@@ -122,13 +132,7 @@ final class EstimateAcceptancePullServiceTests: XCTestCase {
 
     func testMaterializeSkipsAMalformedEstimateId() throws {
         let businessID = UUID()
-        let event = AcceptedEstimateDTO(
-            estimateId: "not-a-uuid",
-            businessId: businessID.uuidString,
-            clientId: UUID().uuidString,
-            decidedAtMs: Date().timeIntervalSince1970 * 1000,
-            updatedAtMs: Date().timeIntervalSince1970 * 1000
-        )
+        let event = makeEvent(estimateId: "not-a-uuid", businessID: businessID, status: "accepted")
 
         let result = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
         XCTAssertFalse(result.didChange)
@@ -145,6 +149,79 @@ final class EstimateAcceptancePullServiceTests: XCTestCase {
 
         XCTAssertFalse(result.didChange)
         XCTAssertEqual(estimate.estimateStatus, "sent", "must not touch an estimate that belongs to a different business")
+    }
+
+    // MARK: - Declines
+
+    func testMaterializeDeclinesTheEstimateWithoutCreatingAJob() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+
+        let result = EstimateAcceptancePullService.materialize(
+            makeDeclinedEvent(estimate: estimate, businessID: businessID),
+            businessID: businessID,
+            context: context
+        )
+        try context.save()
+
+        XCTAssertTrue(result.didChange)
+        XCTAssertEqual(estimate.estimateStatus, "declined")
+        XCTAssertNil(estimate.job, "a decline must never create a Job")
+        XCTAssertNil(result.activatedContractID)
+        XCTAssertNil(result.depositInvoiceID)
+    }
+
+    func testARepeatDeclineIsANoOp() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+        let event = makeDeclinedEvent(estimate: estimate, businessID: businessID)
+
+        EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
+        let second = EstimateAcceptancePullService.materialize(event, businessID: businessID, context: context)
+
+        XCTAssertFalse(second.didChange)
+    }
+
+    func testADeclineAfterAcceptanceKeepsTheJob() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+
+        EstimateAcceptancePullService.materialize(
+            makeAcceptedEvent(estimate: estimate, businessID: businessID, clientID: client.id),
+            businessID: businessID,
+            context: context
+        )
+        try context.save()
+        let jobID = try XCTUnwrap(estimate.job?.id)
+
+        EstimateAcceptancePullService.materialize(
+            makeDeclinedEvent(estimate: estimate, businessID: businessID),
+            businessID: businessID,
+            context: context
+        )
+        try context.save()
+
+        XCTAssertEqual(estimate.estimateStatus, "declined", "the latest decision wins")
+        XCTAssertEqual(estimate.job?.id, jobID, "the owner's Job must survive the client's change of mind")
+    }
+
+    func testAnUnknownStatusIsIgnored() throws {
+        let businessID = UUID()
+        let client = try makeClient(businessID: businessID)
+        let estimate = try makeEstimate(businessID: businessID, client: client)
+
+        let result = EstimateAcceptancePullService.materialize(
+            makeEvent(estimateId: estimate.id.uuidString, businessID: businessID, status: "withdrawn"),
+            businessID: businessID,
+            context: context
+        )
+
+        XCTAssertFalse(result.didChange)
+        XCTAssertEqual(estimate.estimateStatus, "sent")
+        XCTAssertNil(estimate.job)
     }
 
     // MARK: - Bundled contract activation

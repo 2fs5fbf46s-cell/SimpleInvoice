@@ -11,7 +11,6 @@ struct SmallBizWorkspaceApp: App {
     @StateObject private var launch = LaunchCoordinator()
     @StateObject private var lock = AppLockManager()
     @StateObject private var activeBiz = ActiveBusinessStore()
-    @State private var estimateSyncPollTask: Task<Void, Never>? = nil
     @State private var readyServicesTask: Task<Void, Never>? = nil
 
     var body: some Scene {
@@ -80,17 +79,10 @@ struct SmallBizWorkspaceApp: App {
 
     @MainActor
     private func handleScenePhase(_ newPhase: ScenePhase) {
-        guard newPhase == .active else {
-            estimateSyncPollTask?.cancel()
-            estimateSyncPollTask = nil
-            return
-        }
-
-        guard let context = readyModelContext else { return }
+        guard newPhase == .active, let context = readyModelContext else { return }
 
         Task {
             await runWorkspaceServices(context: context)
-            startEstimatePolling(context: context)
         }
     }
 
@@ -98,15 +90,29 @@ struct SmallBizWorkspaceApp: App {
     private func startReadyServicesIfNeeded() {
         guard let context = readyModelContext else { return }
 
+        PushSyncCoordinator.shared.register {
+            await runPushSync(context: context)
+        }
+
         readyServicesTask?.cancel()
         readyServicesTask = Task {
             processQueuedIncomingURLs(context: context)
             await runWorkspaceServices(context: context)
-
-            if scenePhase == .active {
-                startEstimatePolling(context: context)
-            }
         }
+    }
+
+    /// What a push wake refreshes — only the pulls a backend event can
+    /// change, kept small to fit the ~30s iOS allows a background wake.
+    @MainActor
+    private func runPushSync(context: ModelContext) async {
+        let businessID = activeBiz.activeBusinessID
+        if let businessID {
+            await BusinessRegistrationService.ensureRegistered(businessID: businessID)
+        }
+        await EstimateAcceptancePullService.pullAndMaterialize(context: context, businessID: businessID)
+        await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: businessID)
+        await DepositStatusSyncService.refreshPendingDeposits(context: context, businessID: businessID)
+        await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: businessID)
     }
 
     @MainActor
@@ -124,7 +130,7 @@ struct SmallBizWorkspaceApp: App {
             await BusinessRegistrationService.ensureRegistered(businessID: businessID)
         }
 
-        await EstimatePortalSyncService.sync(context: context, businessID: activeBiz.activeBusinessID)
+        EstimateDecisionSync.applyPendingDecisions(in: context)
         BusinessSitePublishService.shared.startMonitoring(context: context)
         await BusinessSitePublishService.shared.syncQueuedSites(context: context)
         await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
@@ -132,8 +138,10 @@ struct SmallBizWorkspaceApp: App {
         // Generation itself is server/push-driven; this is the "next launch as
         // a fallback" leg, covering a push that never arrived or was denied.
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
-        // Same reasoning: estimate acceptance is server/push-driven now
-        // (POST /api/portal/estimate/decision), this is the fallback leg.
+        // Same reasoning: estimate decisions (accepted and declined) are
+        // server/push-driven (POST /api/portal/estimate/decision), this is
+        // the fallback leg — and the only one, now that per-estimate status
+        // polling is gone.
         await EstimateAcceptancePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
         // Deposits are a soft reminder, not a gate, so a plain periodic
         // poll of each pending deposit's own payment status is enough —
@@ -171,37 +179,6 @@ struct SmallBizWorkspaceApp: App {
         SBWLog.launch.note("[Launch] Processing \(queuedURLs.count) queued incoming URL(s).")
         for url in queuedURLs {
             EstimateDecisionSync.handlePortalEstimateDecisionURL(url, context: context)
-        }
-    }
-
-    /// Watch for estimate decisions made in the client portal.
-    ///
-    /// The interval adapts: 90s while something is genuinely awaiting a decision,
-    /// 15 minutes when nothing is, and exponential backoff while the network is
-    /// failing. Previously this ran every 90 seconds for as long as the app was
-    /// foregrounded no matter what, so a device with no outstanding estimates —
-    /// and a device with no connection — both polled at full rate.
-    @MainActor
-    private func startEstimatePolling(context: ModelContext) {
-        estimateSyncPollTask?.cancel()
-        estimateSyncPollTask = Task { @MainActor in
-            var consecutiveFailures = 0
-
-            while !Task.isCancelled {
-                let outcome = await EstimatePortalSyncService.sync(
-                    context: context,
-                    businessID: activeBiz.activeBusinessID
-                )
-
-                consecutiveFailures = outcome.looksOffline ? consecutiveFailures + 1 : 0
-
-                let interval = EstimatePollSchedule.nextInterval(
-                    candidates: outcome.candidates,
-                    consecutiveFailures: consecutiveFailures
-                )
-
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-            }
         }
     }
 
