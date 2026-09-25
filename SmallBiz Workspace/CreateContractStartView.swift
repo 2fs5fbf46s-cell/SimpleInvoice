@@ -104,7 +104,9 @@ struct CreateContractStartView: View {
                                     Picker("Choose Template", selection: $selectedTemplate) {
                                         Text("Select…").tag(Optional<ContractTemplate>.none)
                                         ForEach(templates) { t in
-                                            Text("\(t.name) (\(t.category))").tag(Optional(t))
+                                            // The name already says what it's for; the category
+                                            // doubled it ("DJ Services Agreement (Basic) (DJ)").
+                                            Text(t.name).tag(Optional(t))
                                         }
                                     }
                                     .labelsHidden()
@@ -112,13 +114,17 @@ struct CreateContractStartView: View {
                                 }
                             }
 
-                            Button {
-                                showingMusicSplitSheetForm = true
-                            } label: {
-                                Label("Music Split Sheet (Smart Form)", systemImage: "music.note.list")
-                                    .frame(maxWidth: .infinity)
+                            // Only for the split sheet: it was shown to every
+                            // business, music or not.
+                            if selectedTemplate?.category == "Music / Entertainment" {
+                                Button {
+                                    showingMusicSplitSheetForm = true
+                                } label: {
+                                    Label("Fill In the Split Sheet Form", systemImage: "music.note.list")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            .buttonStyle(.bordered)
                         }
                     }
 
@@ -298,7 +304,11 @@ struct CreateContractStartView: View {
         })
         .onAppear {
             // Helpful defaults
-            if selectedTemplate == nil { selectedTemplate = templates.first }
+            // The general agreement fits most work; alphabetical order put
+            // the DJ agreement first.
+            if selectedTemplate == nil {
+                selectedTemplate = templates.first { $0.category == "General" } ?? templates.first
+            }
             // No client or invoice is picked for you: a guessed default made
             // it easy to send a contract to the wrong person.
             applyDefaultJobsFromInvoiceIfNeeded()

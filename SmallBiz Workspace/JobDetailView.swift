@@ -629,7 +629,11 @@ struct JobDetailView: View {
     private var startsText: String {
         let time = job.startDate.formatted(date: .omitted, time: .shortened)
         let calendar = Calendar.current
-        if calendar.isDateInToday(job.startDate) { return "Starts today at \(time)" }
+        // Past its start and not started: say so, not "Starts today at" a
+        // time that's gone.
+        if calendar.isDateInToday(job.startDate) {
+            return job.startDate < .now ? "Was set to start at \(time) today" : "Starts today at \(time)"
+        }
         if calendar.isDateInTomorrow(job.startDate) { return "Starts tomorrow at \(time)" }
         if job.startDate < .now { return "Was set for \(job.startDate.formatted(date: .abbreviated, time: .shortened))" }
         return "Starts \(job.startDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) at \(time)"
@@ -1066,26 +1070,21 @@ struct JobDetailView: View {
         }
     }
 
+    /// The same draft as everywhere else (the business's validity, terms and
+    /// tax, named for the job), linked to this job. It used to be a bare
+    /// "EST-20260925-103130" with none of the defaults.
     private func createJobEstimate() {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let estimate = Invoice(
-            businessID: job.businessID,
-            invoiceNumber: "EST-\(formatter.string(from: Date()))",
-            issueDate: Date(),
-            dueDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date(),
-            isPaid: false,
-            documentType: "estimate",
-            client: linkedClient,
-            job: job,
-            items: []
-        )
-        modelContext.insert(estimate)
         do {
+            let estimate = try EstimateDrafts.make(
+                name: job.title,
+                client: linkedClient,
+                businessID: job.businessID,
+                context: modelContext
+            )
+            estimate.job = job
             try modelContext.save()
             invoiceRoute = estimate
         } catch {
-            modelContext.delete(estimate)
             actionError = error.localizedDescription
         }
     }

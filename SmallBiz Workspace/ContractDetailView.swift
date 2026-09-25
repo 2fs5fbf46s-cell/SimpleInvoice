@@ -296,6 +296,14 @@ struct ContractDetailView: View {
             clientPicker
         } else if !hasTerms {
             stepTitle("Write the terms", detail: "Add the contract text below, then send it for signature.")
+        } else if case let blanks = ContractTemplateEngine.blanks(in: contract.renderedBody), !blanks.isEmpty {
+            // The client signs these terms; don't send "[add total]".
+            stepTitle(
+                "Fill in the blanks",
+                detail: "Replace \(blanks.map { "[add \($0)]" }.joined(separator: ", ")) in the terms below, then send it for signature."
+            )
+            Button { previewPDF() } label: { Label("Preview", systemImage: "doc.richtext") }
+                .buttonStyle(.bordered)
         } else {
             stepTitle(
                 contract.sentAt == nil ? "Send it for signature" : "Send the revised terms",

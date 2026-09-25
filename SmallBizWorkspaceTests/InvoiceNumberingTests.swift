@@ -106,6 +106,16 @@ final class InvoiceNumberingTests: XCTestCase {
         XCTAssertEqual(EstimateAcceptanceHandler.jobTitle(estimateName: "", estimate: estimate, client: "Maria"), "Work for Maria")
     }
 
+    func testAContractWithNoInvoiceMarksWhatToFillIn() {
+        let text = ContractTemplateEngine.render(
+            template: "Scope: {{Invoice.Items}}\nTotal: {{Invoice.Total}}\nDue: {{Invoice.DueDate}}\nTotal again: {{Invoice.Total}}",
+            context: ContractContext(business: nil, client: nil, invoice: nil, extras: [:])
+        )
+        XCTAssertTrue(text.contains("Total: [add total]"), text)
+        XCTAssertEqual(ContractTemplateEngine.blanks(in: text), ["what the work includes", "total", "due date"])
+        XCTAssertEqual(ContractTemplateEngine.blanks(in: "Total: $1,200.00"), [])
+    }
+
     func testZeroShowsAsAnEmptyField() {
         var price = 0.0
         let field = Binding(get: { price }, set: { price = $0 }).zeroAsEmpty

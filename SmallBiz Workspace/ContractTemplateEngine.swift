@@ -47,9 +47,12 @@ enum ContractTemplateEngine {
         output = replace(output, "Client.Address", context.client?.address)
 
         // Invoice
-        output = replace(output, "Invoice.Number", context.invoice?.invoiceNumber)
+        // With no invoice these used to come out empty ("Total:", "Due:"),
+        // easy to send for signature without noticing. Mark each so it's
+        // plain what to fill in; the contract won't send until they're gone.
+        output = replace(output, "Invoice.Number", context.invoice?.invoiceNumber ?? blank("invoice number"))
         output = replace(output, "Invoice.IssueDate", context.invoice?.issueDate.formatted(date: .abbreviated, time: .omitted))
-        output = replace(output, "Invoice.DueDate", context.invoice?.dueDate.formatted(date: .abbreviated, time: .omitted))
+        output = replace(output, "Invoice.DueDate", context.invoice?.dueDate.formatted(date: .abbreviated, time: .omitted) ?? blank("due date"))
 
         if let invoice = context.invoice {
             output = replace(output, "Invoice.Subtotal", currency(invoice.subtotal))
@@ -62,11 +65,11 @@ enum ContractTemplateEngine {
             let itemsText = (invoice.items ?? [])
                 .map { "• \($0.itemDescription) — \(cleanQty($0.quantity)) × \(currency($0.unitPrice)) = \(currency($0.lineTotal))" }
                 .joined(separator: "\n")
-            output = replace(output, "Invoice.Items", itemsText.isEmpty ? nil : itemsText)
+            output = replace(output, "Invoice.Items", itemsText.isEmpty ? blank("what the work includes") : itemsText)
         } else {
-            output = replace(output, "Invoice.Subtotal", nil)
-            output = replace(output, "Invoice.Total", nil)
-            output = replace(output, "Invoice.Items", nil)
+            output = replace(output, "Invoice.Subtotal", blank("subtotal"))
+            output = replace(output, "Invoice.Total", blank("total"))
+            output = replace(output, "Invoice.Items", blank("what the work includes"))
         }
 
         // Common dynamic tokens
@@ -81,6 +84,24 @@ enum ContractTemplateEngine {
         output = stripUnreplacedTokens(output)
 
         return output
+    }
+
+    static let blankPrefix = "[add "
+
+    /// A spot the owner still has to fill in, e.g. "[add total]".
+    static func blank(_ what: String) -> String { "\(blankPrefix)\(what)]" }
+
+    /// The "[add …]" spots left in a contract's text, e.g. ["total", "due date"].
+    static func blanks(in text: String) -> [String] {
+        var found: [String] = []
+        var rest = text[...]
+        while let start = rest.range(of: blankPrefix),
+              let end = rest.range(of: "]", range: start.upperBound..<rest.endIndex) {
+            let what = String(rest[start.upperBound..<end.lowerBound])
+            if !found.contains(what) { found.append(what) }
+            rest = rest[end.upperBound...]
+        }
+        return found
     }
 
     private static func replace(_ text: String, _ token: String, _ value: String?) -> String {

@@ -88,6 +88,7 @@ enum ContractSendService {
         case noClientEmail
         case portalDisabled
         case emptyBody
+        case hasBlanks([String])
         case publishFailed(String)
 
         var errorDescription: String? {
@@ -98,6 +99,7 @@ enum ContractSendService {
             case .noClientEmail: return "Add an email address to this client to send them the contract."
             case .portalDisabled: return "Turn on the client portal for this client to send them the contract."
             case .emptyBody: return "The contract has no terms yet. Add them before sending."
+            case .hasBlanks(let blanks): return "Fill in \(blanks.map { "[add \($0)]" }.joined(separator: ", ")) in the terms before sending."
             case .publishFailed(let message): return "Couldn't send the contract: \(message)"
             }
         }
@@ -131,6 +133,8 @@ enum ContractSendService {
         guard !contract.renderedBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SendError.emptyBody
         }
+        let blanks = ContractTemplateEngine.blanks(in: contract.renderedBody)
+        guard blanks.isEmpty else { throw SendError.hasBlanks(blanks) }
 
         let previousStatus = contract.statusRaw
         let previousSentAt = contract.sentAt
