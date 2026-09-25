@@ -9,12 +9,16 @@ import SwiftData
 struct NewEstimateSheet: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     @Binding var name: String
     @Binding var client: Client?
 
     let onCancel: () -> Void
     let onCreate: () -> Void
+
+    private let businessID: UUID?
+    @State private var newClientDraft: Client? = nil
 
     // Scoped in the fetch rather than loading every client in the account.
     @Query private var allClients: [Client]
@@ -28,6 +32,7 @@ struct NewEstimateSheet: View {
     ) {
         _name = name
         _client = client
+        self.businessID = businessID
         self.onCancel = onCancel
         self.onCreate = onCreate
 
@@ -39,6 +44,8 @@ struct NewEstimateSheet: View {
     }
 
     private var scopedClients: [Client] { allClients }
+
+    private var effectiveBusinessID: UUID? { businessID ?? activeBiz.activeBusinessID }
 
     var body: some View {
         NavigationStack {
@@ -80,14 +87,30 @@ struct NewEstimateSheet: View {
                                     .pickerStyle(.menu)
                                 }
 
-                                if activeBiz.activeBusinessID == nil {
+                                if effectiveBusinessID == nil {
                                     Text("No active business selected.")
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
-                                } else if scopedClients.isEmpty {
-                                    Text("No clients found for this business.")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Divider().opacity(0.22)
+
+                                    Button {
+                                        startNewClient()
+                                    } label: {
+                                        Label("New Client", systemImage: "person.badge.plus")
+                                            .font(.subheadline.weight(.semibold))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .frame(minHeight: 42)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(SBWTheme.brandBlue)
+
+                                    if scopedClients.isEmpty {
+                                        Text("No clients yet. Add one here and it’s selected for this estimate.")
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }
@@ -108,7 +131,18 @@ struct NewEstimateSheet: View {
                         .fontWeight(.semibold)
                 }
             }
+            .sheet(item: $newClientDraft) { draft in
+                NewClientSheet(draft: draft) { saved in
+                    if let saved { client = saved }
+                    newClientDraft = nil
+                }
+            }
         }
+    }
+
+    private func startNewClient() {
+        guard let bizID = effectiveBusinessID else { return }
+        newClientDraft = NewClientSheet.makeDraft(businessID: bizID, in: modelContext)
     }
 
     @ViewBuilder

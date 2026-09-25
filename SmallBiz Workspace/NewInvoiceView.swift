@@ -19,6 +19,7 @@ struct NewInvoiceView: View {
 
     @State private var invoiceNumber: String = ""
     @State private var selectedClient: Client? = nil
+    @State private var newClientDraft: Client? = nil
     @State private var suggestedNumber: String = ""
 
     /// The first line item, entered here rather than hunted for later.
@@ -87,6 +88,22 @@ struct NewInvoiceView: View {
                                         .labelsHidden()
                                         .pickerStyle(.menu)
                                     }
+
+                                    if effectiveBusinessID != nil {
+                                        Divider().opacity(0.22)
+
+                                        Button {
+                                            startNewClient()
+                                        } label: {
+                                            Label("New Client", systemImage: "person.badge.plus")
+                                                .font(.subheadline.weight(.semibold))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .frame(minHeight: 42)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(SBWTheme.brandBlue)
+                                    }
                                 }
                             }
                         }
@@ -119,7 +136,7 @@ struct NewInvoiceView: View {
 
                         if scopedClients.isEmpty {
                             card {
-                                Text("No clients yet. You can add a client from the invoice detail screen or we’ll add a Clients tab later.")
+                                Text("No clients yet. Tap New Client to add one; it’s selected for this invoice.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,6 +159,12 @@ struct NewInvoiceView: View {
                         .disabled(invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .sheet(item: $newClientDraft) { draft in
+                NewClientSheet(draft: draft) { saved in
+                    if let saved { selectedClient = saved }
+                    newClientDraft = nil
+                }
+            }
             .onAppear {
                 if invoiceNumber.isEmpty {
                     let preview = previewInvoiceNumber()
@@ -155,6 +178,11 @@ struct NewInvoiceView: View {
             // 2) Enter custom invoice number and save; verify manual value persists without forced renumbering.
             // 3) Switch business and verify client picker remains scoped.
         }
+    }
+
+    private func startNewClient() {
+        guard let bizID = effectiveBusinessID else { return }
+        newClientDraft = NewClientSheet.makeDraft(businessID: bizID, in: modelContext)
     }
 
     @ViewBuilder
