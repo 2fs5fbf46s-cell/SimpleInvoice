@@ -155,12 +155,12 @@ final class ClientSnapshotTests: XCTestCase {
     }
 
     func testTheConfirmationNamesWhatIsAtStake() {
-        let impact = ClientDeletionImpact(invoices: 12, bookings: 1)
+        let impact = ClientDeletionImpact(invoices: 12, contracts: 1)
         let message = impact.confirmationMessage(clientName: "  Ada Lovelace  ")
 
         XCTAssertTrue(message.contains("Ada Lovelace"))
         XCTAssertTrue(message.contains("12 invoices"))
-        XCTAssertTrue(message.contains("1 booking"))
+        XCTAssertTrue(message.contains("1 contract"))
         XCTAssertTrue(
             message.contains("keep the name and address they were sent with"),
             "the dialog should say the documents survive intact, because now they do"
@@ -176,10 +176,10 @@ final class ClientSnapshotTests: XCTestCase {
 
     func testTotalCountsEveryKind() {
         let impact = ClientDeletionImpact(
-            invoices: 1, estimates: 2, jobs: 3, contracts: 4, bookings: 5
+            invoices: 1, estimates: 2, jobs: 3, contracts: 4
         )
 
-        XCTAssertEqual(impact.total, 15)
+        XCTAssertEqual(impact.total, 10)
         XCTAssertTrue(impact.hasHistory)
     }
 }

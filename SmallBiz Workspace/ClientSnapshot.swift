@@ -88,9 +88,8 @@ struct ClientDeletionImpact: Equatable {
     var estimates: Int = 0
     var jobs: Int = 0
     var contracts: Int = 0
-    var bookings: Int = 0
 
-    var total: Int { invoices + estimates + jobs + contracts + bookings }
+    var total: Int { invoices + estimates + jobs + contracts }
     var hasHistory: Bool { total > 0 }
 
     /// One line naming everything that references this client, largest first.
@@ -102,7 +101,6 @@ struct ClientDeletionImpact: Equatable {
             (estimates, "estimate", "estimates"),
             (jobs, "job", "jobs"),
             (contracts, "contract", "contracts"),
-            (bookings, "booking", "bookings"),
         ]
 
         let phrases = parts
@@ -125,7 +123,7 @@ struct ClientDeletionImpact: Equatable {
         let name = who.isEmpty ? "this client" : who
 
         guard hasHistory else {
-            return "\(name) has no invoices, jobs or bookings. This can't be undone."
+            return "\(name) has no invoices, jobs or contracts. This can't be undone."
         }
 
         return """
@@ -140,7 +138,7 @@ struct ClientDeletionImpact: Equatable {
 extension ClientDeletionImpact {
     /// Count what points at this client.
     ///
-    /// Invoices, estimates, contracts and bookings come off the client's own
+    /// Invoices, estimates and contracts come off the client's own
     /// relationships. Jobs link by `clientID` with no relationship at all, so
     /// they have to be counted from the caller's list.
     @MainActor
@@ -151,8 +149,7 @@ extension ClientDeletionImpact {
             invoices: documents.filter { $0.documentType != "estimate" }.count,
             estimates: documents.filter { $0.documentType == "estimate" }.count,
             jobs: jobs.filter { $0.clientID == client.id }.count,
-            contracts: (client.contracts ?? []).count,
-            bookings: (client.bookings ?? []).count
+            contracts: (client.contracts ?? []).count
         )
     }
 }

@@ -411,7 +411,7 @@ struct ClientListView: View {
 
 
     /// Swipe-to-delete used to destroy the client immediately, with no
-    /// confirmation and no hint that invoices, jobs or bookings referenced it.
+    /// confirmation and no hint that invoices, jobs or contracts referenced it.
     /// Now it asks, and says what else is involved.
     private func deleteFiltered(at offsets: IndexSet) {
         let toDelete = offsets.map { visibleClients[$0] }
@@ -423,7 +423,6 @@ struct ClientListView: View {
             total.estimates += next.estimates
             total.jobs += next.jobs
             total.contracts += next.contracts
-            total.bookings += next.bookings
         }
 
         pendingDeletion = PendingClientDeletion(

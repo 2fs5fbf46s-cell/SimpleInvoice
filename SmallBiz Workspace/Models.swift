@@ -193,8 +193,7 @@ final class Client {
     // cascaded — it lives in the folder workspace and other records may use it.
     @Relationship(deleteRule: .cascade, inverse: \ClientAttachment.client)
     var attachments: [ClientAttachment]? = nil
-    @Relationship(inverse: \Booking.client) var bookings: [Booking]? = nil
-    
+
 
 
     @Relationship(inverse: \Contract.client)
@@ -654,39 +653,3 @@ final class CatalogItem {
     }
 }
 
-@Model
-final class Booking {
-    var id: UUID = UUID()
-
-    var title: String = ""
-    var notes: String = ""
-
-    var startDate: Date = Date()
-    var endDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
-
-    // scheduled | completed | canceled
-    var status: String = "scheduled"
-
-    var locationName: String = ""
-
-    // ✅ Inverse lives on Client.bookings
-    var client: Client? = nil
-
-    init(
-        title: String = "",
-        notes: String = "",
-        startDate: Date = Date(),
-        endDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date(),
-        status: String = "scheduled",
-        locationName: String = "",
-        client: Client? = nil
-    ) {
-        self.title = title
-        self.notes = notes
-        self.startDate = startDate
-        self.endDate = endDate
-        self.status = status
-        self.locationName = locationName
-        self.client = client
-    }
-}
