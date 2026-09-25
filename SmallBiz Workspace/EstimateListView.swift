@@ -142,7 +142,7 @@ struct EstimateListView: View {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
-                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
+                                .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
                     }
                 }
@@ -522,8 +522,8 @@ enum EstimateStage: Equatable {
     var color: Color {
         switch self {
         case .draft: return .secondary
-        case .waiting: return .orange
-        case .accepted: return .green
+        case .waiting: return SBWTheme.attention
+        case .accepted: return SBWTheme.success
         case .declined: return .red
         }
     }

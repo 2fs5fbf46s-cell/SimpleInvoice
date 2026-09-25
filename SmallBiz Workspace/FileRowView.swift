@@ -82,7 +82,7 @@ struct FileRowView: View {
             } label: {
                 Label("Move", systemImage: "folder")
             }
-            .tint(.blue)
+            .tint(SBWTheme.brand)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
@@ -90,7 +90,7 @@ struct FileRowView: View {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
-            .tint(.orange)
+            .tint(SBWTheme.attention)
         }
     }
 }

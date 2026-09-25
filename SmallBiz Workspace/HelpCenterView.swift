@@ -38,7 +38,7 @@ struct HelpCenterView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(SBWTheme.brandBlue)
+                            .tint(SBWTheme.brand)
 
                             NavigationLink {
                                 QuickStartView()
@@ -166,7 +166,7 @@ struct HelpCenterView: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
-                    .foregroundStyle(SBWTheme.brandBlue)
+                    .foregroundStyle(SBWTheme.brand)
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                 Spacer()

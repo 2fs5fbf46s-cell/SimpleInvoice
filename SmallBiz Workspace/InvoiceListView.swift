@@ -106,10 +106,10 @@ private enum InvoiceListStage {
     var color: Color {
         switch self {
         case .draft: return .secondary
-        case .sent: return SBWTheme.brandBlue
+        case .sent: return SBWTheme.brand
         case .overdue: return .red
-        case .partPaid: return .orange
-        case .paid: return SBWTheme.brandGreen
+        case .partPaid: return SBWTheme.attention
+        case .paid: return SBWTheme.success
         }
     }
 }
@@ -237,7 +237,7 @@ struct InvoiceListView: View {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
-                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
+                                .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("New Invoice")
@@ -460,11 +460,11 @@ struct InvoiceListView: View {
             Button { reminderInvoice = invoice } label: { Label("Remind", systemImage: "bell") }
                 .tint(.red)
             Button { paymentInvoice = invoice } label: { Label("Payment", systemImage: "banknote") }
-                .tint(SBWTheme.brandGreen)
+                .tint(SBWTheme.success)
         case .sent, .partPaid, .draft:
             if invoice.totalCents > 0 {
                 Button { paymentInvoice = invoice } label: { Label("Payment", systemImage: "banknote") }
-                    .tint(SBWTheme.brandGreen)
+                    .tint(SBWTheme.success)
             }
         case .paid:
             EmptyView()

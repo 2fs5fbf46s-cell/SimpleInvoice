@@ -207,9 +207,9 @@ struct ClientWorkItem: Identifiable {
             detail = amount
             switch document.estimateStatus.lowercased() {
             case "sent":
-                status = "Sent"; statusColor = SBWTheme.brandBlue; isOpen = true
+                status = "Sent"; statusColor = SBWTheme.brand; isOpen = true
             case "accepted":
-                status = "Accepted"; statusColor = SBWTheme.brandGreen; isOpen = false
+                status = "Accepted"; statusColor = SBWTheme.success; isOpen = false
             case "declined":
                 status = "Declined"; statusColor = .red; isOpen = false
             default:
@@ -220,7 +220,7 @@ struct ClientWorkItem: Identifiable {
             title = Self.documentName(document)
             let recorded = (document.payments ?? []).reduce(0) { $0 + $1.amountCents }
             if document.isPaid || (document.wasSent && document.totalCents > 0 && document.balanceDueCents == 0) {
-                status = "Paid"; statusColor = SBWTheme.brandGreen; isOpen = false
+                status = "Paid"; statusColor = SBWTheme.success; isOpen = false
                 detail = amount
             } else if !document.wasSent {
                 status = "Draft"; statusColor = .secondary; isOpen = true
@@ -229,10 +229,10 @@ struct ClientWorkItem: Identifiable {
                 status = "Overdue"; statusColor = .red; isOpen = true
                 detail = "\(InvoicePaymentService.currency(document.balanceDueCents)) due"
             } else if recorded > 0 {
-                status = "Part paid"; statusColor = .orange; isOpen = true
+                status = "Part paid"; statusColor = SBWTheme.attention; isOpen = true
                 detail = "\(InvoicePaymentService.currency(document.balanceDueCents)) left"
             } else {
-                status = "Sent"; statusColor = SBWTheme.brandBlue; isOpen = true
+                status = "Sent"; statusColor = SBWTheme.brand; isOpen = true
                 detail = "\(amount) · due \(document.dueDate.formatted(date: .abbreviated, time: .omitted))"
             }
         }
@@ -274,8 +274,8 @@ struct ClientWorkItem: Identifiable {
         detail = contract.updatedAt.formatted(date: .abbreviated, time: .omitted)
         switch contract.status {
         case .draft: status = "Draft"; statusColor = .secondary; isOpen = true
-        case .sent: status = "Sent"; statusColor = SBWTheme.brandBlue; isOpen = true
-        case .signed: status = "Signed"; statusColor = SBWTheme.brandGreen; isOpen = false
+        case .sent: status = "Sent"; statusColor = SBWTheme.brand; isOpen = true
+        case .signed: status = "Signed"; statusColor = SBWTheme.success; isOpen = false
         case .cancelled: status = "Canceled"; statusColor = .red; isOpen = false
         }
     }

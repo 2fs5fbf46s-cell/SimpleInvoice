@@ -225,8 +225,8 @@ struct BookingPageView: View {
         let (text, color): (String, Color) = {
             switch liveStatus {
             case .live(let accepting):
-                return accepting && profile.bookingEnabled ? ("Live", .green) : ("Paused", .secondary)
-            case .notFound: return ("Not live", .orange)
+                return accepting && profile.bookingEnabled ? ("Live", SBWTheme.success) : ("Paused", .secondary)
+            case .notFound: return ("Not live", SBWTheme.attention)
             case .none: return ("Checking…", .secondary)
             }
         }()
@@ -258,7 +258,7 @@ struct BookingPageView: View {
         case .failed:
             HStack {
                 Label("Saved on this iPhone. Couldn't update the page.", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(SBWTheme.attention)
                 Spacer()
                 Button("Retry") { Task { await push(profile) } }
             }

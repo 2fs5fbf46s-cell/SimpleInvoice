@@ -134,7 +134,7 @@ struct JobsListView: View {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
-                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
+                                .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("New Job")
@@ -248,7 +248,7 @@ struct JobsListView: View {
                     Label("New Job", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .padding(.top, 4)
             }
         }
@@ -276,7 +276,7 @@ struct JobsListView: View {
             } label: {
                 Label("Start", systemImage: "play.fill")
             }
-            .tint(SBWTheme.brandBlue)
+            .tint(SBWTheme.brand)
         case .inProgress:
             Button {
                 JobLifecycle.complete(job)
@@ -285,7 +285,7 @@ struct JobsListView: View {
             } label: {
                 Label("Complete", systemImage: "checkmark")
             }
-            .tint(SBWTheme.brandGreen)
+            .tint(SBWTheme.success)
         case .canceled:
             Button {
                 JobLifecycle.reopen(job)
@@ -293,7 +293,7 @@ struct JobsListView: View {
             } label: {
                 Label("Reopen", systemImage: "arrow.uturn.backward")
             }
-            .tint(SBWTheme.brandBlue)
+            .tint(SBWTheme.brand)
         case .completed:
             EmptyView()
         }
@@ -432,11 +432,11 @@ private struct JobListRow: View {
         case .needsScheduling:
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.title3)
-                .foregroundStyle(.orange)
+                .foregroundStyle(SBWTheme.attention)
         case .inProgress:
             Image(systemName: "hammer.fill")
                 .font(.title3)
-                .foregroundStyle(SBWTheme.brandGreen)
+                .foregroundStyle(SBWTheme.success)
         default:
             let date = status == .completed ? (job.completedAt ?? job.endDate) : job.startDate
             VStack(spacing: 1) {

@@ -106,7 +106,7 @@ struct NewEstimateSheet: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .foregroundStyle(SBWTheme.brandBlue)
+                                    .foregroundStyle(SBWTheme.brand)
 
                                     if scopedClients.isEmpty {
                                         Text("No clients yet. Add one here and it’s selected for this estimate.")

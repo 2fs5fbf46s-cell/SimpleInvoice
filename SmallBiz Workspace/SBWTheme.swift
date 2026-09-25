@@ -7,29 +7,44 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 enum SBWTheme {
-    // MARK: - Brand Colors (Option A)
-    static let brandBlue  = Color(red: 0.12, green: 0.44, blue: 0.85)  // ~ #1E6FD9
-    static let brandGreen = Color(red: 0.20, green: 0.78, blue: 0.35)  // ~ #34C759
+    // MARK: - Evergreen brand
+    //
+    // One brand hue (Evergreen) plus amber for "needs you". It replaced a
+    // blue/green pair whose blue read as the system default and whose green
+    // collided with "paid". Colors that text or buttons use have a lighter
+    // dark-mode shade; Evergreen itself is too dark to read on black.
 
-    // Derived for dark mode (softened, non-neon)
-    static let brandBlueSoft  = Color(red: 0.16, green: 0.46, blue: 0.78)
-    static let brandTealSoft  = Color(red: 0.18, green: 0.60, blue: 0.58)
-    static let brandGreenSoft = Color(red: 0.22, green: 0.72, blue: 0.40)
+    /// The mark's own green: app icon, logo tile, launch screen. Same in both modes.
+    static let evergreen = Color(hex: 0x0E5A47)
+
+    /// Buttons, links, Next-step labels, selected tabs, key numbers.
+    static let brand = dynamic(light: 0x0E6B53, dark: 0x4CC79E)
+    /// Behind white text (filled buttons). Deeper than `brand` in dark mode,
+    /// where the text shade is too light for white on top.
+    static let brandFill = dynamic(light: 0x0E6B53, dark: 0x1F8A6C)
+    /// Pale brand fill behind chips and selected rows.
+    static let brandTint = brand.opacity(0.12)
+
+    /// "Needs you": warnings, due soon, part paid.
+    static let attention = dynamic(light: 0xB8740A, dark: 0xF2B544)
+
+    /// Paid, signed, done. Brighter than the brand so a paid pill never
+    /// reads as a button.
+    static let success = dynamic(light: 0x1E9A5A, dark: 0x45D483)
+    /// Behind white text.
+    static let successFill = dynamic(light: 0x1E8A50, dark: 0x1E8A50)
 
     static let brandGradient = LinearGradient(
-        colors: [brandBlueSoft, brandTealSoft, brandGreenSoft],
+        colors: [Color(hex: 0x0E5A47), Color(hex: 0x1F8A6C)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    // MARK: - Subtle tints for chips/backgrounds
-    static let blueTint  = brandBlue.opacity(0.12)
-    static let greenTint = brandGreen.opacity(0.12)
-
     // MARK: - Header wash (subtle)
-    static let headerWashOpacity: Double = 0.19
+    static let headerWashOpacity: Double = 0.16
     static let headerWashBlur: CGFloat = 44
     static let headerWashHeight: CGFloat = 300
 
@@ -38,7 +53,7 @@ enum SBWTheme {
 
     // MARK: - Header wash helper (for list screens)
     static func headerWash() -> some View {
-        brandGradient
+        LinearGradient(colors: [Color(hex: 0x1F8A6C), Color(hex: 0x7ED6B4)], startPoint: .topLeading, endPoint: .bottomTrailing)
             .opacity(headerWashOpacity)
             .blur(radius: headerWashBlur)
             .frame(height: headerWashHeight)
@@ -46,71 +61,54 @@ enum SBWTheme {
             .ignoresSafeArea(edges: .top)
     }
 
-    // MARK: - Optional card glow (future use)
-    static func cardGlow() -> some View {
-        brandGradient
-            .opacity(0.05)
-            .blur(radius: 24)
-    }
-
     // MARK: - Tile icon chips
     static func chipFill(for title: String) -> AnyShapeStyle {
         switch title {
-        case "Invoices":
-            return AnyShapeStyle(blueTint)
-
-        case "Estimates":
-            return AnyShapeStyle(greenTint)
-
-        case "Bookings":
-            // Brand-blue lane (scheduling)
-            return AnyShapeStyle(blueTint)
-
-        case "Customers", "Clients":
-            // Slight green lean (people/customer)
-            return AnyShapeStyle(greenTint)
-
-        case "Requests", "Jobs", "New Job":
-            // Neutral brand wash
-            return AnyShapeStyle(brandGradient.opacity(0.14))
-
-        case "Contracts":
-                return AnyShapeStyle(brandBlue.opacity(0.10).blendMode(.normal)) // subtle
-
-        case "Inventory", "Saved Items":
-            // Light neutral
-            return AnyShapeStyle(Color.primary.opacity(0.06))
-
         case "Expenses":
-            // Amber lane (money going out, distinct from paid-in green/blue)
-            return AnyShapeStyle(Color.orange.opacity(0.12))
-            
-
-        case "Client Portal":
-            return AnyShapeStyle(brandGradient.opacity(0.18))
-            
-        
-
-        default:
+            // Money going out: amber, apart from the green of money in.
+            return AnyShapeStyle(attention.opacity(0.14))
+        case "Inventory", "Saved Items":
             return AnyShapeStyle(Color.primary.opacity(0.06))
+        default:
+            // One brand lane; the icon says what it is.
+            return AnyShapeStyle(brandTint)
         }
     }
 
-    // MARK: - Stat accent strip
-    static func statAccent(for title: String) -> LinearGradient {
-        // Optional: you can vary the accent per stat if you want.
-        // Keeping it consistent reads “brand” more than “rainbow”.
-        return brandGradient
+    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
     }
 }
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255
+        )
+    }
+}
+
+extension UIColor {
+    convenience init(hex: UInt32) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+}
+
 extension SBWTheme {
 
     // MARK: - Status colors (semantic)
-    static let statusPaid     = brandGreen
-    static let statusUnpaid   = Color.orange
+    static let statusPaid     = success
+    static let statusUnpaid   = attention
     static let statusDraft    = Color.gray
-    static let statusSent     = brandBlue
-    static let statusAccepted = brandGreen
+    static let statusSent     = brand
+    static let statusAccepted = success
     static let statusDeclined = Color.red
 
     static func chip(forStatus text: String) -> (fg: Color, bg: Color) {
@@ -131,19 +129,19 @@ extension SBWTheme {
         case "DECLINED":
             return (statusDeclined, statusDeclined.opacity(0.12))
         case "SCHEDULED":
-            return (brandBlue, brandBlue.opacity(0.10))
+            return (brand, brand.opacity(0.10))
         case "ACTIVE":
-            return (brandGreen, brandGreen.opacity(0.10))
+            return (success, success.opacity(0.10))
         case "COMPLETED":
-            return (brandGreen, brandGreen.opacity(0.12))
+            return (success, success.opacity(0.12))
         case "CANCELED", "CANCELLED":
             return (Color.red, Color.red.opacity(0.12))
         case "SIGNED":
-            return (brandGreen, brandGreen.opacity(0.12))
+            return (success, success.opacity(0.12))
         case "OVERDUE":
             return (Color.red, Color.red.opacity(0.12))
         case "PART PAID":
-            return (Color.orange, Color.orange.opacity(0.14))
+            return (attention, attention.opacity(0.14))
 
 
         default:

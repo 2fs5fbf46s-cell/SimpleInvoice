@@ -108,13 +108,13 @@ struct BookingAnalyticsDetailListView: View {
         case "DEPOSIT REQUESTED":
             return (Color.yellow, Color.yellow.opacity(0.15))
         case "DEPOSIT PAID":
-            return (SBWTheme.brandBlue, SBWTheme.brandBlue.opacity(0.16))
+            return (SBWTheme.brand, SBWTheme.brand.opacity(0.16))
         case "APPROVED":
-            return (SBWTheme.brandGreen, SBWTheme.brandGreen.opacity(0.12))
+            return (SBWTheme.success, SBWTheme.success.opacity(0.12))
         case "DECLINED":
             return (Color.red, Color.red.opacity(0.12))
         case "PENDING":
-            return (Color.orange, Color.orange.opacity(0.12))
+            return (SBWTheme.attention, SBWTheme.attention.opacity(0.12))
         default:
             return (.secondary, Color.primary.opacity(0.06))
         }

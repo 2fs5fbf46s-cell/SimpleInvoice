@@ -132,7 +132,7 @@ struct BusinessSwitcherView: View {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
-            .tint(.blue)
+            .tint(SBWTheme.brand)
 
             Button(role: .destructive) {
                 requestDelete(b)

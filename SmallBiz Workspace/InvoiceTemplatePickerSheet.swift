@@ -70,8 +70,8 @@ struct InvoiceTemplatePickerSheet: View {
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.16))
-                            .foregroundStyle(.orange)
+                            .background(SBWTheme.attention.opacity(0.16))
+                            .foregroundStyle(SBWTheme.attention)
                             .clipShape(Capsule())
                     }
                 }

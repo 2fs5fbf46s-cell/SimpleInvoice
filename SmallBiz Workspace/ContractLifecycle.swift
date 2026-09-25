@@ -35,8 +35,8 @@ enum ContractDisplayStatus: Equatable {
     var foreground: Color {
         switch self {
         case .draft: return .secondary
-        case .sent: return SBWTheme.brandBlue
-        case .signed: return SBWTheme.brandGreen
+        case .sent: return SBWTheme.brand
+        case .signed: return SBWTheme.success
         case .canceled: return .red
         }
     }

@@ -120,7 +120,7 @@ struct ContractListView: View {
                                 .frame(width: 30, height: 30)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
                         .accessibilityLabel("Templates")
                         Button {
                             Haptics.lightTap()
@@ -129,7 +129,7 @@ struct ContractListView: View {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
-                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
+                                .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("New Contract")
@@ -307,7 +307,7 @@ private struct ContractListRow: View {
         HStack(spacing: 12) {
             Image(systemName: status == .signed ? "checkmark.seal" : "signature")
                 .font(.subheadline)
-                .foregroundStyle(status == .signed ? SBWTheme.brandGreen : Color.secondary)
+                .foregroundStyle(status == .signed ? SBWTheme.success : Color.secondary)
                 .frame(width: 26)
 
             VStack(alignment: .leading, spacing: 3) {

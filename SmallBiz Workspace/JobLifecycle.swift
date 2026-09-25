@@ -37,9 +37,9 @@ enum JobDisplayStatus: Equatable {
 
     var foreground: Color {
         switch self {
-        case .needsScheduling: return .orange
-        case .scheduled: return SBWTheme.brandBlue
-        case .inProgress: return SBWTheme.brandGreen
+        case .needsScheduling: return SBWTheme.attention
+        case .scheduled: return SBWTheme.brand
+        case .inProgress: return SBWTheme.success
         case .completed: return .secondary
         case .canceled: return .red
         }

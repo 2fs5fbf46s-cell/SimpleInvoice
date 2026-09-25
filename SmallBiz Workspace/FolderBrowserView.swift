@@ -321,7 +321,7 @@ struct FolderBrowserView: View {
                                 } label: {
                                     Label("Move", systemImage: "folder")
                                 }
-                                .tint(.blue)
+                                .tint(SBWTheme.brand)
                             }
                         }
                         .contextMenu {
@@ -383,7 +383,7 @@ struct FolderBrowserView: View {
                 .font(.caption.weight(.semibold))
                 .padding(.vertical, 4)
                 .padding(.horizontal, 10)
-                .background(Capsule().fill((isEditing ? SBWTheme.brandBlue : SBWTheme.brandGreen).opacity(0.18)))
+                .background(Capsule().fill((isEditing ? SBWTheme.brand : SBWTheme.success).opacity(0.18)))
                 .foregroundStyle(.primary)
         }
         .padding(.horizontal, 16)

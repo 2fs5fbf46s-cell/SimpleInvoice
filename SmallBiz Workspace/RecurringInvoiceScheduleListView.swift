@@ -73,7 +73,7 @@ struct RecurringInvoiceScheduleListView: View {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
-                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
+                                .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
                         .disabled(portalEnabledClients.isEmpty)
                     }

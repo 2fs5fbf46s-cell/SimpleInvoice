@@ -84,7 +84,7 @@ struct NotificationSettingsView: View {
             switch permission {
             case .authorized, .provisional, .ephemeral:
                 Label("Notifications are on", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(SBWTheme.success)
             case .denied:
                 Label("Notifications are off for this app", systemImage: "bell.slash")
                 Button("Open iPhone Settings") {

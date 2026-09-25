@@ -39,7 +39,7 @@ struct SBWFilterChips<Value: Hashable>: View {
                         .background(
                             Capsule().fill(
                                 isSelected
-                                    ? AnyShapeStyle(SBWTheme.brandBlue)
+                                    ? AnyShapeStyle(SBWTheme.brand)
                                     : AnyShapeStyle(Color.primary.opacity(0.10))
                             )
                         )
@@ -157,7 +157,7 @@ struct SBWEmptyState: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .padding(.top, 2)
             }
 
@@ -168,7 +168,7 @@ struct SBWEmptyState: View {
                 }
                 .font(.subheadline)
                 .buttonStyle(.plain)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
             }
         }
         .frame(maxWidth: .infinity)

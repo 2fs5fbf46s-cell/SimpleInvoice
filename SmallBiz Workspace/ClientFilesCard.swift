@@ -83,7 +83,7 @@ struct ClientFilesCard: View {
                 .buttonStyle(.bordered)
             }
             .font(.subheadline.weight(.semibold))
-            .tint(SBWTheme.brandBlue)
+            .tint(SBWTheme.brand)
 
             if attachments.count > 1 {
                 Button {
@@ -162,7 +162,7 @@ struct ClientFilesCard: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: iconName(for: attachment.file))
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
                         .frame(width: 22)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(attachment.file?.displayName ?? "Missing file")

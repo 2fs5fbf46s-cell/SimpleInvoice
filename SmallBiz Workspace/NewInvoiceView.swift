@@ -108,7 +108,7 @@ struct NewInvoiceView: View {
                                                 .contentShape(Rectangle())
                                         }
                                         .buttonStyle(.plain)
-                                        .foregroundStyle(SBWTheme.brandBlue)
+                                        .foregroundStyle(SBWTheme.brand)
                                     }
                                 }
                             }

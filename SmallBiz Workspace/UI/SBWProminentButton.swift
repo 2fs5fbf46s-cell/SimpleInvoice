@@ -3,11 +3,11 @@ import SwiftUI
 /// A filled action button that stays readable inside a List row.
 ///
 /// With `.borderedProminent` in a List row, a Label's icon takes the
-/// list's accent (the app blue) instead of the button's white — invisible
+/// list's accent instead of the button's white — invisible
 /// on a blue button and wrong on a green one — and no foreground modifier
 /// reaches it. Drawing the fill ourselves keeps icon and text white.
 struct SBWProminentButtonStyle: ButtonStyle {
-    var tint: Color = SBWTheme.brandBlue
+    var tint: Color = SBWTheme.brandFill
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -37,7 +37,7 @@ private struct WhiteIconLabelStyle: LabelStyle {
 }
 
 extension View {
-    func sbwProminentButton(_ tint: Color = SBWTheme.brandBlue) -> some View {
+    func sbwProminentButton(_ tint: Color = SBWTheme.brandFill) -> some View {
         buttonStyle(SBWProminentButtonStyle(tint: tint))
     }
 }

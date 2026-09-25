@@ -276,20 +276,20 @@ struct BookingAnalyticsView: View {
                             x: .value("Date", point.date),
                             y: .value("Requests", point.requests)
                         )
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
 
                         AreaMark(
                             x: .value("Date", point.date),
                             y: .value("Requests", point.requests)
                         )
-                        .foregroundStyle(SBWTheme.brandBlue.opacity(0.16))
+                        .foregroundStyle(SBWTheme.brand.opacity(0.16))
 
                         LineMark(
                             x: .value("Date", point.date),
                             y: .value("Approved", point.approved)
                         )
-                        .foregroundStyle(SBWTheme.brandGreen)
+                        .foregroundStyle(SBWTheme.success)
                         .lineStyle(StrokeStyle(lineWidth: 2))
                     }
                     .frame(height: 220)
@@ -476,13 +476,13 @@ struct BookingAnalyticsView: View {
     private func colorForFunnelRow(_ id: String) -> Color {
         switch id {
         case "requests":
-            return SBWTheme.brandBlue
+            return SBWTheme.brand
         case "deposit_requested":
             return Color.yellow
         case "deposits_paid":
-            return SBWTheme.brandBlue
+            return SBWTheme.brand
         case "approved":
-            return SBWTheme.brandGreen
+            return SBWTheme.success
         default:
             return .secondary
         }
@@ -493,15 +493,15 @@ struct BookingAnalyticsView: View {
         let tuple: (label: String, fg: Color, bg: Color)
 
         if normalized == "approved" {
-            tuple = ("APPROVED", SBWTheme.brandGreen, SBWTheme.brandGreen.opacity(0.12))
+            tuple = ("APPROVED", SBWTheme.success, SBWTheme.success.opacity(0.12))
         } else if normalized == "declined" {
             tuple = ("DECLINED", .red, .red.opacity(0.12))
         } else if normalized == "deposit_requested" {
             tuple = ("DEPOSIT REQUESTED", .yellow, .yellow.opacity(0.14))
         } else if normalized == "deposit_paid" {
-            tuple = ("DEPOSIT PAID", SBWTheme.brandBlue, SBWTheme.brandBlue.opacity(0.16))
+            tuple = ("DEPOSIT PAID", SBWTheme.brand, SBWTheme.brand.opacity(0.16))
         } else {
-            tuple = ("PENDING", .orange, .orange.opacity(0.12))
+            tuple = ("PENDING", SBWTheme.attention, SBWTheme.attention.opacity(0.12))
         }
 
         return Text(tuple.label)

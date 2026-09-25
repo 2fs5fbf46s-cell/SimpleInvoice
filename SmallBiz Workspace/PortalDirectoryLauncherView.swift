@@ -97,7 +97,7 @@ struct PortalDirectoryLauncherView: View {
                                     Label("Enable Client Portal", systemImage: "togglepower")
                                 }
                                 .buttonStyle(.bordered)
-                                .tint(SBWTheme.brandBlue)
+                                .tint(SBWTheme.brand)
                             }
                         }
                         .padding(.vertical, 4)

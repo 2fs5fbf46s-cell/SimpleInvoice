@@ -404,12 +404,12 @@ struct JobDetailView: View {
         case .inProgress: reached = 2
         case .completed, .canceled: reached = 3
         }
-        let lastColor: Color = displayStatus == .canceled ? .red : SBWTheme.brandBlue
+        let lastColor: Color = displayStatus == .canceled ? .red : SBWTheme.brand
         return VStack(spacing: 4) {
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
                     Capsule()
-                        .fill(index < reached ? (index == 2 ? lastColor : SBWTheme.brandBlue) : Color.secondary.opacity(0.25))
+                        .fill(index < reached ? (index == 2 ? lastColor : SBWTheme.brand) : Color.secondary.opacity(0.25))
                         .frame(height: 4)
                 }
             }
@@ -516,7 +516,7 @@ struct JobDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Next step")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
 
             switch displayStatus {
             case .needsScheduling:
@@ -554,7 +554,7 @@ struct JobDetailView: View {
                 )
                 NextStepButtons {
                     Button { completeJob() } label: { Label("Complete Job", systemImage: "checkmark") }
-                        .sbwProminentButton(SBWTheme.brandGreen)
+                        .sbwProminentButton(SBWTheme.successFill)
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {
                         Button { showJobCamera = true } label: { Label("Take Photo", systemImage: "camera") }
                             .buttonStyle(.bordered)
@@ -719,7 +719,7 @@ struct JobDetailView: View {
                     .font(.caption)
             }
             .frame(maxWidth: .infinity)
-            .foregroundStyle(enabled ? SBWTheme.brandBlue : Color.secondary.opacity(0.5))
+            .foregroundStyle(enabled ? SBWTheme.brand : Color.secondary.opacity(0.5))
         }
         .disabled(!enabled)
     }
@@ -809,7 +809,7 @@ struct JobDetailView: View {
                     icon: "banknote",
                     title: "Deposit",
                     status: "\(job.depositPaidAtMs != nil ? "Paid" : "Unpaid") \(currency(Double(cents) / 100))",
-                    tint: job.depositPaidAtMs != nil ? SBWTheme.brandGreen : .orange
+                    tint: job.depositPaidAtMs != nil ? SBWTheme.success : SBWTheme.attention
                 ) {
                     if let depositInvoice { invoiceRoute = depositInvoice }
                 }
@@ -832,7 +832,7 @@ struct JobDetailView: View {
                     status: invoice.isPaid || invoice.wasSent
                         ? "\(invoice.isPaid ? "Paid" : (isOverdue(invoice) ? "Overdue" : "Unpaid")) \(currency(invoice.total))"
                         : "Draft",
-                    tint: invoice.isPaid ? SBWTheme.brandGreen : (isOverdue(invoice) ? .red : invoice.wasSent ? .orange : .secondary)
+                    tint: invoice.isPaid ? SBWTheme.success : (isOverdue(invoice) ? .red : invoice.wasSent ? SBWTheme.attention : .secondary)
                 ) { invoiceRoute = invoice }
             }
         }
@@ -879,9 +879,9 @@ struct JobDetailView: View {
 
     private func estimateTint(_ estimate: Invoice) -> Color {
         switch estimateStatusLabel(estimate) {
-        case "Accepted": return SBWTheme.brandGreen
+        case "Accepted": return SBWTheme.success
         case "Declined": return .red
-        case "Sent": return SBWTheme.brandBlue
+        case "Sent": return SBWTheme.brand
         default: return .secondary
         }
     }

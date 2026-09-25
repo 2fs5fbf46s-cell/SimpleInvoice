@@ -155,7 +155,7 @@ struct ClientPickerManualFetchView: View {
                             Label("Import from Contacts", systemImage: "person.crop.circle.badge.plus")
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(SBWTheme.brandBlue)
+                        .tint(SBWTheme.brand)
                     }
 
                     Section("Client") {
@@ -334,7 +334,7 @@ private struct OpenExistingClientBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.turn.down.right")
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
             Text("Opened existing client")
                 .font(.footnote.weight(.semibold))
         }

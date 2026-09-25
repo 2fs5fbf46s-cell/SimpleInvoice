@@ -86,7 +86,7 @@ struct ContractTemplatesView: View {
                                 } label: {
                                     HStack(spacing: 12) {
                                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                            .fill(SBWTheme.brandBlue.opacity(0.8))
+                                            .fill(SBWTheme.brand.opacity(0.8))
                                             .frame(width: 6)
 
                                         VStack(alignment: .leading, spacing: 6) {
@@ -101,7 +101,7 @@ struct ContractTemplatesView: View {
                                                     .font(.caption.weight(.semibold))
                                                     .padding(.horizontal, 8)
                                                     .padding(.vertical, 4)
-                                                    .background(SBWTheme.brandBlue.opacity(0.16))
+                                                    .background(SBWTheme.brand.opacity(0.16))
                                                     .clipShape(Capsule())
                                                     .foregroundStyle(.secondary)
                                             }

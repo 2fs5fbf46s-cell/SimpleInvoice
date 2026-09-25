@@ -42,7 +42,7 @@ struct ClientPortalCard: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .tint(SBWTheme.brandGreen)
+            .tint(SBWTheme.success)
 
             if client.portalEnabled {
                 HStack(spacing: 10) {
@@ -64,7 +64,7 @@ struct ClientPortalCard: View {
                     .buttonStyle(.bordered)
                 }
                 .font(.subheadline.weight(.semibold))
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
             }
         }
         .sheet(item: Binding(

@@ -182,7 +182,7 @@ struct TodayView: View {
             VStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title)
-                    .foregroundStyle(SBWTheme.brandGreen)
+                    .foregroundStyle(SBWTheme.success)
                 Text("You're all caught up").font(.headline)
                 Text("Nothing needs you right now.")
                     .font(.subheadline)
@@ -244,8 +244,8 @@ struct TodayView: View {
     private func color(_ severity: AttentionItem.Severity) -> Color {
         switch severity {
         case .critical: return .red
-        case .warning: return .orange
-        case .info: return SBWTheme.brandBlue
+        case .warning: return SBWTheme.attention
+        case .info: return SBWTheme.brand
         }
     }
 
@@ -346,7 +346,7 @@ struct TodayView: View {
                             }
                         }
                         .frame(height: 4)
-                        .foregroundStyle(selected ? .white : SBWTheme.brandBlue)
+                        .foregroundStyle(selected ? .white : SBWTheme.brand)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)

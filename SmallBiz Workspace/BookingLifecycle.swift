@@ -166,9 +166,9 @@ enum BookingStage: Equatable {
 
     var foreground: Color {
         switch self {
-        case .needsAnswer: return .orange
-        case .awaitingDeposit: return SBWTheme.brandBlue
-        case .confirmed: return SBWTheme.brandGreen
+        case .needsAnswer: return SBWTheme.attention
+        case .awaitingDeposit: return SBWTheme.brand
+        case .confirmed: return SBWTheme.success
         case .declined, .canceled: return .red
         }
     }

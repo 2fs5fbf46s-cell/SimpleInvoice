@@ -297,7 +297,7 @@ struct BusinessSettingsSheet: View {
     private var paymentsBadge: SettingsBadge? {
         guard let business else { return nil }
         return PaymentMethodSummary(business: business).offered.isEmpty
-            ? SettingsBadge(text: "Not set up", color: .orange) : nil
+            ? SettingsBadge(text: "Not set up", color: SBWTheme.attention) : nil
     }
 
     private var remindersSubtitle: String {
@@ -316,7 +316,7 @@ struct BusinessSettingsSheet: View {
         guard !slug.isEmpty else { return nil }
         return profile?.bookingEnabled == false
             ? SettingsBadge(text: "Paused", color: .secondary)
-            : SettingsBadge(text: "Taking bookings", color: .green)
+            : SettingsBadge(text: "Taking bookings", color: SBWTheme.success)
     }
 
     private var site: PublishedBusinessSite? { sites.first { $0.businessID == businessID } }
@@ -337,8 +337,8 @@ struct BusinessSettingsSheet: View {
 
     private var websiteBadge: SettingsBadge? {
         switch site?.status {
-        case .published: return SettingsBadge(text: "Live", color: .green)
-        case .error: return SettingsBadge(text: "Needs attention", color: .orange)
+        case .published: return SettingsBadge(text: "Live", color: SBWTheme.success)
+        case .error: return SettingsBadge(text: "Needs attention", color: SBWTheme.attention)
         default: return nil
         }
     }

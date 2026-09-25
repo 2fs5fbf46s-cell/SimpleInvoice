@@ -244,7 +244,7 @@ private struct ContactImportBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(SBWTheme.brandGreen)
+                .foregroundStyle(SBWTheme.success)
             Text("Filled from Contacts")
                 .font(.footnote.weight(.semibold))
         }

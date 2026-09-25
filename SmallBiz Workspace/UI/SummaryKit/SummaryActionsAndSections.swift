@@ -82,13 +82,13 @@ struct PrimaryActionRow: View {
             Button(role: item.role, action: item.action) { label }
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(!item.isEnabled)
         case .secondary:
             Button(role: item.role, action: item.action) { label }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(!item.isEnabled)
         }
     }

@@ -262,14 +262,14 @@ struct SavedItemsView: View {
 
     private func filterBackground(for option: String) -> Color {
         if option == selectedCategory {
-            return SBWTheme.brandBlue.opacity(0.20)
+            return SBWTheme.brand.opacity(0.20)
         }
         return Color(.secondarySystemFill)
     }
 
     private func filterForeground(for option: String) -> Color {
         if option == selectedCategory {
-            return SBWTheme.brandBlue
+            return SBWTheme.brand
         }
         return .secondary
     }
@@ -479,7 +479,7 @@ private struct CategoriesEditorView: View {
                             Label("Add Category", systemImage: "plus.circle.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(SBWTheme.brandBlue)
+                        .tint(SBWTheme.brand)
                     }
                     .sbwCardRow()
                     .listRowBackground(Color.clear)

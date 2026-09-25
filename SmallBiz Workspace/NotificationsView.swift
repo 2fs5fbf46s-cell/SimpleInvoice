@@ -69,8 +69,8 @@ struct NotificationsView: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(SBWTheme.brandBlue.opacity(0.16))
-                .foregroundStyle(SBWTheme.brandBlue)
+                .background(SBWTheme.brand.opacity(0.16))
+                .foregroundStyle(SBWTheme.brand)
                 .clipShape(Capsule())
 
             Spacer()
@@ -96,7 +96,7 @@ struct NotificationsView: View {
     private func notificationRow(_ item: AppNotification) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Circle()
-                .fill(item.readAtMs == nil ? SBWTheme.brandBlue : Color.clear)
+                .fill(item.readAtMs == nil ? SBWTheme.brand : Color.clear)
                 .frame(width: 10, height: 10)
                 .padding(.top, 6)
 

@@ -147,7 +147,7 @@ struct BookingDetailView: View {
                 Text(title).font(.caption)
             }
             .frame(maxWidth: .infinity)
-            .foregroundStyle(url != nil ? SBWTheme.brandBlue : Color.secondary.opacity(0.5))
+            .foregroundStyle(url != nil ? SBWTheme.brand : Color.secondary.opacity(0.5))
         }
         .disabled(url == nil)
     }
@@ -158,7 +158,7 @@ struct BookingDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Next step")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
 
             switch booking.stage {
             case .needsAnswer:
@@ -168,7 +168,7 @@ struct BookingDetailView: View {
                 )
                 NextStepButtons {
                     Button { confirmConfirm = true } label: { Label("Confirm", systemImage: "checkmark") }
-                        .sbwProminentButton(SBWTheme.brandGreen)
+                        .sbwProminentButton(SBWTheme.successFill)
                     Button { showDepositSheet = true } label: { Label("Ask for Deposit", systemImage: "dollarsign") }
                         .buttonStyle(.bordered)
                 }

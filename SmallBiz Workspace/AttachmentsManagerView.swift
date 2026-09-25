@@ -184,7 +184,7 @@ struct AttachmentsManagerView: View {
                     )
                     Button("Add Attachment") { showFileImporter = true }
                         .buttonStyle(.borderedProminent)
-                        .tint(SBWTheme.brandBlue)
+                        .tint(SBWTheme.brand)
                         .padding(.top, 8)
                 }
                 .listRowBackground(Color.clear)
@@ -198,12 +198,12 @@ struct AttachmentsManagerView: View {
                                 renameTarget = row.file
                                 renameText = row.file.displayName
                             }
-                            .tint(.blue)
+                            .tint(SBWTheme.brand)
 
                             Button("Share") {
                                 shareAttachment(row.file)
                             }
-                            .tint(.teal)
+                            .tint(SBWTheme.brand)
 
                             Button(role: .destructive) {
                                 deleteAttachment(row)

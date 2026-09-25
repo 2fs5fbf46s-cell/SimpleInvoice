@@ -203,9 +203,9 @@ struct ClientDetailView: View {
         HStack(alignment: .center, spacing: 12) {
             Text(client.initials)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
                 .frame(width: 52, height: 52)
-                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.14)))
+                .background(Circle().fill(SBWTheme.brand.opacity(0.14)))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(client.displayName)
@@ -230,7 +230,7 @@ struct ClientDetailView: View {
         } else if overview.overdueCents > 0 {
             pill("Owes \(InvoicePaymentService.currency(overview.owedCents))", color: .red)
         } else if overview.owedCents > 0 {
-            pill("Owes \(InvoicePaymentService.currency(overview.owedCents))", color: .orange)
+            pill("Owes \(InvoicePaymentService.currency(overview.owedCents))", color: SBWTheme.attention)
         }
     }
 
@@ -289,7 +289,7 @@ struct ClientDetailView: View {
                     .font(.caption)
             }
             .frame(maxWidth: .infinity)
-            .foregroundStyle(url != nil ? SBWTheme.brandBlue : Color.secondary.opacity(0.5))
+            .foregroundStyle(url != nil ? SBWTheme.brand : Color.secondary.opacity(0.5))
         }
         .accessibilityHint(url == nil ? "Missing. Opens Edit to add it." : "")
     }
@@ -300,7 +300,7 @@ struct ClientDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Next step")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
 
             switch overview.nextStep {
             case .overdue(let invoice):
@@ -571,7 +571,7 @@ struct ClientDetailView: View {
                     Spacer()
                     Image(systemName: notes.isEmpty ? "plus" : "square.and.pencil")
                         .font(.subheadline)
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
                 }
                 Text(notes.isEmpty ? "Gate codes, preferences, anything to remember. Only you see these." : notes)
                     .font(.subheadline)
@@ -673,7 +673,7 @@ struct ClientDetailView: View {
     private func groupLabel(_ title: String, icon: String, detail: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
                 .frame(width: 22)
             Text(title)
                 .font(.headline)

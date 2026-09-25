@@ -205,12 +205,12 @@ struct ContractDetailView: View {
         case .signed: filled = [true, true, true]
         case .canceled: filled = [true, wasSent, true]
         }
-        let lastColor: Color = display == .canceled ? .red : SBWTheme.brandGreen
+        let lastColor: Color = display == .canceled ? .red : SBWTheme.success
         return VStack(spacing: 4) {
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
                     Capsule()
-                        .fill(filled[index] ? (index == 2 ? lastColor : SBWTheme.brandBlue) : Color.secondary.opacity(0.25))
+                        .fill(filled[index] ? (index == 2 ? lastColor : SBWTheme.brand) : Color.secondary.opacity(0.25))
                         .frame(height: 4)
                 }
             }
@@ -234,7 +234,7 @@ struct ContractDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Next step")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
 
             switch display {
             case .draft:
@@ -264,10 +264,10 @@ struct ContractDetailView: View {
                         Button { safariURL = IdentifiableURL(url: url) } label: {
                             Label("Signed PDF", systemImage: "checkmark.seal")
                         }
-                        .sbwProminentButton(SBWTheme.brandGreen)
+                        .sbwProminentButton(SBWTheme.successFill)
                     } else {
                         Button { previewPDF() } label: { Label("View PDF", systemImage: "doc.richtext") }
-                            .sbwProminentButton(SBWTheme.brandGreen)
+                            .sbwProminentButton(SBWTheme.successFill)
                     }
                     Button { sharePDF() } label: { Label("Share", systemImage: "square.and.arrow.up") }
                         .buttonStyle(.bordered)
@@ -548,7 +548,7 @@ struct ContractDetailView: View {
             }
         }
         .pickerStyle(.menu)
-        .tint(SBWTheme.brandBlue)
+        .tint(SBWTheme.brand)
     }
 
     private var filesGroup: some View {
@@ -604,7 +604,7 @@ struct ContractDetailView: View {
     private func groupLabel(_ title: String, icon: String, detail: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
                 .frame(width: 22)
             Text(title)
                 .font(.headline)

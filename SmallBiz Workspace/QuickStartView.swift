@@ -79,7 +79,7 @@ struct QuickStartProgressHeader: View {
                 value: Double(checklist.completedCount),
                 total: Double(checklist.totalCount)
             )
-            .tint(SBWTheme.brandGreen)
+            .tint(SBWTheme.success)
             .accessibilityHidden(true)
 
             Text(
@@ -104,7 +104,7 @@ struct QuickStartRow: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isComplete ? SBWTheme.brandGreen : Color.secondary)
+                    .foregroundStyle(isComplete ? SBWTheme.success : Color.secondary)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {

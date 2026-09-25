@@ -743,8 +743,8 @@ struct InvoiceDetailView: View {
                                 .font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.18))
-                                .foregroundStyle(.orange)
+                                .background(SBWTheme.attention.opacity(0.18))
+                                .foregroundStyle(SBWTheme.attention)
                                 .clipShape(Capsule())
                         }
                     }
@@ -967,7 +967,7 @@ struct InvoiceDetailView: View {
                                     Task { await resolveManualReport(reportId: report.id, action: "approve") }
                                 }
                                 .buttonStyle(.borderedProminent)
-                                .tint(SBWTheme.brandGreen)
+                                .tint(SBWTheme.success)
                                 .disabled(resolvingManualReportId == report.id)
 
                                 Button("Reject") {
@@ -1028,13 +1028,13 @@ struct InvoiceDetailView: View {
     private var invoiceStatusTrack: some View {
         let stage = invoiceStage
         let reached = stage == .draft ? 1 : stage == .paid ? 3 : 2
-        let middle: Color = stage == .overdue ? .red : (stage == .partPaid ? .orange : SBWTheme.brandBlue)
-        let last: Color = SBWTheme.brandGreen
+        let middle: Color = stage == .overdue ? .red : (stage == .partPaid ? SBWTheme.attention : SBWTheme.brand)
+        let last: Color = SBWTheme.success
         return VStack(spacing: 4) {
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
                     Capsule()
-                        .fill(index < reached ? (index == 2 ? last : (index == 1 ? middle : SBWTheme.brandBlue)) : Color.secondary.opacity(0.25))
+                        .fill(index < reached ? (index == 2 ? last : (index == 1 ? middle : SBWTheme.brand)) : Color.secondary.opacity(0.25))
                         .frame(height: 4)
                 }
             }
@@ -1066,7 +1066,7 @@ struct InvoiceDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Next step")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(invoiceStage == .overdue ? Color.red : SBWTheme.brandBlue)
+                    .foregroundStyle(invoiceStage == .overdue ? Color.red : SBWTheme.brand)
 
                 switch invoiceStage {
                 case .draft: invoiceDraftStep
@@ -1142,7 +1142,7 @@ struct InvoiceDetailView: View {
             Button("Paid already? Record a payment") { showRecordPayment = true }
                 .font(.caption)
                 .buttonStyle(.borderless)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
         }
     }
 
@@ -1162,7 +1162,7 @@ struct InvoiceDetailView: View {
                     .multilineTextAlignment(.leading)
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.orange)
+            .foregroundStyle(SBWTheme.attention)
         }
     }
 
@@ -1542,13 +1542,13 @@ struct InvoiceDetailView: View {
         let stage = estimateStage
         let reached: Int = stage == "draft" ? 1 : stage == "sent" ? 2 : 3
         let decisionLabel = stage == "accepted" ? "Accepted" : stage == "declined" ? "Declined" : "Decision"
-        let decisionColor: Color = stage == "declined" ? .red : stage == "accepted" ? SBWTheme.brandGreen : SBWTheme.brandBlue
+        let decisionColor: Color = stage == "declined" ? .red : stage == "accepted" ? SBWTheme.success : SBWTheme.brand
 
         return VStack(spacing: 4) {
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
                     Capsule()
-                        .fill(index < reached ? (index == 2 ? decisionColor : SBWTheme.brandBlue) : Color.secondary.opacity(0.25))
+                        .fill(index < reached ? (index == 2 ? decisionColor : SBWTheme.brand) : Color.secondary.opacity(0.25))
                         .frame(height: 4)
                 }
             }
@@ -1571,7 +1571,7 @@ struct InvoiceDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Next step")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(SBWTheme.brandBlue)
+                    .foregroundStyle(SBWTheme.brand)
 
                 switch estimateStage {
                 case "sent": estimateSentStep
@@ -1680,7 +1680,7 @@ struct InvoiceDetailView: View {
         }
         .font(.caption)
         .buttonStyle(.plain)
-        .foregroundStyle(SBWTheme.brandBlue)
+        .foregroundStyle(SBWTheme.brand)
     }
 
     @ViewBuilder
@@ -2005,7 +2005,7 @@ struct InvoiceDetailView: View {
         if prominent {
             button.sbwProminentButton()
         } else {
-            button.buttonStyle(.bordered).tint(SBWTheme.brandBlue)
+            button.buttonStyle(.bordered).tint(SBWTheme.brand)
         }
 
     }
@@ -2043,7 +2043,7 @@ struct InvoiceDetailView: View {
     private func portalNoticeRow(icon: String, title: String, detail: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon)
-                .foregroundStyle(.orange)
+                .foregroundStyle(SBWTheme.attention)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
@@ -2064,7 +2064,7 @@ struct InvoiceDetailView: View {
     private func portalErrorRow(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(SBWTheme.attention)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(message)

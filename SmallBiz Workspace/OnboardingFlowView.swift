@@ -303,7 +303,7 @@ struct OnboardingFlowView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
             } else if step == 1 {
                 Button("Back") {
                     Haptics.lightTap()
@@ -325,7 +325,7 @@ struct OnboardingFlowView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(trimmedBusinessName.isEmpty || isSaving)
             } else if step == 2 {
                 Button("Skip for now") {
@@ -348,7 +348,7 @@ struct OnboardingFlowView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(clientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
             } else if step == 3 {
                 Button("Skip for now") {
@@ -365,7 +365,7 @@ struct OnboardingFlowView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
             } else {
                 Button("Not Now") {
                     Haptics.lightTap()
@@ -387,7 +387,7 @@ struct OnboardingFlowView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(isSaving)
             }
         }
@@ -586,7 +586,7 @@ struct OnboardingFlowView: View {
         HStack(spacing: 5) {
             ForEach(0..<Self.totalSteps, id: \.self) { index in
                 Capsule()
-                    .fill(index == step ? SBWTheme.brandBlue : Color.primary.opacity(0.14))
+                    .fill(index == step ? SBWTheme.brand : Color.primary.opacity(0.14))
                     .frame(width: index == step ? 16 : 6, height: 6)
                     .animation(.easeInOut(duration: 0.2), value: step)
             }
@@ -608,7 +608,7 @@ struct OnboardingFlowView: View {
     private func featureRow(icon: String, title: String, subtitle: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

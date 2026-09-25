@@ -59,7 +59,7 @@ struct StatusChip: View {
             case .pending:
                 return (Color.orange, Color.orange.opacity(0.12))
             case .active:
-                return (SBWTheme.brandGreen, SBWTheme.brandGreen.opacity(0.12))
+                return (SBWTheme.success, SBWTheme.success.opacity(0.12))
             case .overdue, .error:
                 return (.red, Color.red.opacity(0.12))
             case .custom(let value):

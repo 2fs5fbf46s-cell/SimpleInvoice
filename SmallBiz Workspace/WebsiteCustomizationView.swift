@@ -91,7 +91,7 @@ struct WebsiteCustomizationView: View {
                     showAlert = true
                 }
                 .fontWeight(.semibold)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -209,7 +209,7 @@ struct WebsiteCustomizationView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Site Address")
                         .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
 
                     Text("The web address customers use to find your site")
                         .foregroundStyle(.secondary)
@@ -316,7 +316,7 @@ struct WebsiteCustomizationView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
                         .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
                     Text(description)
                         .font(.scaledSystem(size: 11, relativeTo: .caption2))
                         .foregroundStyle(.secondary)
@@ -327,7 +327,7 @@ struct WebsiteCustomizationView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
-                    .foregroundStyle(SBWTheme.brandBlue)
+                    .foregroundStyle(SBWTheme.brand)
                     .padding(.top, 4)
             }
             .padding(.horizontal, 14)
@@ -345,13 +345,13 @@ struct WebsiteCustomizationView: View {
             color = .secondary
             text = "Draft"
         case .queued:
-            color = .orange
+            color = SBWTheme.attention
             text = "Queued"
         case .publishing:
-            color = SBWTheme.brandBlue
+            color = SBWTheme.brand
             text = "Publishing"
         case .published:
-            color = SBWTheme.brandGreen
+            color = SBWTheme.success
             text = "Published"
         case .error:
             color = .red
@@ -472,9 +472,9 @@ struct WebsiteCustomizationView: View {
     private var siteDomainStatusColor: Color {
         switch siteDomainStatus {
         case "active":
-            return SBWTheme.brandGreen
+            return SBWTheme.success
         case "dns_pending":
-            return .orange
+            return SBWTheme.attention
         default:
             return .secondary
         }
@@ -634,10 +634,10 @@ private struct WebsiteServicesView: View {
                             Text("Add Service")
                                 .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
                         }
-                        .foregroundStyle(SBWTheme.brandBlue)
+                        .foregroundStyle(SBWTheme.brand)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(SBWTheme.blueTint)
+                        .background(SBWTheme.brandTint)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -658,7 +658,7 @@ private struct WebsiteServicesView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") { persistRows() }
                     .fontWeight(.semibold)
-                    .foregroundStyle(SBWTheme.brandBlue)
+                    .foregroundStyle(SBWTheme.brand)
             }
         }
         .onAppear {
@@ -815,7 +815,7 @@ private struct WebsiteAboutView: View {
                     persist()
                 }
                 .fontWeight(.semibold)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
             }
         }
         .onAppear {
@@ -909,10 +909,10 @@ private struct WebsiteTeamView: View {
                                 Text("Add Team Member")
                                     .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                             }
-                            .foregroundStyle(SBWTheme.brandBlue)
+                            .foregroundStyle(SBWTheme.brand)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(SBWTheme.blueTint)
+                            .background(SBWTheme.brandTint)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -939,7 +939,7 @@ private struct WebsiteTeamView: View {
                     dismiss()
                 }
                 .fontWeight(.semibold)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
             }
         }
         .onAppear {
@@ -1185,10 +1185,10 @@ private struct WebsiteGalleryView: View {
                         Text("Add Image")
                             .font(.scaledSystem(size: 18, weight: .semibold, relativeTo: .body))
                     }
-                    .foregroundStyle(SBWTheme.brandBlue)
+                    .foregroundStyle(SBWTheme.brand)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(SBWTheme.blueTint)
+                    .background(SBWTheme.brandTint)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 12)
@@ -1244,7 +1244,7 @@ private struct SectionTitle: View {
             .frame(width: 24)
         Text(text)
             .font(.scaledSystem(size: 17, weight: .semibold, relativeTo: .body))
-            .foregroundStyle(SBWTheme.brandBlue)
+            .foregroundStyle(SBWTheme.brand)
     }
     .padding(.horizontal, 12)
     .padding(.top, 12)

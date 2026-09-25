@@ -124,7 +124,7 @@ struct CoachMarksOverlay: View {
                                 }
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(SBWTheme.brandBlue)
+                            .tint(SBWTheme.brand)
                         }
                     }
                 }

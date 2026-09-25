@@ -27,7 +27,7 @@ struct AppStartupShellView: View {
                         .font(.title2.weight(.semibold))
                         .multilineTextAlignment(.center)
 
-                    Text("Preparing your workspace...")
+                    Text("Getting your workspace ready…")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -42,21 +42,9 @@ struct AppStartupShellView: View {
     }
 
     private var logo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(SBWTheme.brandGradient)
-
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.white.opacity(0.20), lineWidth: 1)
-
-            Image(systemName: "square.grid.2x2.fill")
-                .font(.scaledSystem(size: 38, weight: .semibold, relativeTo: .largeTitle))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white)
-        }
-        .frame(width: 76, height: 76)
-        .shadow(color: SBWTheme.brandBlue.opacity(0.28), radius: 22, x: 0, y: 14)
-        .accessibilityHidden(true)
+        SBWLogoMark()
+            .frame(width: 76, height: 76)
+            .shadow(color: SBWTheme.evergreen.opacity(0.25), radius: 18, x: 0, y: 10)
     }
 
     @ViewBuilder
@@ -67,7 +55,7 @@ struct AppStartupShellView: View {
                 VStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.scaledSystem(size: 24, weight: .semibold, relativeTo: .title2))
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(SBWTheme.attention)
 
                     Text(phase.message)
                         .font(.subheadline.weight(.semibold))
@@ -85,7 +73,7 @@ struct AppStartupShellView: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brandFill)
             }
 
         default:

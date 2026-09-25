@@ -122,7 +122,7 @@ struct PortalPreviewView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(SBWTheme.brandBlue)
+            .tint(SBWTheme.brand)
 
             Button("Disable Portal for Selected Client") {
                 run("Disabled portal") { service, clientID in
@@ -175,7 +175,7 @@ struct PortalPreviewView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(SBWTheme.brandGreen)
+            .tint(SBWTheme.success)
         }
         .sbwPortalCardRow()
     }
@@ -256,7 +256,7 @@ struct PortalPreviewView: View {
                 ForEach(visibleAudit) { e in
                     HStack(alignment: .top, spacing: 8) {
                         Circle()
-                            .fill(SBWTheme.brandBlue.opacity(0.65))
+                            .fill(SBWTheme.brand.opacity(0.65))
                             .frame(width: 6, height: 6)
                             .padding(.top, 6)
 
@@ -295,7 +295,7 @@ struct PortalPreviewView: View {
     private func sectionTitle(_ text: String) -> some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 999, style: .continuous)
-                .fill(SBWTheme.brandBlue)
+                .fill(SBWTheme.brand)
                 .frame(width: 4, height: 16)
             Text(text.uppercased())
                 .font(.caption.weight(.bold))

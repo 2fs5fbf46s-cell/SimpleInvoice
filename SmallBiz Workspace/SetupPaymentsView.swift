@@ -258,7 +258,7 @@ struct SetupPaymentsView: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.footnote)
-                .foregroundStyle(.orange)
+                .foregroundStyle(SBWTheme.attention)
 
             Text(text)
                 .font(.footnote)
@@ -270,12 +270,12 @@ struct SetupPaymentsView: View {
             Button("Retry") { reloadForActiveBusiness() }
                 .font(.footnote.weight(.semibold))
                 .buttonStyle(.plain)
-                .foregroundStyle(SBWTheme.brandBlue)
+                .foregroundStyle(SBWTheme.brand)
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.orange.opacity(0.12))
+                .fill(SBWTheme.attention.opacity(0.12))
         )
     }
 
@@ -320,7 +320,7 @@ struct SetupPaymentsView: View {
             Button(actionTitle, action: action)
                 .buttonStyle(.plain)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(SBWTheme.brandBlue.opacity(0.85))
+                .foregroundStyle(SBWTheme.brand.opacity(0.85))
                 .disabled(actionDisabled)
             if isBusy {
                 ProgressView()
@@ -369,7 +369,7 @@ struct SetupPaymentsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(isStartingStripe || isLoadingStripe)
             }
         }
@@ -426,7 +426,7 @@ struct SetupPaymentsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(SBWTheme.brandBlue)
+                .tint(SBWTheme.brand)
                 .disabled(isLoadingPayPalStatus || isStartingPayPal)
             }
         }
@@ -461,7 +461,7 @@ struct SetupPaymentsView: View {
         ) {
             Text(squareSummaryText(for: business, configured: configured))
                 .font(.caption)
-                .foregroundColor(configured ? .secondary : .orange)
+                .foregroundColor(configured ? .secondary : SBWTheme.attention)
         }
     }
 
@@ -494,7 +494,7 @@ struct SetupPaymentsView: View {
         ) {
             Text(cashAppSummaryText(for: business, configured: configured))
                 .font(.caption)
-                .foregroundColor(configured ? .secondary : .orange)
+                .foregroundColor(configured ? .secondary : SBWTheme.attention)
         }
     }
 
@@ -527,7 +527,7 @@ struct SetupPaymentsView: View {
         ) {
             Text(venmoSummaryText(for: business, configured: configured))
                 .font(.caption)
-                .foregroundColor(configured ? .secondary : .orange)
+                .foregroundColor(configured ? .secondary : SBWTheme.attention)
         }
     }
 
@@ -560,7 +560,7 @@ struct SetupPaymentsView: View {
         ) {
             Text(achSummaryText(for: business, configured: configured))
                 .font(.caption)
-                .foregroundColor(configured ? .secondary : .orange)
+                .foregroundColor(configured ? .secondary : SBWTheme.attention)
         }
     }
 
@@ -1297,9 +1297,9 @@ private enum ProviderStatusStyle {
     var background: Color {
         switch self {
         case .disabled: return Color.primary.opacity(0.1)
-        case .active: return Color.green.opacity(0.2)
-        case .enabled: return Color.blue.opacity(0.2)
-        case .pending: return Color.orange.opacity(0.2)
+        case .active: return SBWTheme.success.opacity(0.2)
+        case .enabled: return SBWTheme.brandTint
+        case .pending: return SBWTheme.attention.opacity(0.2)
         case .notConnected: return Color.primary.opacity(0.12)
         case .error: return Color.red.opacity(0.2)
         case .info: return Color.primary.opacity(0.12)
@@ -1309,9 +1309,9 @@ private enum ProviderStatusStyle {
     var foreground: Color {
         switch self {
         case .disabled: return .secondary
-        case .active: return .green
+        case .active: return SBWTheme.success
         case .enabled: return .blue
-        case .pending: return .orange
+        case .pending: return SBWTheme.attention
         case .notConnected: return .secondary
         case .error: return .red
         case .info: return .secondary
@@ -1439,7 +1439,7 @@ private struct PaymentProviderCard<Content: View>: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(SBWTheme.brandBlue)
+                    .tint(SBWTheme.brand)
                     .disabled(primaryAction.isDisabled)
                 }
             } else if let hintWhenDisabled, !hintWhenDisabled.isEmpty {

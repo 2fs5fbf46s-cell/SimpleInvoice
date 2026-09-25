@@ -136,7 +136,7 @@ struct ClientListView: View {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
-                                .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
+                                .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("New Client")
@@ -180,11 +180,11 @@ struct ClientListView: View {
                             .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                 if let url = ClientContact.phoneURL(entry.client, scheme: "tel") {
                                     Button { openURL(url) } label: { Label("Call", systemImage: "phone.fill") }
-                                        .tint(SBWTheme.brandGreen)
+                                        .tint(SBWTheme.success)
                                 }
                                 if let url = ClientContact.phoneURL(entry.client, scheme: "sms") {
                                     Button { openURL(url) } label: { Label("Text", systemImage: "message.fill") }
-                                        .tint(SBWTheme.brandBlue)
+                                        .tint(SBWTheme.brand)
                                 }
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -350,9 +350,9 @@ private struct ClientListRow: View {
         HStack(spacing: 12) {
             Text(client.initials)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(client.isArchived ? Color.secondary : SBWTheme.brandBlue)
+                .foregroundStyle(client.isArchived ? Color.secondary : SBWTheme.brand)
                 .frame(width: 38, height: 38)
-                .background(Circle().fill((client.isArchived ? Color.secondary : SBWTheme.brandBlue).opacity(0.14)))
+                .background(Circle().fill((client.isArchived ? Color.secondary : SBWTheme.brand).opacity(0.14)))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(client.displayName)

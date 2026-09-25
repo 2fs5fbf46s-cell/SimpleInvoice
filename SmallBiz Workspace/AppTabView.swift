@@ -138,7 +138,7 @@ struct AppTabView: View {
             }
             .frame(width: 0, height: 0)
         )
-        .tint(SBWTheme.brandBlue)
+        .tint(SBWTheme.brand)
 
         .onChange(of: tab) { _, newValue in
             if newValue == .create {
