@@ -60,7 +60,8 @@ struct TodayView: View {
     private var upcomingWeek: [WeekDay] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: .now)
-        let scopedJobs = jobs.scoped(to: effectiveBusinessID)
+        // A canceled job (a canceled booking, say) isn't on the schedule.
+        let scopedJobs = jobs.scoped(to: effectiveBusinessID).filter { $0.stage != .canceled }
 
         return (0..<7).map { offset in
             let day = calendar.date(byAdding: .day, value: offset, to: today) ?? today

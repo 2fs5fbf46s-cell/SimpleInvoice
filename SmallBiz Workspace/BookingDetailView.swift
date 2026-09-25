@@ -302,12 +302,16 @@ struct BookingDetailView: View {
         }
     }
 
+    private var isClosed: Bool {
+        booking.stage == .canceled || booking.stage == .declined
+    }
+
     private var paymentCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Payment").font(.headline)
                 Spacer()
-                if booking.stage != .canceled {
+                if !isClosed {
                     Button(booking.bookingTotalAmountCents == nil ? "Set Price" : "Change Price") { showPrice = true }
                         .font(.subheadline)
                         .buttonStyle(.borderless)
@@ -317,7 +321,15 @@ struct BookingDetailView: View {
             if let deposit = booking.depositAmountCents, deposit > 0 {
                 row("Deposit", "\(InvoicePaymentService.currency(deposit)) · \(booking.depositPaid ? "paid" : ((booking.depositWaivedAtMs ?? 0) > 0 ? "not needed" : "not paid yet"))")
             }
-            if let total = booking.bookingTotalAmountCents, total > 0 {
+            if isClosed {
+                // Nothing is owed on a booking that won't happen. A paid
+                // deposit isn't refunded automatically, so say so.
+                if booking.depositPaid, let deposit = booking.depositAmountCents, deposit > 0 {
+                    Text("The \(InvoicePaymentService.currency(deposit)) deposit isn't refunded automatically. Refund it yourself if you owe it back.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let total = booking.bookingTotalAmountCents, total > 0 {
                 let paid = booking.depositPaid ? (booking.depositAmountCents ?? 0) : 0
                 row("Still owed", InvoicePaymentService.currency(max(0, total - paid)))
             }
@@ -369,8 +381,15 @@ struct BookingDetailView: View {
                 job = await BookingWorkSetup.ensureJob(for: updated, businessID: businessID, context: modelContext)
             }
             Haptics.success()
-            notice = "Confirmed. \(firstName) is emailed\(job == nil ? "" : ", and the job is on your calendar")."
+            notice = "Confirmed. \(firstName) is emailed\(Self.jobNote(job, calendar: "is on your calendar"))."
         }
+    }
+
+    /// The end of a confirm/cancel notice. Only claims the calendar when the
+    /// job really has an event there (calendar access can be refused).
+    static func jobNote(_ job: Job?, calendar: String, otherwise: String = "is set up") -> String {
+        guard let job else { return "" }
+        return ", and the job " + (job.calendarEventId == nil ? otherwise : calendar)
     }
 
     private func decline() {
@@ -383,11 +402,12 @@ struct BookingDetailView: View {
     private func cancel() {
         let message = note.trimmingCharacters(in: .whitespacesAndNewlines)
         perform({ try await BookingActions.cancel(booking, message: message) }) { _ in
+            let note = Self.jobNote(job, calendar: "is off your calendar", otherwise: "is canceled")
             if let job {
                 await JobLifecycle.cancel(job)
                 try? modelContext.save()
             }
-            notice = "Canceled. \(firstName) is emailed\(job == nil ? "" : ", and the job is off your calendar")."
+            notice = "Canceled. \(firstName) is emailed\(note)."
         }
     }
 

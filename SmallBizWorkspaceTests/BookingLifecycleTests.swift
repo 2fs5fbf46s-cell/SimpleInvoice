@@ -174,4 +174,18 @@ final class BookingLifecycleTests: XCTestCase {
         invoice.sourceBookingDepositPaidAtMs = 1_790_000_000_000
         XCTAssertEqual(invoice.paidCents, 5000)
     }
+
+    // Calendar access can be refused; the notice mustn't claim an event.
+    func testTheNoticeOnlyMentionsTheCalendarWhenTheJobIsOnIt() {
+        let job = Job(businessID: businessID, title: "Mow", startDate: .now, endDate: .now)
+        XCTAssertEqual(BookingDetailView.jobNote(nil, calendar: "is on your calendar"), "")
+        XCTAssertEqual(BookingDetailView.jobNote(job, calendar: "is on your calendar"), ", and the job is set up")
+        job.calendarEventId = "EVT-1"
+        XCTAssertEqual(BookingDetailView.jobNote(job, calendar: "is on your calendar"), ", and the job is on your calendar")
+    }
+
+    func testTheTimeRangeStaysTogetherWhenItWraps() {
+        let item = booking()
+        XCTAssertTrue(item.whenText.contains("\u{2060}–\u{2060}"))
+    }
 }

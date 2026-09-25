@@ -109,7 +109,8 @@ struct BookingRequestItem: Identifiable, Hashable {
         let day = start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
         let from = start.formatted(date: .omitted, time: .shortened)
         guard let end else { return "\(day) · \(from)" }
-        return "\(day) · \(from)–\(end.formatted(date: .omitted, time: .shortened))"
+        // Word joiners keep "10:00–10:30" on one line when the text wraps.
+        return "\(day) · \(from)\u{2060}–\u{2060}\(end.formatted(date: .omitted, time: .shortened))"
     }
 }
 

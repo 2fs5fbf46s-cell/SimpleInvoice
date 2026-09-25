@@ -151,9 +151,12 @@ private enum DashboardMetricsService {
             .filter { !isDoneOrCanceled($0) }
             .count
 
+        // A confirmed booking has a job; count it once, as the job.
+        let bookingsWithJobs = Set(jobs.compactMap(\.sourceBookingRequestId))
         let upcomingBookingCount = bookingRequests
             .filter { $0.businessId.lowercased() == businessIDString }
             .filter { isSchedulableBookingStatus($0.status) }
+            .filter { !bookingsWithJobs.contains($0.requestId) }
             .filter { request in
                 guard let start = parseBookingDate(request.requestedStart) else { return false }
                 return start >= now
@@ -184,7 +187,7 @@ private enum DashboardMetricsService {
 
     private static func isSchedulableBookingStatus(_ raw: String) -> Bool {
         let status = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return status == "approved" || status == "deposit_requested"
+        return status == "approved" || status == "deposit_paid" || status == "deposit_requested"
     }
 
     private static func parseBookingDate(_ raw: String?) -> Date? {
