@@ -268,7 +268,7 @@ struct DashboardView: View {
                                 )
                             }
 
-                            NavigationLink { ContractsHomeView(businessID: effectiveBusinessID) } label: {
+                            NavigationLink { ContractListView(businessID: effectiveBusinessID) } label: {
                                 TileCard(
                                     title: "Contracts",
                                     subtitle: "View & send",

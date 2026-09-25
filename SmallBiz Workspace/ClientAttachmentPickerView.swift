@@ -10,6 +10,8 @@ import SwiftData
 
 struct ClientAttachmentPickerView: View {
     @Environment(\.dismiss) private var dismiss
+    /// Only this business's files; nil lists everything (older callers).
+    var businessID: UUID? = nil
     let onPick: (FileItem) -> Void
 
     @State private var searchText: String = ""
@@ -19,8 +21,9 @@ struct ClientAttachmentPickerView: View {
 
     private var filtered: [FileItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return allFiles }
-        return allFiles.filter {
+        let scoped = businessID.map { id in allFiles.filter { $0.folder?.businessID == id } } ?? allFiles
+        if q.isEmpty { return scoped }
+        return scoped.filter {
             $0.displayName.lowercased().contains(q) ||
             $0.originalFileName.lowercased().contains(q)
         }

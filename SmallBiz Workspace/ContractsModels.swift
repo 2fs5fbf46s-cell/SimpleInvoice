@@ -49,6 +49,15 @@ final class Contract {
     
     // Signing metadata (fast UI / reporting)
     var signedAt: Date? = nil
+    /// When it was first emailed for signature (Send). Nil for drafts and for
+    /// contracts sent by older builds, which never emailed.
+    var sentAt: Date? = nil
+    var lastReminderAt: Date? = nil
+    var canceledAt: Date? = nil
+    /// The server's stamped, signed PDF (public blob URL), once signed in the portal.
+    var signedPDFURL: String? = nil
+    /// "portal" (the client signed online) or "in_person" (marked signed here).
+    var signedMethod: String? = nil
     var signedByName: String = ""
 
     /// SHA-256 of the body at the moment it was signed. See `ContractSignLock`:

@@ -17,6 +17,7 @@ struct ContractTemplatesView: View {
 
     @State private var showingUseTemplates = false
     @State private var saveError: String? = nil
+    @State private var pendingDelete: [ContractTemplate] = []
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
@@ -159,7 +160,17 @@ struct ContractTemplatesView: View {
                     }
             }
         }
-        .alert("Save Failed", isPresented: Binding(
+        .confirmationDialog(
+            pendingDelete.count == 1 ? "Delete \"\(pendingDelete[0].name.isEmpty ? "Untitled" : pendingDelete[0].name)\"?" : "Delete \(pendingDelete.count) templates?",
+            isPresented: Binding(get: { !pendingDelete.isEmpty }, set: { if !$0 { pendingDelete = [] } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { confirmDelete() }
+            Button("Cancel", role: .cancel) { pendingDelete = [] }
+        } message: {
+            Text("Contracts already made from it keep their text. This can't be undone.")
+        }
+        .alert("Templates", isPresented: Binding(
             get: { saveError != nil },
             set: { if !$0 { saveError = nil } }
         )) {
@@ -191,13 +202,20 @@ struct ContractTemplatesView: View {
         }
     }
 
+    /// Asks first; built-in templates can't be deleted (they come back on
+    /// the next launch anyway).
     private func deleteTemplates(at offsets: IndexSet) {
-        let toDelete = offsets.map { filteredTemplates[$0] }
-        for t in toDelete {
-            if t.isBuiltIn { continue }
-            modelContext.delete(t)
+        let custom = offsets.map { filteredTemplates[$0] }.filter { !$0.isBuiltIn }
+        guard !custom.isEmpty else {
+            saveError = "Built-in templates can't be deleted. You can edit their text instead."
+            return
         }
+        pendingDelete = custom
+    }
 
+    private func confirmDelete() {
+        for template in pendingDelete { modelContext.delete(template) }
+        pendingDelete = []
         do {
             try modelContext.save()
         } catch {

@@ -60,6 +60,7 @@ struct JobDetailView: View {
 
     // Contracts navigation (avoid SwiftData NavigationLink freeze)
     @State private var selectedContract: Contract? = nil
+    @State private var showNewContract = false
     @State private var selectedPhotoAttachment: JobAttachment? = nil
     @State private var folderSheetItem: JobFolderSheetItem? = nil
     @State private var jobFolder: Folder? = nil
@@ -108,6 +109,20 @@ struct JobDetailView: View {
         jobScreen
         .navigationDestination(item: $selectedContract) { c in
             ContractDetailView(contract: c)
+        }
+        .sheet(isPresented: $showNewContract) {
+            NavigationStack {
+                CreateContractStartView(
+                    businessID: job.businessID,
+                    client: linkedClient,
+                    job: job,
+                    onCreated: { contract in
+                        showNewContract = false
+                        DispatchQueue.main.async { selectedContract = contract }
+                    },
+                    onCancel: { showNewContract = false }
+                )
+            }
         }
         .sheet(item: $folderSheetItem) { item in
             NavigationStack {
@@ -738,8 +753,18 @@ struct JobDetailView: View {
 
     private var paperworkCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Paperwork")
-                .font(.headline)
+            HStack {
+                Text("Paperwork")
+                    .font(.headline)
+                Spacer()
+                Menu {
+                    Button { createJobEstimate() } label: { Label("New Estimate", systemImage: "doc.text.magnifyingglass") }
+                    Button { showNewContract = true } label: { Label("New Contract", systemImage: "signature") }
+                } label: {
+                    Label("New", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
 
             let contracts = jobContracts
             if jobEstimates.isEmpty && depositInvoice == nil && contracts.isEmpty && finalInvoices.isEmpty {
@@ -771,11 +796,12 @@ struct JobDetailView: View {
             }
 
             ForEach(contracts) { contract in
+                let status = ContractDisplayStatus(contract)
                 paperworkRow(
                     icon: "signature",
                     title: contract.title.isEmpty ? "Contract" : contract.title,
-                    status: statusLabel(contract.status),
-                    tint: contract.status == .signed ? SBWTheme.brandGreen : SBWTheme.brandBlue
+                    status: status.label,
+                    tint: status.foreground
                 ) { selectedContract = contract }
             }
 
@@ -1425,41 +1451,6 @@ struct JobDetailView: View {
         return ["jpg", "jpeg", "png", "heic", "gif", "webp"].contains(ext)
     }
 
-    private var linkedContractsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Contracts")
-                .font(.headline)
-
-            let contracts = (job.contracts ?? [])
-
-            if contracts.isEmpty {
-                Text("No contracts linked to this job yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(contracts) { c in
-                    Button {
-                        selectedContract = c
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.title.isEmpty ? "Contract" : c.title)
-                                Text(statusLabel(c.status))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .sbwJobCardRow()
-    }
-
     private var filesCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             // One button and a menu: seven grey folder buttons weighed more
@@ -1509,15 +1500,6 @@ struct JobDetailView: View {
             scheduleSave()
         } catch {
             saveError = error.localizedDescription
-        }
-    }
-
-    private func statusLabel(_ status: ContractStatus) -> String {
-        switch status {
-        case .draft: return "Draft"
-        case .sent: return "Sent"
-        case .signed: return "Signed"
-        case .cancelled: return "Canceled"
         }
     }
 

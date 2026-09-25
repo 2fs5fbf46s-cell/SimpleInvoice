@@ -168,6 +168,28 @@ enum PortalAutoSyncService {
         contract.portalLastUploadError = nil
         try? context.save()
 
+        // A draft's PDF never goes up (the upload created a portal record for
+        // it). If it was in front of the client before, the index call takes it
+        // back off their list; otherwise nothing is sent at all.
+        if contract.status == .draft {
+            do {
+                try await PortalBackend.shared.indexContractForPortalDirectory(contract: contract)
+                contract.portalNeedsUpload = false
+                contract.portalUploadInFlight = false
+                contract.portalLastUploadedHash = currentHash
+                contract.portalLastUploadError = nil
+                try context.save()
+                return .uploaded
+            } catch {
+                let message = truncatedErrorMessage(error)
+                contract.portalUploadInFlight = false
+                contract.portalNeedsUpload = true
+                contract.portalLastUploadError = message
+                try? context.save()
+                return .failed(message)
+            }
+        }
+
         do {
             let businessProfile = fetchProfile(businessID: client.businessID, context: context)
             let pdfData = ContractPDFGenerator.makePDFData(contract: contract, business: businessProfile)

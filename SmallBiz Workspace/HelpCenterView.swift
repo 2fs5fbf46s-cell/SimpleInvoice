@@ -283,15 +283,15 @@ private struct FAQCategory: Identifiable {
         FAQCategory(title: "Contracts", items: [
             FAQItem(
                 question: "Can I edit a contract after a client signs it?",
-                answer: "No — the contract body locks the moment it's signed, and the status picker won't even offer Signed as an option to select by hand. This protects the record of what your client actually agreed to. If terms change, send a new contract."
+                answer: "No. The terms lock when you send a contract, and for good once it's signed. While it's waiting for a signature you can tap Revise, which takes it back from the client until you send the new version. Once signed, send a new contract if the terms change."
             ),
             FAQItem(
                 question: "How does a client sign a contract?",
-                answer: "Open the contract and use the \u{2026} menu to Open in Client Portal, or share the portal link from the contract summary. They review and sign from there."
+                answer: "Open the contract and tap Send for Signature. Your client gets an email with a link to review and sign it in their client portal, and the contract shows Signed here as soon as they do. If they signed on paper, use Mark as Signed."
             ),
             FAQItem(
                 question: "What's the Music Split Sheet?",
-                answer: "A guided, structured form for splitting songwriting or production credit and royalties between contributors, available from Create From Template on the Contracts screen."
+                answer: "A guided, structured form for splitting songwriting or production credit and royalties between contributors, available when you start a new contract."
             )
         ]),
         FAQCategory(title: "Clients & Client Portal", items: [
@@ -301,7 +301,7 @@ private struct FAQCategory: Identifiable {
             ),
             FAQItem(
                 question: "What is the Client Portal?",
-                answer: "A secure page where a specific client can view their invoices, contracts and shared files without needing an account. Turn it on per client from the client's edit screen."
+                answer: "A secure page where a specific client can view their invoices, contracts and shared files without needing an account. Turn it on or off under Client portal on the client's screen."
             ),
             FAQItem(
                 question: "What does \u{201c}Portal On\u{201d} mean in the Clients filter?",

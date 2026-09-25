@@ -72,8 +72,18 @@ enum EstimateAcceptancePullService {
             }
         }
 
+        // Publishes the contract and emails the client to sign it. Before, it
+        // only went up to the portal and nobody told the client.
         for contractID in contractsToUpload {
-            _ = await PortalAutoSyncService.uploadContract(contractId: contractID, context: context)
+            guard let contract = try? context.fetch(
+                FetchDescriptor<Contract>(predicate: #Predicate { $0.id == contractID })
+            ).first else { continue }
+            do {
+                _ = try await ContractSendService.send(contract, kind: .send, context: context)
+            } catch {
+                SBWLog.ui.problem("[EstimateAcceptance] couldn't send bundled contract: \(error)")
+                _ = await PortalAutoSyncService.uploadContract(contractId: contractID, context: context)
+            }
         }
         for invoiceID in invoicesToUpload {
             _ = await PortalAutoSyncService.uploadInvoice(invoiceId: invoiceID, context: context)
@@ -153,6 +163,14 @@ enum EstimateAcceptancePullService {
             contract.statusRaw = ContractStatus.sent.rawValue
             contract.portalNeedsUpload = true
             activatedContractID = contract.id
+            // Link it to the job the acceptance just created, so it shows on
+            // the job's paperwork and the contract can bill for the job.
+            if let job = estimate.job, contract.job == nil {
+                contract.job = job
+                var ids = Set(contract.linkedJobIDsCSV.split(separator: ",").map { String($0) })
+                ids.insert(job.id.uuidString)
+                contract.linkedJobIDsCSV = ids.sorted().joined(separator: ",")
+            }
 
             if let depositCents = contract.depositAmountCents, let job = estimate.job {
                 depositInvoiceID = createDepositInvoiceIfNeeded(

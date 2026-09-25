@@ -27,15 +27,25 @@ struct ContractTemplateDetailView: View {
             SBWTheme.headerWash()
 
             Form {
-                Section("Template Info") {
-                    TextField("Template Name", text: $template.name)
-                        .textInputAutocapitalization(.words)
-
-                    TextField("Category", text: $template.category)
-                        .textInputAutocapitalization(.words)
-
-                    Toggle("Built-in (locked)", isOn: $template.isBuiltIn)
-                        .disabled(true)
+                Section {
+                    // A built-in template is found by its name (the seeder,
+                    // and contracts made from it), so renaming one made a
+                    // duplicate appear and broke re-rendering.
+                    if template.isBuiltIn {
+                        LabeledContent("Name", value: template.name)
+                        LabeledContent("Category", value: template.category)
+                    } else {
+                        TextField("Template Name", text: $template.name)
+                            .textInputAutocapitalization(.words)
+                        TextField("Category", text: $template.category)
+                            .textInputAutocapitalization(.words)
+                    }
+                } header: {
+                    Text("Template")
+                } footer: {
+                    if template.isBuiltIn {
+                        Text("Built-in template. You can change its text; its name stays the same.")
+                    }
                 }
 
                 Section("Template Body") {

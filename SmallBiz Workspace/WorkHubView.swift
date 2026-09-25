@@ -31,7 +31,7 @@ struct WorkHubView: View {
             case .bookings:
                 BookingsListView(businessID: activeBiz.activeBusinessID)
             case .contracts:
-                ContractsHomeView(businessID: activeBiz.activeBusinessID)
+                ContractListView(businessID: activeBiz.activeBusinessID)
             }
         }
         .toolbar {

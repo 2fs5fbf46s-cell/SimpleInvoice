@@ -1,121 +1,108 @@
-import OSLog
 //
-//  ContractsListView.swift
+//  ContractListView.swift
 //  SmallBiz Workspace
 //
 
 import SwiftUI
 import SwiftData
 
-struct ContractsListView: View {
+/// Filters for the contracts list. Open is what still needs something: drafts
+/// to send and contracts waiting on a signature.
+private enum ContractListFilter: String, CaseIterable {
+    case open = "Open"
+    case signed = "Signed"
+    case canceled = "Canceled"
+    case all = "All"
+}
+
+private struct ContractGroup: Identifiable {
+    let title: String
+    let contracts: [Contract]
+    var id: String { title }
+}
+
+/// Every contract, grouped by what it needs.
+///
+/// This replaces two lists: a home screen that never showed canceled
+/// contracts, capped each section at 10 and linked to the full list only
+/// past 20, and that full list, which called canceled contracts "Expired",
+/// deleted drafts without asking, and didn't open a contract you'd just made.
+struct ContractListView: View {
     @Environment(\.modelContext) private var modelContext
     private let businessID: UUID?
 
-    @State private var searchText: String = ""
-    @State private var filter: ContractFilter = .all
-    @State private var blockedDeleteMessage: String? = nil
+    @Query private var contracts: [Contract]
+
+    @State private var searchText = ""
+    @State private var filter: ContractListFilter = .open
     @State private var selectedContract: Contract? = nil
-    @State private var route: ContractListRoute? = nil
-    @State private var loadedContracts: [Contract] = []
-    @State private var loadedClients: [Client] = []
+    @State private var showNewContract = false
+    @State private var showTemplates = false
+    @State private var pendingDelete: Contract? = nil
+    @State private var pendingCancel: Contract? = nil
 
-    init(businessID: UUID? = nil) {
+    init(businessID: UUID?) {
         self.businessID = businessID
+        let scopedID = BusinessScoped.queryBusinessID(businessID)
+        _contracts = Query(
+            filter: #Predicate<Contract> { $0.businessID == scopedID },
+            sort: [SortDescriptor(\Contract.updatedAt, order: .reverse)]
+        )
     }
 
-    private var effectiveBusinessID: UUID? {
-        businessID
-    }
+    // MARK: - Data
 
-    private enum ContractFilter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case draft = "Draft"
-        case sent = "Sent"
-        case signed = "Signed"
-        case expired = "Expired"
-
-        var id: String { rawValue }
-    }
-
-    private enum ContractListRoute: Hashable, Identifiable {
-        case createContract
-
-        var id: Self { self }
-    }
-
-    // MARK: - Scoping
-
-    private var scopedContracts: [Contract] {
-        guard effectiveBusinessID != nil else { return [] }
-        return loadedContracts
-    }
-
-    private var clientNameByID: [UUID: String] {
-        Dictionary(uniqueKeysWithValues: loadedClients.map { ($0.id, $0.name) })
-    }
-
-    // MARK: - Client resolution (Job uses clientID, not relationship)
-
-    private func clientName(for contract: Contract) -> String {
-        if let name = contract.client?.name, !name.isEmpty { return name }
-        if let name = contract.invoice?.client?.name, !name.isEmpty { return name }
-        if let name = contract.estimate?.client?.name, !name.isEmpty { return name }
-
-        // Every hop above nullifies when the client is deleted. The snapshot is
-        // what keeps this row identifiable afterwards.
-        if let name = contract.clientSnapshot?.name, !name.isEmpty { return name }
-        if let name = contract.invoice?.clientSnapshot?.name, !name.isEmpty { return name }
-        if let name = contract.estimate?.clientSnapshot?.name, !name.isEmpty { return name }
-
-        if let job = contract.job {
-            if let id = job.clientID, let name = clientNameByID[id], !name.isEmpty {
-                return name
-            }
-            return "No Client"
+    private var searched: [Contract] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return contracts }
+        return contracts.filter {
+            $0.title.lowercased().contains(q)
+                || $0.displayClientName.lowercased().contains(q)
+                || $0.templateName.lowercased().contains(q)
         }
-
-        return "No Client"
     }
 
-    // MARK: - Filtering
+    private var groups: [ContractGroup] {
+        let items = searched
+        let waiting = items
+            .filter { $0.status == .sent }
+            .sorted { ($0.sentAt ?? $0.updatedAt) < ($1.sentAt ?? $1.updatedAt) }
+        let drafts = items.filter { $0.status == .draft }
+        let signed = items
+            .filter { $0.status == .signed }
+            .sorted { ($0.signedAt ?? $0.updatedAt) > ($1.signedAt ?? $1.updatedAt) }
+        let canceled = items.filter { $0.status == .cancelled }
 
-    private var filteredContracts: [Contract] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        func matchesSearch(_ c: Contract) -> Bool {
-            guard !q.isEmpty else { return true }
-            let client = clientName(for: c)
-
-            return c.title.localizedCaseInsensitiveContains(q)
-            || client.localizedCaseInsensitiveContains(q)
-            || c.templateCategory.localizedCaseInsensitiveContains(q)
-            || c.templateName.localizedCaseInsensitiveContains(q)
+        let all: [ContractGroup] = [
+            ContractGroup(title: "Waiting for signature", contracts: waiting),
+            ContractGroup(title: "Drafts", contracts: drafts),
+            ContractGroup(title: "Signed", contracts: signed),
+            ContractGroup(title: "Canceled", contracts: canceled),
+        ]
+        let wanted: Set<String>
+        switch filter {
+        case .open: wanted = ["Waiting for signature", "Drafts"]
+        case .signed: wanted = ["Signed"]
+        case .canceled: wanted = ["Canceled"]
+        case .all: wanted = Set(all.map(\.title))
         }
-
-        func matchesFilter(_ c: Contract) -> Bool {
-            switch filter {
-            case .all:
-                return true
-            case .draft:
-                return c.status == .draft
-            case .sent:
-                return c.status == .sent
-            case .signed:
-                return c.status == .signed
-            case .expired:
-                return c.status == .cancelled
-            }
-        }
-
-        return scopedContracts.filter { matchesFilter($0) && matchesSearch($0) }
+        return all.filter { wanted.contains($0.title) && !$0.contracts.isEmpty }
     }
+
+    private func count(_ option: ContractListFilter) -> Int {
+        switch option {
+        case .open: return contracts.filter { $0.status == .draft || $0.status == .sent }.count
+        case .signed: return contracts.filter { $0.status == .signed }.count
+        case .canceled: return contracts.filter { $0.status == .cancelled }.count
+        case .all: return contracts.count
+        }
+    }
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
-            // Background
             Color(.systemGroupedBackground).ignoresSafeArea()
-
-            // Subtle header wash (Option A)
             SBWTheme.headerWash()
 
             List {
@@ -123,87 +110,69 @@ struct ContractsListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search contracts", text: $searchText)
+                        TextField("Search title, client, template", text: $searchText)
                             .textInputAutocapitalization(.never)
-
-                            Button {
-                                guard effectiveBusinessID != nil else { return }
-                                route = .createContract
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.headline.weight(.semibold))
+                        Button {
+                            showTemplates = true
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(SBWTheme.brandBlue)
+                        .accessibilityLabel("Templates")
+                        Button {
+                            Haptics.lightTap()
+                            showNewContract = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.headline.weight(.semibold))
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brandBlue.opacity(0.2)))
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("New Contract")
                     }
+                    .padding(.vertical, 4)
+
+                    SBWFilterChips(
+                        options: ContractListFilter.allCases,
+                        title: { option in
+                            let n = count(option)
+                            return option == .all || n == 0 ? option.rawValue : "\(option.rawValue) \(n)"
+                        },
+                        selection: $filter
+                    )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 }
 
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(ContractFilter.allCases) { f in
-                                Button {
-                                    filter = f
-                                } label: {
-                                    Text(f.rawValue)
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(
-                                            Capsule()
-                                                .fill(filter == f ? SBWTheme.brandBlue.opacity(0.22) : Color.primary.opacity(0.08))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-
-                if effectiveBusinessID == nil {
+                if businessID == nil {
                     ContentUnavailableView(
                         "No Business Selected",
                         systemImage: "building.2",
-                        description: Text("Select a business to view contracts.")
+                        description: Text("Select a business to see its contracts.")
                     )
-                } else if scopedContracts.isEmpty {
-                    SBWEmptyState(
-                        title: "No Contracts Yet",
-                        message: "Create a contract from a template, then send it for signature.",
-                        systemImage: "doc.plaintext"
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                } else if filteredContracts.isEmpty {
-                    SBWEmptyState(
-                        title: "No Matches",
-                        message: SBWEmptyStateCopy.message(
-                            noun: "contract",
-                            pluralNoun: "contracts",
-                            isFiltered: true
-                        ),
-                        systemImage: "magnifyingglass"
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                } else if groups.isEmpty {
+                    Section { emptyState }
                 } else {
-                    ForEach(filteredContracts) { contract in
-                        Button {
-                            selectedContract = contract
-                        } label: {
-                            row(contract)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                attemptDelete(contract)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                    ForEach(groups) { group in
+                        Section {
+                            ForEach(group.contracts) { contract in
+                                Button {
+                                    selectedContract = contract
+                                } label: {
+                                    ContractListRow(contract: contract)
+                                }
+                                .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    trailingSwipe(for: contract)
+                                }
                             }
+                        } header: {
+                            Text(group.title)
                         }
                     }
-                    .onDelete(perform: deleteContracts)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -211,147 +180,165 @@ struct ContractsListView: View {
         .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { EditButton() }
-        }
-        .navigationDestination(item: $selectedContract) { contract in
-            ContractSummaryView(contract: contract)
-        }
-        .navigationDestination(item: $route) { route in
-            switch route {
-            case .createContract:
-                CreateContractStartView(businessID: effectiveBusinessID)
+        .navigationDestination(item: $selectedContract) { ContractDetailView(contract: $0) }
+        .navigationDestination(isPresented: $showTemplates) { ContractTemplatesView(businessID: businessID) }
+        .sheet(isPresented: $showNewContract) {
+            NavigationStack {
+                CreateContractStartView(
+                    businessID: businessID,
+                    onCreated: { contract in
+                        showNewContract = false
+                        filter = .open
+                        DispatchQueue.main.async { selectedContract = contract }
+                    },
+                    onCancel: { showNewContract = false }
+                )
             }
         }
-        .alert("Can’t Delete", isPresented: Binding(
-            get: { blockedDeleteMessage != nil },
-            set: { if !$0 { blockedDeleteMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { blockedDeleteMessage = nil }
-        } message: {
-            Text(blockedDeleteMessage ?? "")
+        .confirmationDialog(
+            "Delete this draft?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { contract in
+            Button("Delete Draft", role: .destructive) {
+                modelContext.delete(contract)
+                try? modelContext.save()
+                pendingDelete = nil
+            }
+            Button("Keep It", role: .cancel) { pendingDelete = nil }
+        } message: { contract in
+            Text("\"\(contract.title.isEmpty ? "Contract" : contract.title)\" was never sent. This can't be undone.")
         }
-        .task(id: effectiveBusinessID) {
-            reloadData()
+        .confirmationDialog(
+            "Cancel this contract?",
+            isPresented: Binding(get: { pendingCancel != nil }, set: { if !$0 { pendingCancel = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingCancel
+        ) { contract in
+            Button("Cancel Contract", role: .destructive) {
+                pendingCancel = nil
+                Task { await ContractLifecycle.cancel(contract, context: modelContext) }
+            }
+            Button("Keep It", role: .cancel) { pendingCancel = nil }
+        } message: { contract in
+            Text(contract.status == .sent
+                 ? "\(contract.displayClientName) will see it as canceled and won't be able to sign it."
+                 : "It stays in your records. You can reopen it later.")
         }
-
-        // Manual Test Steps:
-        // 1) Switch business and confirm contracts list shows only scoped data.
-        // 2) Open contract summary, close, reopen quickly; selection should remain correct.
-        // 3) Scroll long list and verify row interactions stay smooth.
+        .task { ContractTemplateSeeder.seedIfNeeded(context: modelContext) }
     }
 
-    // MARK: - Row UI (Option A parity)
-
-    private func row(_ contract: Contract) -> some View {
-        let statusText = statusText(for: contract)
-        let client = clientName(for: contract)
-        let date = contract.updatedAt.formatted(date: .abbreviated, time: .omitted)
-        let category = contract.templateCategory.isEmpty ? "General" : contract.templateCategory
-        let subtitle = "\(client) • \(date) • \(category)"
-
-        return HStack(alignment: .top, spacing: 12) {
-            // Leading icon chip (matches other tiles/lists)
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SBWTheme.chipFill(for: "Contracts"))
-                Image(systemName: "doc.text")
-                    .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
-                    .foregroundStyle(.primary)
+    @ViewBuilder
+    private func trailingSwipe(for contract: Contract) -> some View {
+        if ContractLifecycle.canDelete(contract) {
+            Button(role: .destructive) { pendingDelete = contract } label: {
+                Label("Delete", systemImage: "trash")
             }
-            .frame(width: 36, height: 36)
+            .tint(.red)
+        } else if contract.status == .sent || contract.status == .draft {
+            Button { pendingCancel = contract } label: {
+                Label("Cancel", systemImage: "xmark.circle")
+            }
+            .tint(.red)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(contract.title.isEmpty ? "Contract" : contract.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer()
-                    SBWStatusPill(text: statusText)
-                }
-                Text(subtitle)
+    @ViewBuilder
+    private var emptyState: some View {
+        let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        VStack(spacing: 8) {
+            Image(systemName: "signature")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            if isSearching {
+                Text("No contracts match \"\(searchText)\"")
+                    .font(.headline)
+            } else if contracts.isEmpty {
+                Text("Start your first contract")
+                    .font(.headline)
+                Text("Pick a template, fill in the client, and send it to sign.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                Button { showNewContract = true } label: { Label("New Contract", systemImage: "plus") }
+                    .sbwProminentButton()
+                    .padding(.top, 4)
+            } else {
+                Text(filter == .open ? "Nothing waiting on you" : "No \(filter.rawValue.lowercased()) contracts")
+                    .font(.headline)
             }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+}
+
+private struct ContractListRow: View {
+    let contract: Contract
+
+    private var status: ContractDisplayStatus { ContractDisplayStatus(contract) }
+
+    private var subtitle: String {
+        var parts: [String] = []
+        let name = contract.displayClientName
+        parts.append(name == "No Client" ? "No client" : name)
+        switch status {
+        case .draft:
+            parts.append("edited \(contract.updatedAt.formatted(.relative(presentation: .named)))")
+        case .sent:
+            if let sent = contract.sentAt {
+                parts.append("sent \(sent.formatted(date: .abbreviated, time: .omitted))")
+            }
+        case .signed:
+            if let signed = contract.signedAt {
+                parts.append("signed \(signed.formatted(date: .abbreviated, time: .omitted))")
+            }
+        case .canceled:
+            if let canceled = contract.canceledAt {
+                parts.append("canceled \(canceled.formatted(date: .abbreviated, time: .omitted))")
+            }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: status == .signed ? "checkmark.seal" : "signature")
+                .font(.subheadline)
+                .foregroundStyle(status == .signed ? SBWTheme.brandGreen : Color.secondary)
+                .frame(width: 26)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(contract.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled contract" : contract.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+
+            Text(status.label)
+                .font(.caption2.weight(.semibold))
+                .padding(.vertical, 3)
+                .padding(.horizontal, 8)
+                .background(Capsule().fill(status.foreground.opacity(0.15)))
+                .foregroundStyle(status.foreground)
+                .fixedSize()
         }
         .padding(.vertical, 4)
-        .frame(minHeight: 56, alignment: .topLeading)
+        .contentShape(Rectangle())
     }
+}
 
-    private func statusText(for contract: Contract) -> String {
-        switch contract.status {
-        case .draft: return "DRAFT"
-        case .sent: return "SENT"
-        case .signed: return "SIGNED"
-        case .cancelled: return "EXPIRED"
-        }
-    }
-
-    @MainActor
-    private func reloadData() {
-        guard let bizID = effectiveBusinessID else {
-            loadedContracts = []
-            loadedClients = []
-            return
-        }
-
-        do {
-            let contractDescriptor = FetchDescriptor<Contract>(
-                predicate: #Predicate<Contract> { contract in
-                    contract.businessID == bizID
-                },
-                sortBy: [SortDescriptor(\Contract.createdAt, order: .reverse)]
-            )
-            loadedContracts = try modelContext.fetch(contractDescriptor)
-
-            let clientDescriptor = FetchDescriptor<Client>(
-                predicate: #Predicate<Client> { client in
-                    client.businessID == bizID
-                },
-                sortBy: [SortDescriptor(\Client.name, order: .forward)]
-            )
-            loadedClients = try modelContext.fetch(clientDescriptor)
-        } catch {
-            SBWLog.ui.problem("Failed to load contracts list data: \(error)")
-            loadedContracts = []
-            loadedClients = []
-        }
-    }
-
-    // MARK: - Deletes (draft-only)
-
-    private func deleteContracts(at offsets: IndexSet) {
-        var blockedCount = 0
-
-        for index in offsets {
-            guard index < filteredContracts.count else { continue }
-            let c = filteredContracts[index]
-
-            if c.status == .draft {
-                modelContext.delete(c)
-            } else {
-                blockedCount += 1
-            }
-        }
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to save deletes: \(error)") }
-
-        if blockedCount > 0 {
-            blockedDeleteMessage = "Only Draft contracts can be deleted. \(blockedCount) contract(s) weren’t deleted because they aren’t Draft."
-        }
-    }
-
-    private func attemptDelete(_ contract: Contract) {
-        guard contract.status == .draft else {
-            blockedDeleteMessage = "Only Draft contracts can be deleted. Change status back to Draft if you need to remove it."
-            return
-        }
-
-        modelContext.delete(contract)
-
-        do { try modelContext.save() }
-        catch { SBWLog.ui.problem("Failed to delete contract: \(error)") }
+// Pushed onto a NavigationStack and not comparable field-by-field, so it
+// could re-render in a loop; see InvoiceDetailView's Equatable conformance.
+extension ContractListView: Equatable {
+    static func == (lhs: ContractListView, rhs: ContractListView) -> Bool {
+        lhs.businessID == rhs.businessID
     }
 }

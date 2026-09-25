@@ -31,7 +31,8 @@ struct CreateContractStartView: View {
     @Query private var profiles: [BusinessProfile]
 
     @State private var selectedTemplate: ContractTemplate?
-    @State private var useInvoice: Bool = true
+    /// Start from a client; filling from an invoice or estimate is opt-in.
+    @State private var useInvoice: Bool = false
 
     @State private var selectedInvoice: Invoice?
     @State private var selectedClient: Client?
@@ -48,16 +49,21 @@ struct CreateContractStartView: View {
     init(
         businessID: UUID? = nil,
         client: Client? = nil,
+        job: Job? = nil,
         onCreated: @escaping (Contract) -> Void = { _ in },
         onCancel: @escaping () -> Void = {}
     ) {
         self.businessID = businessID
         self.onCreated = onCreated
         self.onCancel = onCancel
-        // Started from a client: fill from that client, not an invoice.
+        // Started from a client or a job: fill from that client, not an invoice.
         if let client {
             _selectedClient = State(initialValue: client)
             _useInvoice = State(initialValue: false)
+        }
+        if let job {
+            _selectedJobIDs = State(initialValue: [job.id])
+            _primaryJobID = State(initialValue: job.id)
         }
 
         let scopedID = BusinessScoped.queryBusinessID(businessID)
@@ -121,7 +127,7 @@ struct CreateContractStartView: View {
                             Text("Source")
                                 .font(.headline)
 
-                            Toggle("Fill from Invoice", isOn: $useInvoice)
+                            Toggle("Fill from an invoice or estimate", isOn: $useInvoice)
                                 .onChange(of: useInvoice) { _, newValue in
                                     if newValue {
                                         selectedClient = nil
@@ -139,7 +145,7 @@ struct CreateContractStartView: View {
                                         Picker("Select Invoice", selection: $selectedInvoice) {
                                             Text("Select…").tag(Optional<Invoice>.none)
                                             ForEach(scopedInvoices) { inv in
-                                                Text("Invoice \(inv.invoiceNumber) — \(inv.displayClientName)")
+                                                Text("\(ClientWorkItem.documentName(inv)) — \(inv.displayClientName)")
                                                     .tag(Optional(inv))
                                             }
                                         }
@@ -293,19 +299,17 @@ struct CreateContractStartView: View {
         .onAppear {
             // Helpful defaults
             if selectedTemplate == nil { selectedTemplate = templates.first }
-            if useInvoice && selectedInvoice == nil { selectedInvoice = scopedInvoices.first }
-            if !useInvoice && selectedClient == nil { selectedClient = scopedClients.first }
+            // No client or invoice is picked for you: a guessed default made
+            // it easy to send a contract to the wrong person.
             applyDefaultJobsFromInvoiceIfNeeded()
         }
         
         .onChange(of: useInvoice) { _, newValue in
             if newValue {
                 selectedClient = nil
-                selectedInvoice = scopedInvoices.first
                 applyDefaultJobsFromInvoiceIfNeeded()
             } else {
                 selectedInvoice = nil
-                selectedClient = scopedClients.first
             }
         }
         .onChange(of: selectedInvoice?.id) { _, _ in
@@ -317,6 +321,7 @@ struct CreateContractStartView: View {
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(.ultraThinMaterial.opacity(0.6))

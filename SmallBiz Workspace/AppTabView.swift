@@ -170,7 +170,7 @@ struct AppTabView: View {
         }
         .sheet(item: $deepLinkedContract) { contract in
             NavigationStack {
-                ContractSummaryView(contract: contract)
+                ContractDetailView(contract: contract)
             }
         }
         .sheet(item: $deepLinkedBookingRequest) { request in
@@ -456,6 +456,8 @@ struct AppTabView: View {
            let id = UUID(uuidString: contractID),
            let contract = contract(withID: id) {
             tab = .work
+            // Bring the signature in, so it opens showing Signed.
+            Task { await ContractActivityPullService.pull(context: modelContext, businessID: activeBiz.activeBusinessID) }
             deepLinkedContract = contract
             notificationRouter.consumePendingPayload()
             return

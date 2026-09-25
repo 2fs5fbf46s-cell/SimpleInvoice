@@ -50,10 +50,15 @@ struct NotificationRoutePayload: Equatable {
         }
 
         let notificationId = readString("notificationId") ?? readString("id")
-        let event = readString("event") ?? readString("eventType")
+        // The backend's event pushes carry `type` and `entityId`
+        // (eventNotifications.ts); taps on them used to fall through to a
+        // "Notification opened." toast.
+        let event = readString("event") ?? readString("eventType") ?? readString("type")
         let businessId = readString("businessId")
-        let invoiceId = readString("invoiceId")
-        let contractId = readString("contractId")
+        let entityId = readString("entityId")
+        let eventKey = (event ?? "").lowercased()
+        let invoiceId = readString("invoiceId") ?? (eventKey.hasPrefix("invoice") ? entityId : nil)
+        let contractId = readString("contractId") ?? (eventKey.hasPrefix("contract") ? entityId : nil)
         let bookingRequestId = readString("bookingRequestId")
         let deepLink = readString("deepLink") ?? readString("deeplink")
         let urlString = readString("portalUrl") ?? readString("portalURL") ?? readString("url")
@@ -120,7 +125,23 @@ final class NotificationRouter: ObservableObject {
 
     private static func payload(fromDeepLink url: URL) -> NotificationRoutePayload? {
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-        guard (comps.scheme ?? "").lowercased() == "sbw" else { return nil }
+
+        // Inbox items link to the portal page ("/portal/contract/<id>"), which
+        // the app opens as its own record instead.
+        if (comps.scheme ?? "").lowercased() != "sbw" {
+            let parts = comps.path.split(separator: "/").map(String.init)
+            guard parts.count >= 3, parts[0].lowercased() == "portal" else { return nil }
+            let businessId = UserDefaults.standard.string(forKey: "activeBusinessID") ?? ""
+            let id = parts[2].removingPercentEncoding ?? parts[2]
+            switch parts[1].lowercased() {
+            case "contract":
+                return NotificationRoutePayload(event: "contract_deeplink", businessId: businessId, contractId: id, deepLink: url.absoluteString)
+            case "invoice":
+                return NotificationRoutePayload(event: "invoice_deeplink", businessId: businessId, invoiceId: id, deepLink: url.absoluteString)
+            default:
+                return nil
+            }
+        }
 
         let host = (comps.host ?? "").lowercased()
         let pathParts = comps.path.split(separator: "/").map(String.init)

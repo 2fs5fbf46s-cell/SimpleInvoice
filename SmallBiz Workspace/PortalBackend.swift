@@ -732,9 +732,9 @@ final class PortalBackend {
         String(describing: invoice.id)
     }
 
-    private func contractIdString(_ contract: Contract) -> String {
-        // Contract.id is SwiftData PersistentIdentifier in this project.
-        String(describing: contract.id)
+    /// The id the portal keys a contract by (its UUID string).
+    func contractIdString(_ contract: Contract) -> String {
+        contract.id.uuidString
     }
     // MARK: - Invoice line items -> portal payload
 
@@ -934,8 +934,13 @@ final class PortalBackend {
     }
 
     func createContractPortalToken(contract: Contract, businessName: String? = nil, mode: String = "live") async throws -> String {
-        guard let client = contract.client else {
-            throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Contract must be linked to a client to open in portal."])
+        guard let client = contract.resolvedClient else {
+            throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Choose a client for this contract first."])
+        }
+        // Minting a token lists the contract in the client's portal, so a
+        // draft opened "in the portal" used to leak there, signable.
+        guard contract.status != .draft else {
+            throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Send the contract before opening it in the client portal."])
         }
 
         let body: [String: Any] = [
@@ -1408,10 +1413,29 @@ final class PortalBackend {
     /// IMPORTANT: scope=directory so directory tokens pass and it shows in the directory list.
     @MainActor
     func indexContractForPortalDirectory(contract: Contract) async throws {
-        guard let client = contract.client else {
+        guard let client = contract.resolvedClient else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Contract is not linked to a client."])
         }
         guard client.portalEnabled else { return }
+
+        // A draft that was in front of the client ("Revise terms", or one an
+        // older build published): tell the server, which takes it off their
+        // list and stops it being signed until it's sent again. No text goes up.
+        if contract.status == .draft {
+            guard contract.sentAt != nil || contract.portalLastUploadedAtMs != nil else { return }
+            _ = try await seedToken(payload: [
+                "businessId": client.businessID.uuidString,
+                "clientId": client.id.uuidString,
+                "scope": "directory",
+                "mode": "live",
+                "contractId": contractIdString(contract),
+                "contractTitle": contract.title,
+                "status": ContractStatus.draft.rawValue,
+                "updatedAtMs": Int(Date().timeIntervalSince1970 * 1000),
+                "clientPortalEnabled": client.portalEnabled
+            ])
+            return
+        }
         // A contract bundled/drafted alongside an estimate stays in .draft
         // until the estimate is accepted (PortalService.markContractSentAndIndex
         // flips it to .sent as part of activation) — mirrors
@@ -1436,8 +1460,16 @@ final class PortalBackend {
             "contractBody": contract.renderedBody,
             "clientPortalEnabled": client.portalEnabled
         ]
+        var payload = body
+        // A paper signature recorded here; the server keeps a portal one.
+        if contract.status == .signed {
+            payload["signedName"] = contract.signedByName
+            if let signedAt = contract.signedAt {
+                payload["signedAtMs"] = Int(signedAt.timeIntervalSince1970 * 1000)
+            }
+        }
 
-        _ = try await seedToken(payload: body)
+        _ = try await seedToken(payload: payload)
     }
 
     /// Indexes an estimate into the portal directory list.
@@ -2026,6 +2058,97 @@ final class PortalBackend {
             throw PortalBackendError.decode(body: raw)
         }
         return .emailed(link: link)
+    }
+
+    /// Emails the client a link to sign (kind "send") or a reminder
+    /// ("reminder"). The contract must already be published as sent.
+    func sendContractEmail(
+        contractId: String,
+        clientEmail: String,
+        businessName: String?,
+        kind: String
+    ) async throws -> EstimateEmailOutcome {
+        let adminKey = try requireAdminKey()
+
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/portal/contract/send-email"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        var payload: [String: Any] = [
+            "contractId": contractId,
+            "clientEmail": clientEmail,
+            "kind": kind
+        ]
+        if let businessName, !businessName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["businessName"] = businessName
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        let decoded = try? decoder().decode(SendLinkResponseDTO.self, from: data)
+        if http.statusCode == 502, let link = decoded?.link, !link.isEmpty {
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let reason = (json?["errorCode"] as? String) ?? decoded?.error ?? "email_failed"
+            return .emailFailed(link: link, reason: reason)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: decoded?.error ?? raw)
+        }
+        guard let link = decoded?.link, !link.isEmpty else {
+            throw PortalBackendError.decode(body: raw)
+        }
+        return .emailed(link: link)
+    }
+
+    struct ContractActivityDTO: Decodable {
+        let contractId: String
+        let status: String?
+        let signedAtMs: Double?
+        let signedName: String?
+        let signedBodyHash: String?
+        let signedPdfUrl: String?
+        let signedMethod: String?
+        let sentAtMs: Double?
+        let lastReminderAtMs: Double?
+        let updatedAtMs: Double
+    }
+
+    struct ContractActivityPage: Decodable {
+        let ok: Bool?
+        let items: [ContractActivityDTO]
+        let hasMore: Bool?
+    }
+
+    /// Signatures and emails the portal saw since `since` — the feed behind
+    /// ContractActivityPullService.
+    func pullContractActivity(since: Date) async throws -> ContractActivityPage {
+        let adminKey = try requireAdminKey()
+
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("/api/contracts/activity/pull"),
+            resolvingAgainstBaseURL: false
+        )!
+        let sinceMs = Int((since.timeIntervalSince1970 * 1000).rounded())
+        comps.queryItems = [URLQueryItem(name: "since", value: String(sinceMs))]
+
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: raw)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: raw)
+        }
+        return try decoder().decode(ContractActivityPage.self, from: data)
     }
 
     struct InvoiceActivityDTO: Decodable {

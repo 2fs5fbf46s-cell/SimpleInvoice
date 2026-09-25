@@ -37,13 +37,11 @@ final class ContractsNavigationSmokeTests: XCTestCase {
     func testContractsViewsAcceptExplicitBusinessID() {
         let businessID = UUID()
 
-        let home = ContractsHomeView(businessID: businessID)
-        let list = ContractsListView(businessID: businessID)
+        let list = ContractListView(businessID: businessID)
         let templates = ContractTemplatesView(businessID: businessID)
         let picker = ContractTemplatePickerView(businessID: businessID)
         let start = CreateContractStartView(businessID: businessID)
 
-        XCTAssertNotNil(home)
         XCTAssertNotNil(list)
         XCTAssertNotNil(templates)
         XCTAssertNotNil(picker)

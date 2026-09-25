@@ -63,22 +63,6 @@ struct BookingOverviewView: View {
     }
 }
 
-struct ContractBodyView: View {
-    @Bindable var contract: Contract
-
-    var body: some View {
-        ContractDetailView(contract: contract)
-    }
-}
-
-struct ContractActivityView: View {
-    @Bindable var contract: Contract
-
-    var body: some View {
-        ContractDetailView(contract: contract)
-    }
-}
-
 
 // Pushed onto a NavigationStack and not comparable field-by-field, so it
 // could re-render in a loop; see InvoiceDetailView's Equatable conformance.

@@ -1,5 +1,5 @@
 //
-//  ClientFilesCard.swift
+//  ContractFilesCard.swift
 //  SmallBiz Workspace
 //
 
@@ -8,17 +8,14 @@ import SwiftData
 import PhotosUI
 import UniformTypeIdentifiers
 
-/// The client's files on the client screen: their folder, and the files
-/// attached to them.
-///
-/// There were two attachment lists for a client, one on the summary and one
-/// inside the edit form's Advanced Options, and the trash button there
-/// removed a file on a single tap.
-struct ClientFilesCard: View {
+/// A contract's files: attached documents, and the contract's folder. Same
+/// card as the client screen's; this list used to sit under "Advanced
+/// Options" with swipe-to-remove and no confirmation.
+struct ContractFilesCard: View {
     @Environment(\.modelContext) private var modelContext
-    let client: Client
+    let contract: Contract
 
-    @Query private var attachments: [ClientAttachment]
+    @Query private var attachments: [ContractAttachment]
 
     @State private var showFileImporter = false
     @State private var showExistingPicker = false
@@ -26,7 +23,7 @@ struct ClientFilesCard: View {
     @State private var showPhotoPicker = false
     @State private var preview: IdentifiableURL? = nil
     @State private var folderItem: FolderSheetItem? = nil
-    @State private var pendingRemoval: ClientAttachment? = nil
+    @State private var pendingRemoval: ContractAttachment? = nil
     @State private var zipURL: IdentifiableURL? = nil
     @State private var errorText: String? = nil
 
@@ -36,11 +33,11 @@ struct ClientFilesCard: View {
         let folder: Folder
     }
 
-    init(client: Client) {
-        self.client = client
-        let key = client.id.uuidString
+    init(contract: Contract) {
+        self.contract = contract
+        let key = contract.id.uuidString
         _attachments = Query(
-            filter: #Predicate<ClientAttachment> { $0.clientKey == key },
+            filter: #Predicate<ContractAttachment> { $0.contractKey == key },
             sort: [SortDescriptor(\.createdAt, order: .reverse)]
         )
     }
@@ -77,7 +74,7 @@ struct ClientFilesCard: View {
                 Button {
                     openFolder()
                 } label: {
-                    Label("Client folder", systemImage: "folder")
+                    Label("Folder", systemImage: "folder")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -118,7 +115,7 @@ struct ClientFilesCard: View {
             }
         }
         .sheet(isPresented: $showExistingPicker) {
-            ClientAttachmentPickerView(businessID: client.businessID) { file in attachExisting(file) }
+            ContractAttachmentPickerView(businessID: contract.businessID) { file in attachExisting(file) }
         }
         .sheet(item: $preview) { item in
             QuickLookPreview(url: item.url)
@@ -140,10 +137,10 @@ struct ClientFilesCard: View {
             titleVisibility: .visible,
             presenting: pendingRemoval
         ) { attachment in
-            Button("Remove from Client", role: .destructive) { remove(attachment) }
+            Button("Remove from Contract", role: .destructive) { remove(attachment) }
             Button("Cancel", role: .cancel) { pendingRemoval = nil }
         } message: { _ in
-            Text("The file stays in the client's folder.")
+            Text("The file stays in your Files.")
         }
         .alert("Files", isPresented: Binding(
             get: { errorText != nil },
@@ -155,7 +152,7 @@ struct ClientFilesCard: View {
         }
     }
 
-    private func fileRow(_ attachment: ClientAttachment) -> some View {
+    private func fileRow(_ attachment: ContractAttachment) -> some View {
         HStack(spacing: 10) {
             Button {
                 openPreview(attachment)
@@ -205,7 +202,7 @@ struct ClientFilesCard: View {
 
     // MARK: - Actions
 
-    private func openPreview(_ attachment: ClientAttachment) {
+    private func openPreview(_ attachment: ContractAttachment) {
         guard let file = attachment.file else {
             errorText = "This file's record is missing."
             return
@@ -224,15 +221,15 @@ struct ClientFilesCard: View {
 
     private func openFolder() {
         do {
-            let folder = try WorkspaceProvisioningService.ensureClientFolder(client: client, context: modelContext)
-            folderItem = FolderSheetItem(business: try business(), folder: folder)
+            let destination = try folder(.contracts)
+            folderItem = FolderSheetItem(business: try business(), folder: destination)
         } catch {
             errorText = error.localizedDescription
         }
     }
 
     private func business() throws -> Business {
-        let businessID = client.businessID
+        let businessID = contract.businessID
         if let match = try modelContext.fetch(
             FetchDescriptor<Business>(predicate: #Predicate { $0.id == businessID })
         ).first {
@@ -244,8 +241,8 @@ struct ClientFilesCard: View {
     private func folder(_ kind: FolderDestinationKind) throws -> Folder {
         try WorkspaceProvisioningService.resolveFolder(
             business: try business(),
-            client: client,
-            job: nil,
+            client: contract.resolvedClient,
+            job: contract.job,
             kind: kind,
             context: modelContext
         )
@@ -253,7 +250,7 @@ struct ClientFilesCard: View {
 
     private func attachExisting(_ file: FileItem) {
         guard !attachments.contains(where: { $0.fileKey == file.id.uuidString }) else { return }
-        modelContext.insert(ClientAttachment(client: client, file: file))
+        modelContext.insert(ContractAttachment(contract: contract, file: file))
         save()
     }
 
@@ -277,7 +274,7 @@ struct ClientFilesCard: View {
                     folder: destination
                 )
                 modelContext.insert(file)
-                modelContext.insert(ClientAttachment(client: client, file: file))
+                modelContext.insert(ContractAttachment(contract: contract, file: file))
             } catch {
                 errorText = error.localizedDescription
                 break
@@ -306,14 +303,14 @@ struct ClientFilesCard: View {
                 folder: destination
             )
             modelContext.insert(file)
-            modelContext.insert(ClientAttachment(client: client, file: file))
+            modelContext.insert(ContractAttachment(contract: contract, file: file))
             save()
         } catch {
             errorText = error.localizedDescription
         }
     }
 
-    private func remove(_ attachment: ClientAttachment) {
+    private func remove(_ attachment: ContractAttachment) {
         modelContext.delete(attachment)
         pendingRemoval = nil
         save()
@@ -325,7 +322,7 @@ struct ClientFilesCard: View {
             return try? AppFileStore.absoluteURL(forRelativePath: file.relativePath)
         }
         do {
-            let url = try AttachmentZipExporter.zipFiles(urls, zipName: "\(client.displayName) Files")
+            let url = try AttachmentZipExporter.zipFiles(urls, zipName: "\(contract.title.isEmpty ? "Contract" : contract.title) Files")
             zipURL = IdentifiableURL(url: url)
         } catch {
             errorText = error.localizedDescription
