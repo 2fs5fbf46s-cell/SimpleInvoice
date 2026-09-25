@@ -129,6 +129,8 @@ enum BusinessIdentity {
             if siteName.isEmpty || siteName == old { site.appName = trimmed }
         }
         try? context.save()
+        // The portal, booking page and emails show it too.
+        BusinessBrandSync.markChanged(profile, context: context)
     }
 
     /// Initials for the avatar: "Default Business" → "DB", "Acme" → "AC".

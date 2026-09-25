@@ -2070,6 +2070,30 @@ final class PortalBackend {
         }
     }
 
+    /// Saves what the business's clients see: name, brand color and logo.
+    /// Fields left nil are kept; `clearLogo` removes the logo.
+    func upsertBusinessBrand(name: String?, colorHex: String?, logoPNG: Data?, clearLogo: Bool) async throws {
+        let adminKey = try requireAdminKey()
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/business/brand"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+        var body: [String: Any] = [:]
+        if let name { body["name"] = name }
+        if let colorHex { body["colorHex"] = colorHex }
+        if let logoPNG {
+            body["logoBase64"] = logoPNG.base64EncodedString()
+            body["logoContentType"] = "image/png"
+        } else if clearLogo {
+            body["logoBase64"] = NSNull()
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http((resp as? HTTPURLResponse)?.statusCode ?? -1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
     /// Takes a business's website offline (when the business is deleted).
     func unpublishSite(handle: String, businessToken: String? = nil) async throws {
         let adminKey = try requireAdminKey()

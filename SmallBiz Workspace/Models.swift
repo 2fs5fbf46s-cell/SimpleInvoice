@@ -40,6 +40,10 @@ final class BusinessProfile {
     var bookingOwnerEmail: String? = nil
 
     var logoData: Data? = nil
+    /// The color clients see on this business's invoices, portal, booking
+    /// page, website and emails ("#RRGGBB"). Nil: neutral charcoal
+    /// (BrandColor.defaultHex), never our own brand.
+    var brandColorHex: String? = nil
 
     // Overdue payment reminders (client-facing email, opt-in). Cadence is
     // "days overdue before the first — and only — nudge fires."
@@ -146,19 +150,23 @@ struct BusinessSnapshot: Codable {
     var phone: String
     var email: String
     var logoData: Data?
+    /// Nil in snapshots taken before brand colors existed.
+    var brandColorHex: String?
 
     init(
         name: String = "",
         address: String = "",
         phone: String = "",
         email: String = "",
-        logoData: Data? = nil
+        logoData: Data? = nil,
+        brandColorHex: String? = nil
     ) {
         self.name = name
         self.address = address
         self.phone = phone
         self.email = email
         self.logoData = logoData
+        self.brandColorHex = brandColorHex
     }
 
     init(profile: BusinessProfile?) {
@@ -167,6 +175,7 @@ struct BusinessSnapshot: Codable {
         self.phone = profile?.phone ?? ""
         self.email = profile?.email ?? ""
         self.logoData = profile?.logoData
+        self.brandColorHex = profile?.brandColorHex
     }
 }
 

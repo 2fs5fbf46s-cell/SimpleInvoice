@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct InvoiceTemplatePickerSheet: View {
     enum Mode {
@@ -48,6 +49,9 @@ struct InvoiceTemplatePickerSheet: View {
     let onUseBusinessDefault: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @Query private var profiles: [BusinessProfile]
+    private var brandHex: String? { profiles.first { $0.businessID == activeBiz.activeBusinessID }?.brandColorHex }
 
     private var showsDefaultRow: Bool {
         mode != .businessDefault
@@ -84,7 +88,7 @@ struct InvoiceTemplatePickerSheet: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
-                            InvoiceTemplateThumbnail(templateKey: businessDefault)
+                            InvoiceTemplateThumbnail(templateKey: businessDefault, brandHex: brandHex)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Default (Business)")
@@ -116,7 +120,7 @@ struct InvoiceTemplatePickerSheet: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
-                            InvoiceTemplateThumbnail(templateKey: key)
+                            InvoiceTemplateThumbnail(templateKey: key, brandHex: brandHex)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(key.displayName)

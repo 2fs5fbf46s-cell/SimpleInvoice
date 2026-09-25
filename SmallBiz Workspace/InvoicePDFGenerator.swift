@@ -98,6 +98,12 @@ enum InvoicePDFGenerator {
             let strongerSeparators: Bool
         }
 
+        // The business's color (its clients see this, not ours). `accent` is
+        // only set once they've picked one, so the plain templates keep
+        // their black titles until then.
+        let brand = BrandColor.uiColor(BrandColor.readableOnWhite(BrandColor.resolved(business.brandColorHex)))
+        let accent: UIColor? = BrandColor.normalize(business.brandColorHex) == nil ? nil : brand
+
         func style(for templateKey: InvoiceTemplateKey) -> Style {
             switch templateKey {
             case .classic_business:
@@ -161,7 +167,7 @@ enum InvoicePDFGenerator {
                     primaryText: .black,
                     secondaryText: .darkGray,
                     lineColor: UIColor(white: 0.82, alpha: 1.0),
-                    headerFill: UIColor(red: 0.10, green: 0.14, blue: 0.21, alpha: 1.0),
+                    headerFill: brand,
                     headerGradient: nil,
                     zebraRows: false,
                     minimalLines: false,
@@ -208,13 +214,10 @@ enum InvoicePDFGenerator {
                     secondaryText: UIColor(white: 0.30, alpha: 1.0),
                     lineColor: UIColor(white: 0.88, alpha: 1.0),
                     headerFill: nil,
-                    headerGradient: (
-                        UIColor(red: 0.16, green: 0.49, blue: 0.97, alpha: 0.32),
-                        UIColor(red: 0.10, green: 0.66, blue: 0.41, alpha: 0.22)
-                    ),
+                    headerGradient: (brand.withAlphaComponent(0.30), brand.withAlphaComponent(0.10)),
                     zebraRows: true,
                     minimalLines: true,
-                    zebraFillColor: UIColor(red: 0.18, green: 0.52, blue: 0.94, alpha: 0.045),
+                    zebraFillColor: brand.withAlphaComponent(0.05),
                     strongerSeparators: false
                 )
 
@@ -244,7 +247,7 @@ enum InvoicePDFGenerator {
         }
 
         let style = style(for: templateKey)
-        let titleColor: UIColor = (style.headerFill != nil) ? .white : style.primaryText
+        let titleColor: UIColor = (style.headerFill != nil) ? .white : (accent ?? style.primaryText)
 
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
 

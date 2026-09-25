@@ -61,7 +61,7 @@ struct BusinessSettingsSheet: View {
                     if let step = setup.nextStep { nextStepCard(step) }
 
                     section("Your Business") {
-                        row(.profile, "Profile and Logo", profileSubtitle, "building.2")
+                        row(.profile, "Profile and Brand", profileSubtitle, "building.2")
                         row(.invoiceNumbers, "Invoice Numbers", invoiceNumberSubtitle, "number")
                         row(.savedItems, "Saved Items", savedItemsSubtitle, "tray.full")
                     }
@@ -122,7 +122,7 @@ struct BusinessSettingsSheet: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(SBWTheme.brandGradient)
+                        .background(BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(profile?.brandColorHex))))
                 }
             }
             .frame(width: 48, height: 48)
@@ -270,9 +270,10 @@ struct BusinessSettingsSheet: View {
     // MARK: - Row states
 
     private var profileSubtitle: String {
-        guard let profile else { return "Name, contact details and logo" }
+        guard let profile else { return "Name, logo and brand color" }
         if !setup.done.contains(.contact) { return "Add your email so clients can reach you" }
-        return profile.logoData == nil ? "No logo yet" : "Name, contact details and logo"
+        if profile.logoData == nil { return "No logo yet" }
+        return BrandColor.normalize(profile.brandColorHex) == nil ? "No brand color yet" : "Name, logo and brand color"
     }
 
     private var invoiceNumberSubtitle: String {

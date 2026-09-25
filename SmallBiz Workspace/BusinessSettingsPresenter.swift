@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import SwiftData
 import Combine
 
@@ -40,8 +41,12 @@ struct BusinessAvatarButton: View {
     @Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]) private var profiles: [BusinessProfile]
     var onTap: () -> Void
 
+    private var profile: BusinessProfile? {
+        profiles.first(where: { $0.businessID == activeBiz.activeBusinessID })
+    }
+
     private var initials: String {
-        let name = profiles.first(where: { $0.businessID == activeBiz.activeBusinessID })?.name
+        let name = profile?.name
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !name.isEmpty else { return "?" }
         let parts = name.split(separator: " ")
@@ -56,12 +61,22 @@ struct BusinessAvatarButton: View {
             Haptics.lightTap()
             onTap()
         } label: {
-            Text(initials)
-                .font(.scaledSystem(size: 12, weight: .bold, relativeTo: .caption))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(SBWTheme.brandGradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .frame(width: 44, height: 44)
+            // The business's logo, or its initials on its own color: this is
+            // the business, not the app.
+            Group {
+                if let data = profile?.logoData, let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Text(initials)
+                        .font(.scaledSystem(size: 12, weight: .bold, relativeTo: .caption))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(profile?.brandColorHex))))
+                }
+            }
+            .frame(width: 30, height: 30)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("Business Settings")

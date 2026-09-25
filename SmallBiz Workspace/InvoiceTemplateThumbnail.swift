@@ -2,6 +2,10 @@ import SwiftUI
 
 struct InvoiceTemplateThumbnail: View {
     let templateKey: InvoiceTemplateKey
+    /// The business's color, so the thumbnail matches its PDFs.
+    var brandHex: String? = nil
+
+    private var brand: Color { BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(brandHex))) }
 
     var body: some View {
         let style = styleForTemplate(templateKey)
@@ -136,7 +140,7 @@ struct InvoiceTemplateThumbnail: View {
             )
         case .bold_header:
             return ThumbnailStyle(
-                headerFill: Color(red: 0.11, green: 0.15, blue: 0.21),
+                headerFill: brand,
                 headerGradient: nil,
                 zebraRows: false,
                 minimalLines: false,
@@ -163,17 +167,14 @@ struct InvoiceTemplateThumbnail: View {
         case .creative_studio:
             return ThumbnailStyle(
                 headerFill: nil,
-                headerGradient: [
-                    Color(red: 0.16, green: 0.49, blue: 0.97),
-                    Color(red: 0.10, green: 0.66, blue: 0.41)
-                ],
+                headerGradient: [brand.opacity(0.85), brand.opacity(0.35)],
                 zebraRows: true,
                 minimalLines: true,
                 compact: false,
                 line: Color.gray.opacity(0.33),
                 strongLine: Color.gray.opacity(0.46),
                 footerLine: Color.gray.opacity(0.46),
-                zebraFill: Color(red: 0.18, green: 0.52, blue: 0.94).opacity(0.16),
+                zebraFill: brand.opacity(0.14),
                 outline: Color.gray.opacity(0.25)
             )
         case .contractor_trades:

@@ -3,8 +3,8 @@ import SwiftData
 import PhotosUI
 import UIKit
 
-/// The business's name, contact details and logo: what prints on invoices,
-/// estimates and contracts and shows on the booking page.
+/// The business's name, contact details, logo and brand color: what prints
+/// on invoices, estimates and contracts and what its clients see online.
 ///
 /// This screen used to also hold a payments card (with Stripe and PayPal
 /// checks run on every open), notification permission, a second business
@@ -21,6 +21,7 @@ struct BusinessProfileView: View {
     @State private var name = ""
     @State private var loadedName = ""
     @State private var selectedLogoItem: PhotosPickerItem?
+    @State private var brandSyncTask: Task<Void, Never>?
     @FocusState private var focused: Field?
 
     private enum Field: Hashable { case name, email, phone, address }
@@ -42,7 +43,7 @@ struct BusinessProfileView: View {
                     .task { ensureProfile() }
             }
         }
-        .navigationTitle("Profile and Logo")
+        .navigationTitle("Profile and Brand")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { commitName() }
     }
@@ -54,6 +55,8 @@ struct BusinessProfileView: View {
             } footer: {
                 Text("Goes at the top of invoices, estimates and contracts.")
             }
+
+            brandSection(profile)
 
             Section {
                 TextField("Business name", text: $name)
@@ -98,6 +101,7 @@ struct BusinessProfileView: View {
                 guard let data = try? await item?.loadTransferable(type: Data.self) else { return }
                 profile.logoData = data
                 try? modelContext.save()
+                BusinessBrandSync.markChanged(profile, context: modelContext)
             }
         }
         .toolbar {
@@ -120,7 +124,7 @@ struct BusinessProfileView: View {
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(SBWTheme.brandGradient)
+                        .background(BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(profile.brandColorHex))))
                 }
             }
             .frame(width: 64, height: 64)
@@ -135,6 +139,7 @@ struct BusinessProfileView: View {
                         profile.logoData = nil
                         selectedLogoItem = nil
                         try? modelContext.save()
+                        BusinessBrandSync.markChanged(profile, context: modelContext)
                     }
                 }
             }
@@ -142,6 +147,100 @@ struct BusinessProfileView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Brand color
+
+    private func brandSection(_ profile: BusinessProfile) -> some View {
+        let current = BrandColor.resolved(profile.brandColorHex)
+        let logoColor = profile.logoData.flatMap(BrandColor.fromLogo)
+        return Section {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 8), spacing: 10) {
+                ForEach(BrandColor.presets, id: \.hex) { preset in
+                    Button { setBrand(preset.hex, profile) } label: {
+                        Circle()
+                            .fill(BrandColor.color(preset.hex))
+                            .frame(width: 30, height: 30)
+                            .overlay(Circle().stroke(Color.primary, lineWidth: current == preset.hex ? 2.5 : 0).padding(-4))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(preset.name)
+                    .accessibilityAddTraits(current == preset.hex ? .isSelected : [])
+                }
+            }
+            .padding(.vertical, 6)
+
+            if let logoColor {
+                Button { setBrand(logoColor, profile) } label: {
+                    HStack {
+                        Label("Match My Logo", systemImage: "eyedropper")
+                        Spacer()
+                        Circle().fill(BrandColor.color(logoColor)).frame(width: 20, height: 20)
+                    }
+                }
+            }
+
+            ColorPicker("Custom Color", selection: Binding(
+                get: { BrandColor.color(current) },
+                set: { setBrand(BrandColor.hex(from: $0), profile) }
+            ), supportsOpacity: false)
+
+            brandPreview(current, name: name)
+        } header: {
+            Text("Brand Color")
+        } footer: {
+            Text(BrandColor.needsDarkening(current)
+                 ? "Clients see this on your invoices, portal, booking page, website and emails. Buttons use a slightly darker shade so white text stays readable."
+                 : "Clients see this on your invoices, portal, booking page, website and emails.")
+        }
+    }
+
+    /// Roughly what a client sees: the header and a Pay button.
+    private func brandPreview(_ hex: String, name: String) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(BusinessIdentity.initials(for: name))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(BrandColor.color(hex))
+                    .frame(width: 24, height: 24)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(.white))
+                Text(name.isEmpty ? "Your business" : name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(10)
+            .background(BrandColor.color(BrandColor.readableOnWhite(hex)))
+            HStack {
+                Text("Invoice total $1,200.00").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("Pay now")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(BrandColor.color(BrandColor.readableOnWhite(hex))))
+            }
+            .padding(10)
+            .background(Color(.secondarySystemGroupedBackground))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(SBWTheme.cardStroke))
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
+        .accessibilityLabel("Preview of what clients see")
+    }
+
+    private func setBrand(_ hex: String, _ profile: BusinessProfile) {
+        guard let normalized = BrandColor.normalize(hex), normalized != profile.brandColorHex else { return }
+        profile.brandColorHex = normalized
+        try? modelContext.save()
+        brandSyncTask?.cancel()
+        // The custom picker fires on every drag step; send once it settles.
+        brandSyncTask = Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            BusinessBrandSync.markChanged(profile, context: modelContext)
+        }
     }
 
     private func emailFooter(_ profile: BusinessProfile) -> String {

@@ -150,7 +150,7 @@ struct BookingPageView: View {
             Section {
                 syncFooter(profile)
             } footer: {
-                Text("Your business name and email come from Profile and Logo.")
+                Text("Your business name and email come from Profile and Brand.")
             }
         }
         .task { load(profile) }
@@ -317,7 +317,7 @@ struct BookingPageView: View {
     private func createLink(_ profile: BusinessProfile) async {
         let email = profile.email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard email.contains("@") else {
-            linkError = "Add your business email in Profile and Logo first. Booking requests are sent there."
+            linkError = "Add your business email in Profile and Brand first. Booking requests are sent there."
             return
         }
         creatingLink = true

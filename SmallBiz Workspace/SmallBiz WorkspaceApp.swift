@@ -121,6 +121,7 @@ struct SmallBizWorkspaceApp: App {
         await BookingWorkSetup.syncConfirmed(context: context, businessID: businessID)
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: businessID)
         await RecurringScheduleSync.retryPending(context: context, businessID: businessID)
+        await BusinessBrandSync.pushIfNeeded(businessID: businessID, context: context)
         await DepositStatusSyncService.refreshPendingDeposits(context: context, businessID: businessID)
         await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: businessID)
     }
@@ -149,6 +150,7 @@ struct SmallBizWorkspaceApp: App {
         // a fallback" leg, covering a push that never arrived or was denied.
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
         await RecurringScheduleSync.retryPending(context: context, businessID: activeBiz.activeBusinessID)
+        await BusinessBrandSync.pushIfNeeded(businessID: activeBiz.activeBusinessID, context: context)
         // Same reasoning: estimate decisions (accepted and declined) are
         // server/push-driven (POST /api/portal/estimate/decision), this is
         // the fallback leg — and the only one, now that per-estimate status
