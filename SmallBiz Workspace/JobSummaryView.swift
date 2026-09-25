@@ -137,11 +137,10 @@ struct JobSummaryView: View {
         }
     }
 
+    // Real invoices only: estimates have their own action next to this one,
+    // so falling back to an estimate would label it "Open Invoice".
     private var linkedInvoiceForPrimaryAction: Invoice? {
-        if let match = linkedInvoices.first(where: { $0.documentType != "estimate" }) {
-            return match
-        }
-        return linkedInvoices.first
+        linkedInvoices.first(where: { $0.documentType != "estimate" })
     }
 
     private var linkedEstimate: Invoice? {
