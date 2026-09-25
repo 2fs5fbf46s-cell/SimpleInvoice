@@ -196,4 +196,50 @@ final class InvoiceSendGuardTests: XCTestCase {
             XCTAssertEqual(estimate.estimateStatus, "accepted")
         }
     }
+
+    // MARK: - Revise and resend
+
+    func testReopeningADeclinedEstimateMakesItADraftAgain() throws {
+        let estimate = try makeEstimate(status: "declined")
+        estimate.estimateDeclinedAt = .now.addingTimeInterval(-60)
+        EstimateDecisionSync.upsertDecision(
+            businessId: estimate.businessID.uuidString,
+            estimateId: estimate.id.uuidString,
+            status: "declined",
+            decidedAt: .now.addingTimeInterval(-60),
+            in: context
+        )
+
+        EstimateDecisionSync.reopenDeclinedEstimate(estimate, in: context)
+
+        XCTAssertEqual(estimate.estimateStatus, "draft")
+        XCTAssertNil(estimate.estimateDeclinedAt)
+        XCTAssertTrue(estimate.isUnsentEstimate)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<EstimateDecisionRecord>()).isEmpty)
+    }
+
+    /// Launch, list refresh and the push pull all re-apply decisions; the
+    /// old decline must not flip the revised estimate back.
+    func testTheOldDeclineIsIgnoredAfterReopening() throws {
+        let estimate = try makeEstimate(status: "declined")
+        let declinedAt = Date.now.addingTimeInterval(-60)
+        EstimateDecisionSync.reopenDeclinedEstimate(estimate, in: context)
+
+        EstimateDecisionSync.setEstimateDecision(estimate: estimate, status: "declined", decidedAt: declinedAt)
+
+        XCTAssertEqual(estimate.estimateStatus, "draft")
+    }
+
+    func testANewAnswerAfterReopeningStillApplies() throws {
+        let estimate = try makeEstimate(status: "declined")
+        EstimateDecisionSync.reopenDeclinedEstimate(estimate, in: context)
+
+        EstimateDecisionSync.setEstimateDecision(
+            estimate: estimate,
+            status: "accepted",
+            decidedAt: .now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(estimate.estimateStatus, "accepted")
+    }
 }

@@ -117,9 +117,14 @@ enum EstimateDecisionSync {
     @MainActor
     static func setEstimateDecision(estimate: Invoice, status: String, decidedAtMs: Int64) {
         guard let normalized = normalize(status: status) else { return }
+        let date = Date(timeIntervalSince1970: Double(decidedAtMs) / 1000.0)
+        // A decline the owner already answered by reopening the estimate.
+        // Every path that applies a decision (launch, list and detail
+        // refresh, the push pull) lands here, so this one check keeps the
+        // revised estimate from flipping back to declined.
+        if let reopenedAt = estimate.estimateReopenedAt, date <= reopenedAt { return }
         estimate.estimateStatus = normalized
 
-        let date = Date(timeIntervalSince1970: Double(decidedAtMs) / 1000.0)
         if normalized == "accepted" {
             estimate.estimateAcceptedAt = date
             estimate.estimateDeclinedAt = nil
@@ -127,6 +132,24 @@ enum EstimateDecisionSync {
             estimate.estimateDeclinedAt = date
             estimate.estimateAcceptedAt = nil
         }
+    }
+
+    /// Revise and resend: puts a declined estimate back to draft so it can be
+    /// edited and sent again. The decline stays history, not state.
+    @MainActor
+    static func reopenDeclinedEstimate(_ estimate: Invoice, in context: ModelContext) {
+        estimate.estimateStatus = "draft"
+        estimate.estimateDeclinedAt = nil
+        estimate.estimateReopenedAt = .now
+
+        let estimateId = estimate.id.uuidString
+        let desc = FetchDescriptor<EstimateDecisionRecord>(
+            predicate: #Predicate<EstimateDecisionRecord> { $0.estimateId == estimateId }
+        )
+        for record in (try? context.fetch(desc)) ?? [] {
+            context.delete(record)
+        }
+        try? context.save()
     }
 
     // Compatibility overload for existing call sites that pass Date.

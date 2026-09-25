@@ -311,6 +311,10 @@ final class Invoice {
     var estimateStatus: String = "draft"     // draft | sent | accepted | declined
     var estimateAcceptedAt: Date? = nil
     var estimateDeclinedAt: Date? = nil
+    /// When a declined estimate was reopened to revise and resend. Any
+    /// client decision from before this is about the old version and is
+    /// ignored — see EstimateDecisionSync.setEstimateDecision.
+    var estimateReopenedAt: Date? = nil
 
 
     init(
