@@ -49,6 +49,7 @@
 		B7A000000000000000000060 /* ClientLeadSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000061 /* ClientLeadSourceTests.swift */; };
 		B7A000000000000000000062 /* JobMileageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000063 /* JobMileageTests.swift */; };
 		B7A000000000000000000064 /* RecurringJobMaterializerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000065 /* RecurringJobMaterializerTests.swift */; };
+		B7A000000000000000000066 /* JobAppointmentReminderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000067 /* JobAppointmentReminderTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,6 +106,7 @@
 		B7A000000000000000000061 /* ClientLeadSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientLeadSourceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000063 /* JobMileageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobMileageTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000065 /* RecurringJobMaterializerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringJobMaterializerTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000067 /* JobAppointmentReminderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobAppointmentReminderTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -190,6 +192,7 @@
 				B7A000000000000000000061 /* ClientLeadSourceTests.swift */,
 				B7A000000000000000000063 /* JobMileageTests.swift */,
 				B7A000000000000000000065 /* RecurringJobMaterializerTests.swift */,
+				B7A000000000000000000067 /* JobAppointmentReminderTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -360,6 +363,7 @@
 				B7A000000000000000000060 /* ClientLeadSourceTests.swift in Sources */,
 				B7A000000000000000000062 /* JobMileageTests.swift in Sources */,
 				B7A000000000000000000064 /* RecurringJobMaterializerTests.swift in Sources */,
+				B7A000000000000000000066 /* JobAppointmentReminderTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

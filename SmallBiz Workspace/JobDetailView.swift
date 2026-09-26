@@ -313,6 +313,8 @@ struct JobDetailView: View {
 
             // Final sync on exit (safe, no auto-create)
             try? WorkspaceProvisioningService.syncJobWorkspaceName(job: job, context: modelContext)
+
+            syncAppointmentReminderIfNeeded()
         }
     }
 
@@ -1163,6 +1165,7 @@ struct JobDetailView: View {
 
     private func deleteJob() {
         let eventID = job.calendarEventId
+        let jobID = job.id
         isDeleted = true
         pendingSaveTask?.cancel()
         pendingWorkspaceRenameTask?.cancel()
@@ -1170,9 +1173,38 @@ struct JobDetailView: View {
         Task {
             try? await CalendarEventService.shared.removeEvent(identifier: eventID)
         }
+        Task {
+            try? await PortalBackend.shared.removeJobScheduleReminder(jobId: jobID)
+        }
         modelContext.delete(job)
         try? modelContext.save()
         dismiss()
+    }
+
+    /// Best-effort push of this job's appointment-reminder eligibility on
+    /// every exit from the job screen — the single place every edit path
+    /// (title, date, client assignment) funnels through, rather than
+    /// instrumenting each mutation site separately.
+    private func syncAppointmentReminderIfNeeded() {
+        let jobID = job.id
+        let client = linkedClient
+        guard JobAppointmentReminderEligibility.isEligible(job: job, client: client), let client else {
+            Task { try? await PortalBackend.shared.removeJobScheduleReminder(jobId: jobID) }
+            return
+        }
+        let title = job.title
+        let startDate = job.startDate
+        let clientEmail = client.email
+        let clientName = client.name
+        Task {
+            try? await PortalBackend.shared.syncJobScheduleReminder(
+                jobId: jobID,
+                title: title,
+                startDate: startDate,
+                clientEmail: clientEmail,
+                clientName: clientName
+            )
+        }
     }
 
     private func createJobInvoice() {

@@ -37,7 +37,7 @@ struct BusinessSettingsSheet: View {
         case switcher, profile, invoiceNumbers, savedItems
         case payments, reminders
         case booking, website, clientPortal
-        case reviewRequests
+        case reviewRequests, appointmentReminders
         case notifications, help
         #if DEBUG
         case portalPreview, developer
@@ -79,6 +79,7 @@ struct BusinessSettingsSheet: View {
                     }
                     section("Client Communications") {
                         row(.reviewRequests, "Review Requests", reviewRequestsSubtitle, "star.bubble")
+                        row(.appointmentReminders, "Appointment Reminders", appointmentRemindersSubtitle, "bell.and.waves.left.and.right")
                     }
                     section("Alerts and Help") {
                         row(.notifications, "Notifications", notificationsSubtitle, "bell")
@@ -263,6 +264,7 @@ struct BusinessSettingsSheet: View {
         case .website: WebsiteCustomizationView()
         case .clientPortal: PortalDirectoryLauncherView()
         case .reviewRequests: ReviewRequestSettingsView()
+        case .appointmentReminders: AppointmentReminderSettingsView()
         case .notifications: NotificationSettingsView()
         case .help: HelpCenterView()
         #if DEBUG
@@ -328,6 +330,10 @@ struct BusinessSettingsSheet: View {
     private var reviewRequestsSubtitle: String {
         guard let profile, profile.reviewRequestEnabled else { return "Off" }
         return profile.reviewLinkURL.isEmpty ? "On · add a review link" : "On"
+    }
+
+    private var appointmentRemindersSubtitle: String {
+        profile?.appointmentRemindersEnabled == true ? "On" : "Off"
     }
 
     private var site: PublishedBusinessSite? { sites.first { $0.businessID == businessID } }

@@ -1973,6 +1973,75 @@ final class PortalBackend {
         }
     }
 
+    // MARK: - Appointment reminder scheduling
+
+    /// Pushes the one thing the backend needs to send a 24h-before
+    /// appointment reminder email — see `runAppointmentReminder24hJob`
+    /// server-side. Called whenever a Job that qualifies (has a client with
+    /// an email, and a real, non-`needsScheduling` date — see
+    /// `JobAppointmentReminderEligibility`) is saved. Best-effort, same as
+    /// the settings syncs above: a failure here just means the reminder
+    /// won't fire until the next successful sync.
+    func syncJobScheduleReminder(
+        jobId: UUID,
+        title: String,
+        startDate: Date,
+        clientEmail: String,
+        clientName: String
+    ) async throws {
+        let email = clientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty else { return }
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/jobs/schedule")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload: [String: Any] = [
+            "jobId": jobId.uuidString,
+            "clientEmail": email,
+            "clientName": clientName,
+            "jobTitle": trimmedTitle.isEmpty ? "Your appointment" : trimmedTitle,
+            "startAtMs": Int((startDate.timeIntervalSince1970 * 1000).rounded())
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    /// Removes a Job's appointment-reminder record — the job was deleted,
+    /// its client removed, or its date cleared back to `needsScheduling`.
+    /// Best-effort.
+    func removeJobScheduleReminder(jobId: UUID) async throws {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/jobs/schedule")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let payload: [String: Any] = ["jobId": jobId.uuidString, "remove": true]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
     /// Which alerts push to the owner's phone, and the daily recap. The
     /// server keeps these (it's what sends the pushes); see
     /// NotificationSettingsView.

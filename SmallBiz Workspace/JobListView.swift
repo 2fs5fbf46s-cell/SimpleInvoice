@@ -318,7 +318,9 @@ struct JobsListView: View {
 
     private func delete(_ job: Job) {
         let eventID = job.calendarEventId
+        let jobID = job.id
         Task { try? await CalendarEventService.shared.removeEvent(identifier: eventID) }
+        Task { try? await PortalBackend.shared.removeJobScheduleReminder(jobId: jobID) }
         modelContext.delete(job)
         save()
         Haptics.success()
@@ -357,9 +359,32 @@ struct JobsListView: View {
             showingNewJob = false
             Haptics.success()
             selectedJob = job
+            syncAppointmentReminderIfNeeded(for: job)
         } catch {
             Haptics.error()
             SBWLog.ui.problem("Failed to save new job: \(error)")
+        }
+    }
+
+    /// A new job's draft screen is `isDraft: true` the whole time it's open,
+    /// so `JobDetailView`'s own onDisappear sync never fires for it — this
+    /// covers that one gap, at the exact moment the draft becomes real.
+    private func syncAppointmentReminderIfNeeded(for job: Job) {
+        let jobID = job.id
+        let client = job.clientID.flatMap { clientByID[$0] }
+        guard JobAppointmentReminderEligibility.isEligible(job: job, client: client), let client else { return }
+        let title = job.title
+        let startDate = job.startDate
+        let clientEmail = client.email
+        let clientName = client.name
+        Task {
+            try? await PortalBackend.shared.syncJobScheduleReminder(
+                jobId: jobID,
+                title: title,
+                startDate: startDate,
+                clientEmail: clientEmail,
+                clientName: clientName
+            )
         }
     }
 

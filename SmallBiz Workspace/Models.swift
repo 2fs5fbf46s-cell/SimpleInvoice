@@ -56,6 +56,11 @@ final class BusinessProfile {
     var reviewRequestEnabled: Bool = false
     var reviewLinkURL: String = ""
 
+    // Appointment reminders (client-facing email, opt-in, ~24h before a
+    // scheduled job). The device separately pushes each qualifying Job's
+    // schedule up to the backend — see JobAppointmentReminderEligibility.
+    var appointmentRemindersEnabled: Bool = false
+
     var invoicePrefix: String = "SI"
     var nextInvoiceNumber: Int = 1
     var lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date())
@@ -102,6 +107,7 @@ Other
         overdueReminderCadenceDays: Int = 7,
         reviewRequestEnabled: Bool = false,
         reviewLinkURL: String = "",
+        appointmentRemindersEnabled: Bool = false,
         invoicePrefix: String = "SI",
         nextInvoiceNumber: Int = 1,
         lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date()),
@@ -145,6 +151,7 @@ Other
         self.overdueReminderCadenceDays = overdueReminderCadenceDays
         self.reviewRequestEnabled = reviewRequestEnabled
         self.reviewLinkURL = reviewLinkURL
+        self.appointmentRemindersEnabled = appointmentRemindersEnabled
         self.invoicePrefix = invoicePrefix
         self.nextInvoiceNumber = nextInvoiceNumber
         self.lastInvoiceYear = lastInvoiceYear
