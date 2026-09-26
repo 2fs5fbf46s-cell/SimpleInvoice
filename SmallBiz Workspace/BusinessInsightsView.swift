@@ -14,6 +14,7 @@ struct BusinessInsightsView: View {
     @Query private var invoices: [Invoice]
     @Query private var jobs: [Job]
     @Query private var expenses: [Expense]
+    @Query private var clients: [Client]
 
     @State private var showNoClient = false
 
@@ -22,6 +23,7 @@ struct BusinessInsightsView: View {
         _invoices = Query(filter: #Predicate<Invoice> { $0.businessID == scoped })
         _jobs = Query(filter: #Predicate<Job> { $0.businessID == scoped })
         _expenses = Query(filter: #Predicate<Expense> { $0.businessID == scoped })
+        _clients = Query(filter: #Predicate<Client> { $0.businessID == scoped })
     }
 
     var body: some View {
@@ -109,6 +111,24 @@ struct BusinessInsightsView: View {
                 LabeledContent("Invoices waiting on payment", value: "\(MoneyMath.open(invoices).count)")
                 LabeledContent("Estimates waiting on the client", value: "\(estimatesWaiting)")
             }
+
+            if !leadSourceBreakdown.isEmpty {
+                Section {
+                    ForEach(leadSourceBreakdown, id: \.source) { entry in
+                        HStack {
+                            Text(entry.source.displayName)
+                            Spacer()
+                            Text("\(entry.count)")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                } header: {
+                    Text("Clients by Source")
+                } footer: {
+                    Text("From \(leadSourceBreakdown.reduce(0) { $0 + $1.count }) of \(clients.count) client\(clients.count == 1 ? "" : "s") with a source set.")
+                }
+            }
         }
         .navigationTitle("Insights")
         .navigationDestination(isPresented: $showNoClient) { NoClientInvoicesView(invoices: noClientInvoices) }
@@ -147,6 +167,15 @@ struct BusinessInsightsView: View {
 
     private var estimatesWaiting: Int {
         invoices.filter { $0.documentType == "estimate" && $0.estimateStatus == "sent" }.count
+    }
+
+    /// Only sources at least one client actually has, biggest first — an
+    /// all-zero row for every case would just be noise on a small client list.
+    private var leadSourceBreakdown: [(source: LeadSource, count: Int)] {
+        LeadSource.allCases
+            .map { source in (source: source, count: clients.filter { $0.leadSource == source }.count) }
+            .filter { $0.count > 0 }
+            .sorted { $0.count > $1.count }
     }
 
     static func shortCurrency(_ dollars: Double) -> String {

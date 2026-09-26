@@ -181,6 +181,29 @@ struct BusinessSnapshot: Codable {
 
 // MARK: - Client
 
+/// How a client found the business. Optional and never defaulted — unlike
+/// `ExpenseCategory` (every expense has one), most clients predate this
+/// field, and a guessed value would be worse than no value in Insights.
+enum LeadSource: String, Codable, CaseIterable, Identifiable {
+    case referral
+    case googleSearch
+    case socialMedia
+    case returningClient
+    case other
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .referral: return "Referral"
+        case .googleSearch: return "Google Search"
+        case .socialMedia: return "Social Media"
+        case .returningClient: return "Returning Client"
+        case .other: return "Other"
+        }
+    }
+}
+
 @Model
 final class Client {
     var id: UUID = Foundation.UUID()
@@ -197,6 +220,12 @@ final class Client {
     var archivedAt: Date? = nil
     /// Nil for clients made before this was tracked.
     var createdAt: Date? = nil
+
+    var leadSourceRaw: String? = nil
+    var leadSource: LeadSource? {
+        get { leadSourceRaw.flatMap(LeadSource.init(rawValue:)) }
+        set { leadSourceRaw = newValue?.rawValue }
+    }
 
     // ✅ ARRAY-side inverses for CloudKit (avoid circular macro issues)
     @Relationship(inverse: \Invoice.client)

@@ -101,6 +101,14 @@ struct ClientEditView: View {
             }
 
             Section {
+                leadSourceChips
+            } header: {
+                Text("How Did They Hear About You?")
+            } footer: {
+                Text("Optional — helps you see what's actually bringing in work, in Insights.")
+            }
+
+            Section {
                 TextField("Gate codes, preferences, anything to remember", text: $client.notes, axis: .vertical)
                     .lineLimit(3...10)
                     .onChange(of: client.notes) { _, _ in scheduleSave() }
@@ -173,6 +181,36 @@ struct ClientEditView: View {
             // saved or thrown away by whoever presented it.
             if !isDraft { try? modelContext.save() }
         }
+    }
+
+    // MARK: - Lead source
+
+    private var leadSourceChips: some View {
+        // A flow layout would be nicer than a fixed grid, but five short
+        // labels fit two-per-row at every Dynamic Type size this app
+        // supports, and this mirrors the grid WrapRow already used
+        // elsewhere (SavedItemsView's category filter) without pulling in
+        // its UIHostingController-measuring machinery for five static chips.
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+            ForEach(LeadSource.allCases) { source in
+                Button {
+                    client.leadSource = (client.leadSource == source) ? nil : source
+                    scheduleSave()
+                } label: {
+                    Text(source.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(client.leadSource == source ? SBWTheme.brandTint : Color(.secondarySystemFill))
+                        )
+                        .foregroundStyle(client.leadSource == source ? SBWTheme.brand : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(client.leadSource == source ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Save
