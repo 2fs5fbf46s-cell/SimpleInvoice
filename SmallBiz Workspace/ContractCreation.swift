@@ -3,6 +3,13 @@ import OSLog
 import SwiftData
 
 enum ContractCreation {
+    /// Half up front, half on completion — the founder's standard split.
+    /// Callers that already have their own deposit (the estimate-bundling
+    /// flow lets the owner type one) pass that instead of calling this.
+    static func defaultDepositCents(invoiceTotalCents: Int) -> Int {
+        Int((Double(invoiceTotalCents) * 0.5).rounded())
+    }
+
     static func create(
         context: ModelContext,
         template: ContractTemplate,
@@ -11,6 +18,8 @@ enum ContractCreation {
         business: BusinessProfile?,
         client: Client?,
         invoice: Invoice?,
+        job: Job? = nil,
+        depositAmountCents: Int? = nil,
         extras: [String: String] = [:]
     ) throws -> Contract {
 
@@ -26,6 +35,8 @@ enum ContractCreation {
             business: business,
             client: client,
             invoice: invoice,
+            job: job,
+            depositAmountCents: depositAmountCents,
             extras: extras
         )
 
@@ -40,6 +51,8 @@ enum ContractCreation {
             client: client,
             invoice: invoice
         )
+        contract.job = job
+        contract.depositAmountCents = depositAmountCents
 
         // ✅ The ONLY correct businessID source:
         contract.businessID = businessID

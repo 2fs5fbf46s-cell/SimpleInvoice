@@ -2727,16 +2727,21 @@ struct InvoiceDetailView: View {
         let business = profiles.first(where: { $0.businessID == bizID })
 
         do {
+            // No job yet, usually: EstimateAcceptanceHandler creates one only
+            // once this estimate is accepted, so the contract text falls back
+            // to "[add scheduled date]"/"[add job site address]" until then —
+            // ContractTemplateEngine re-renders nothing after signing, so
+            // there's no later point where the schedule could still get in.
             let contract = try ContractCreation.create(
                 context: modelContext,
                 template: template,
                 businessID: bizID,
                 business: business,
                 client: invoice.client,
-                invoice: invoice
+                invoice: invoice,
+                job: invoice.job,
+                depositAmountCents: parsedDepositAmountCents()
             )
-            contract.job = invoice.job
-            contract.depositAmountCents = parsedDepositAmountCents()
             try? modelContext.save()
             createdContract = contract
         } catch {

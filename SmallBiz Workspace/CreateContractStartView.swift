@@ -64,6 +64,13 @@ struct CreateContractStartView: View {
         if let job {
             _selectedJobIDs = State(initialValue: [job.id])
             _primaryJobID = State(initialValue: job.id)
+            // Opened from a job that already has an invoice or estimate:
+            // attach it automatically instead of leaving "Fill from an
+            // invoice" for the owner to remember to switch on.
+            if let invoice = job.invoices?.sorted(by: { $0.issueDate > $1.issueDate }).first {
+                _selectedInvoice = State(initialValue: invoice)
+                _useInvoice = State(initialValue: true)
+            }
         }
 
         let scopedID = BusinessScoped.queryBusinessID(businessID)
@@ -381,6 +388,20 @@ struct CreateContractStartView: View {
         return scopedJobs.filter { ids.contains($0.id) }.sorted { $0.startDate > $1.startDate }
     }
 
+    /// The job whose schedule/site the contract text should show: the
+    /// picked primary, or the invoice's own job when none was picked.
+    private func resolvedJob(invoice: Invoice?) -> Job? {
+        scopedJobs.first(where: { $0.id == primaryJobID }) ?? invoice?.job
+    }
+
+    /// Half up front, half on completion, whenever there's an invoice to
+    /// split — the founder's standard split, with nothing for the owner to
+    /// configure on this screen.
+    private func resolvedDepositCents(invoice: Invoice?) -> Int? {
+        guard let invoice, invoice.totalCents > 0 else { return nil }
+        return ContractCreation.defaultDepositCents(invoiceTotalCents: invoice.totalCents)
+    }
+
     private func generatePreview() {
         guard let template = selectedTemplate else { return }
 
@@ -391,6 +412,8 @@ struct CreateContractStartView: View {
             business: business,
             client: client,
             invoice: inv,
+            job: resolvedJob(invoice: inv),
+            depositAmountCents: resolvedDepositCents(invoice: inv),
             extras: [:]
         )
 
@@ -408,6 +431,8 @@ struct CreateContractStartView: View {
 
         let inv = useInvoice ? selectedInvoice : nil
         let client = resolvedClient
+        let job = resolvedJob(invoice: inv)
+        let deposit = resolvedDepositCents(invoice: inv)
 
         do {
             let contract = try ContractCreation.create(
@@ -417,15 +442,14 @@ struct CreateContractStartView: View {
                 business: business,
                 client: client,
                 invoice: inv,
+                job: job,
+                depositAmountCents: deposit,
                 extras: [:]
             )
-            let primary = scopedJobs.first(where: { $0.id == primaryJobID })
-            let fallback = inv?.job
-            contract.job = primary ?? fallback
 
             var linked = Set(selectedJobIDs)
-            if let primaryID = contract.job?.id {
-                linked.insert(primaryID)
+            if let jobID = job?.id {
+                linked.insert(jobID)
             }
             contract.linkedJobIDsCSV = linked.map(\.uuidString).joined(separator: ",")
             try? modelContext.save()
