@@ -1910,6 +1910,69 @@ final class PortalBackend {
         }
     }
 
+    /// Pushes whether/where a paid invoice's portal page should ask the
+    /// client for a review — the page reads this live on every view (see
+    /// portalReviewSettingsFromSearchParams), so it's never baked into an
+    /// invoice at send time. Same best-effort shape as the overdue-reminder
+    /// sync above.
+    func syncReviewRequestSettings(enabled: Bool, reviewLinkURL: String) async throws {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/notifications/settings")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let payload: [String: Any] = [
+            "settings": [
+                "reviewRequest": [
+                    "enabled": enabled,
+                    "reviewLinkUrl": reviewLinkURL
+                ]
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    /// Pushes whether the backend cron should email a client ~24h before
+    /// their scheduled job. Same best-effort shape as the other settings
+    /// syncs above.
+    func syncAppointmentReminderSettings(enabled: Bool) async throws {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/notifications/settings")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let payload: [String: Any] = [
+            "settings": [
+                "appointmentReminders": [
+                    "enabled": enabled
+                ]
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
     /// Which alerts push to the owner's phone, and the daily recap. The
     /// server keeps these (it's what sends the pushes); see
     /// NotificationSettingsView.

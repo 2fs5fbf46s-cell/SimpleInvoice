@@ -50,6 +50,12 @@ final class BusinessProfile {
     var overdueReminderEnabled: Bool = false
     var overdueReminderCadenceDays: Int = 7
 
+    // Automatic review request (client-facing link on a paid invoice's
+    // portal page, opt-in). Link is https-only — the backend drops anything
+    // else rather than ever showing a client an unsafe link.
+    var reviewRequestEnabled: Bool = false
+    var reviewLinkURL: String = ""
+
     var invoicePrefix: String = "SI"
     var nextInvoiceNumber: Int = 1
     var lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date())
@@ -94,6 +100,8 @@ Other
         logoData: Data? = nil,
         overdueReminderEnabled: Bool = false,
         overdueReminderCadenceDays: Int = 7,
+        reviewRequestEnabled: Bool = false,
+        reviewLinkURL: String = "",
         invoicePrefix: String = "SI",
         nextInvoiceNumber: Int = 1,
         lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date()),
@@ -135,6 +143,8 @@ Other
         self.logoData = logoData
         self.overdueReminderEnabled = overdueReminderEnabled
         self.overdueReminderCadenceDays = overdueReminderCadenceDays
+        self.reviewRequestEnabled = reviewRequestEnabled
+        self.reviewLinkURL = reviewLinkURL
         self.invoicePrefix = invoicePrefix
         self.nextInvoiceNumber = nextInvoiceNumber
         self.lastInvoiceYear = lastInvoiceYear

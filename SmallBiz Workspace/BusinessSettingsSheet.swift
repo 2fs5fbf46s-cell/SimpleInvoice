@@ -37,6 +37,7 @@ struct BusinessSettingsSheet: View {
         case switcher, profile, invoiceNumbers, savedItems
         case payments, reminders
         case booking, website, clientPortal
+        case reviewRequests
         case notifications, help
         #if DEBUG
         case portalPreview, developer
@@ -75,6 +76,9 @@ struct BusinessSettingsSheet: View {
                         row(.booking, "Booking Page", bookingSubtitle, "calendar.badge.clock", badge: bookingBadge)
                         row(.website, "Website", websiteSubtitle, "globe", badge: websiteBadge)
                         row(.clientPortal, "Client Portal", clientPortalSubtitle, "person.2")
+                    }
+                    section("Client Communications") {
+                        row(.reviewRequests, "Review Requests", reviewRequestsSubtitle, "star.bubble")
                     }
                     section("Alerts and Help") {
                         row(.notifications, "Notifications", notificationsSubtitle, "bell")
@@ -258,6 +262,7 @@ struct BusinessSettingsSheet: View {
         case .booking: BookingPageView()
         case .website: WebsiteCustomizationView()
         case .clientPortal: PortalDirectoryLauncherView()
+        case .reviewRequests: ReviewRequestSettingsView()
         case .notifications: NotificationSettingsView()
         case .help: HelpCenterView()
         #if DEBUG
@@ -318,6 +323,11 @@ struct BusinessSettingsSheet: View {
         return profile?.bookingEnabled == false
             ? SettingsBadge(text: "Paused", color: .secondary)
             : SettingsBadge(text: "Taking bookings", color: SBWTheme.success)
+    }
+
+    private var reviewRequestsSubtitle: String {
+        guard let profile, profile.reviewRequestEnabled else { return "Off" }
+        return profile.reviewLinkURL.isEmpty ? "On · add a review link" : "On"
     }
 
     private var site: PublishedBusinessSite? { sites.first { $0.businessID == businessID } }
