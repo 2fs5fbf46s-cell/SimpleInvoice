@@ -82,13 +82,7 @@ struct SavedItemsView: View {
             // Background
             Color(.systemGroupedBackground).ignoresSafeArea()
 
-            // Subtle header wash (Option A parity)
-            SBWTheme.brandGradient
-                .opacity(SBWTheme.headerWashOpacity)
-                .blur(radius: SBWTheme.headerWashBlur)
-                .frame(height: SBWTheme.headerWashHeight)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea()
+            SBWTheme.headerWash()
 
             List {
                 Section {
@@ -431,12 +425,7 @@ private struct CategoriesEditorView: View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
 
-            SBWTheme.brandGradient
-                .opacity(SBWTheme.headerWashOpacity)
-                .blur(radius: SBWTheme.headerWashBlur)
-                .frame(height: SBWTheme.headerWashHeight)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea()
+            SBWTheme.headerWash()
 
             List {
                 if let profile {
