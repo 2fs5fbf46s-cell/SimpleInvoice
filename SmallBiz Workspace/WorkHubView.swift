@@ -43,7 +43,7 @@ struct WorkHubView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }
             }
         }

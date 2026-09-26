@@ -59,7 +59,7 @@ struct MoneyHubView: View {
         }
         .onChange(of: segment) { _, new in if new != .invoices { invoiceFilter = nil } }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }
             }
         }
