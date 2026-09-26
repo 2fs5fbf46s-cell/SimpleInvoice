@@ -24,6 +24,7 @@ struct PortalPreviewView: View {
 
     // Shows invite code OR session token
     @State private var codeOrTokenShown: String? = nil
+    @State private var previewURL: URL? = nil
 
     // Visible feedback
     @State private var errorText: String? = nil
@@ -72,6 +73,12 @@ struct PortalPreviewView: View {
         .navigationTitle("Portal Preview")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
+        .sheet(item: Binding(
+            get: { previewURL.map { IdentifiableURL(url: $0) } },
+            set: { previewURL = $0?.url }
+        )) { item in
+            SafariView(url: item.url, onDone: {})
+        }
     }
 
     // MARK: - Sections
@@ -220,6 +227,24 @@ struct PortalPreviewView: View {
                         .font(.footnote)
                         .textSelection(.enabled)
                         .padding(.vertical, 6)
+
+                    // The token used to be a string you had to copy out and
+                    // paste into a URL by hand to see anything. Build that
+                    // same URL here instead.
+                    if isToken, let clientID = selectedClientID,
+                       let client = clients.first(where: { $0.id == clientID }) {
+                        Button {
+                            previewURL = PortalBackend.shared.buildClientDirectoryPortalURL(
+                                client: client,
+                                token: codeOrTokenShown
+                            )
+                        } label: {
+                            Label("Open in Safari", systemImage: "safari")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(SBWTheme.success)
+                    }
                 }
                 .sbwPortalCardRow()
             }
