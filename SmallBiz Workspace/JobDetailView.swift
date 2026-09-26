@@ -35,6 +35,8 @@ struct JobDetailView: View {
     // Attachments (join records)
     @Query private var attachments: [JobAttachment]
     @Query private var clients: [Client]
+    @Query private var jobs: [Job]
+    @Query private var expenses: [Expense]
 
     @State private var showExistingFilePicker = false
     @State private var showJobFileImporter = false
@@ -102,6 +104,13 @@ struct JobDetailView: View {
                 client.businessID == businessID
             },
             sort: [SortDescriptor(\Client.name, order: .forward)]
+        )
+        self._jobs = Query(
+            filter: #Predicate<Job> { $0.businessID == businessID },
+            sort: [SortDescriptor(\Job.startDate, order: .reverse)]
+        )
+        self._expenses = Query(
+            filter: #Predicate<Expense> { $0.businessID == businessID }
         )
     }
 
@@ -447,6 +456,7 @@ struct JobDetailView: View {
                 nextStepCard
                 contactRow
                 paperworkCard
+                if let mileage = mileageSuggestion { mileageCard(mileage) }
                 attachmentsCard
                 notesCard
                 detailsGroup
@@ -838,6 +848,74 @@ struct JobDetailView: View {
         }
         .buttonStyle(.borderless)
         .sbwJobCardRow()
+    }
+
+    // MARK: Mileage
+
+    /// The most recent earlier job with a recorded location, and the
+    /// distance from it — nil once an expense has already been logged for
+    /// this exact from→to pair, so the card doesn't keep re-offering it.
+    private var mileageSuggestion: (from: Job, miles: Double)? {
+        guard let previous = JobMileage.previousJob(before: job, in: jobs),
+              let miles = JobMileage.miles(from: previous, to: job) else { return nil }
+
+        let alreadyLogged = expenses.contains {
+            $0.jobID == job.id && $0.mileageFromJobID == previous.id
+        }
+        guard !alreadyLogged else { return nil }
+
+        return (previous, miles)
+    }
+
+    private func mileageCard(_ suggestion: (from: Job, miles: Double)) -> some View {
+        let deductionCents = JobMileage.estimatedDeductionCents(miles: suggestion.miles)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "car.fill")
+                    .foregroundStyle(SBWTheme.attention)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(String(format: "%.1f", suggestion.miles)) mi from your last job")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Estimated deduction: \(currency(Double(deductionCents) / 100)) (IRS rate)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Button {
+                logMileageExpense(from: suggestion.from, miles: suggestion.miles)
+            } label: {
+                Text("Log as Expense")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(SBWTheme.attention)
+        }
+        .sbwJobCardRow()
+    }
+
+    private func logMileageExpense(from previousJob: Job, miles: Double) {
+        let expense = Expense(
+            businessID: job.businessID,
+            amountCents: JobMileage.estimatedDeductionCents(miles: miles),
+            category: .mileage,
+            vendor: job.title.isEmpty ? "Mileage" : job.title,
+            date: job.startDate,
+            notes: "\(String(format: "%.1f", miles)) mi from \(previousJob.title.isEmpty ? "previous job" : previousJob.title)",
+            isTaxDeductible: true,
+            jobID: job.id
+        )
+        expense.mileageMiles = miles
+        expense.mileageRateCentsPerMile = IRSMileageRate.currentCentsPerMile
+        expense.mileageFromJobID = previousJob.id
+        modelContext.insert(expense)
+        do {
+            try modelContext.save()
+            Haptics.success()
+        } catch {
+            actionError = "Couldn't save the mileage expense."
+        }
     }
 
     private func paperworkRow(icon: String, title: String, status: String, tint: Color, action: @escaping () -> Void) -> some View {

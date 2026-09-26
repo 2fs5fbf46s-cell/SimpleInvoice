@@ -47,6 +47,7 @@
 		B7A00000000000000000005C /* ContractTemplateSeederTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000005D /* ContractTemplateSeederTests.swift */; };
 		B7A00000000000000000005E /* ContractCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000005F /* ContractCreationTests.swift */; };
 		B7A000000000000000000060 /* ClientLeadSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000061 /* ClientLeadSourceTests.swift */; };
+		B7A000000000000000000062 /* JobMileageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000063 /* JobMileageTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -101,6 +102,7 @@
 		B7A00000000000000000005D /* ContractTemplateSeederTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTemplateSeederTests.swift; sourceTree = "<group>"; };
 		B7A00000000000000000005F /* ContractCreationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractCreationTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000061 /* ClientLeadSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientLeadSourceTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000063 /* JobMileageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobMileageTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -184,6 +186,7 @@
 				B7A00000000000000000005D /* ContractTemplateSeederTests.swift */,
 				B7A00000000000000000005F /* ContractCreationTests.swift */,
 				B7A000000000000000000061 /* ClientLeadSourceTests.swift */,
+				B7A000000000000000000063 /* JobMileageTests.swift */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -352,6 +355,7 @@
 				B7A00000000000000000005C /* ContractTemplateSeederTests.swift in Sources */,
 				B7A00000000000000000005E /* ContractCreationTests.swift in Sources */,
 				B7A000000000000000000060 /* ClientLeadSourceTests.swift in Sources */,
+				B7A000000000000000000062 /* JobMileageTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

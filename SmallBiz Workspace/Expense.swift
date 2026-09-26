@@ -7,6 +7,7 @@ enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
     case software
     case meals
     case equipment
+    case mileage
     case other
 
     var id: String { rawValue }
@@ -18,6 +19,7 @@ enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
         case .software: return "Software"
         case .meals: return "Meals"
         case .equipment: return "Equipment"
+        case .mileage: return "Mileage"
         case .other: return "Other"
         }
     }
@@ -29,6 +31,7 @@ enum ExpenseCategory: String, Codable, CaseIterable, Identifiable {
         case .software: return "app.badge"
         case .meals: return "fork.knife"
         case .equipment: return "wrench.and.screwdriver"
+        case .mileage: return "car.fill"
         case .other: return "ellipsis.circle"
         }
     }
@@ -50,6 +53,15 @@ final class Expense {
     // link that doesn't need bidirectional traversal from Client/Job yet.
     var clientID: UUID? = nil
     var jobID: UUID? = nil
+
+    /// Set only when this expense was logged from Job-to-Job mileage
+    /// (JobMileage), rather than typed in by hand. `mileageRateCentsPerMile`
+    /// is a snapshot of the rate at logging time — the IRS publishes a new
+    /// one every year, so recomputing it later from `mileageMiles` would
+    /// silently change a past expense's amount.
+    var mileageMiles: Double? = nil
+    var mileageRateCentsPerMile: Int? = nil
+    var mileageFromJobID: UUID? = nil
 
     // Cascade: a join row exists only to link this record to a file. Left to
     // nullify (the default) it survives its owner as an invisible orphan that
