@@ -455,6 +455,7 @@ struct JobDetailView: View {
             } else {
                 nextStepCard
                 contactRow
+                repeatsCard
                 paperworkCard
                 if let mileage = mileageSuggestion { mileageCard(mileage) }
                 attachmentsCard
@@ -848,6 +849,49 @@ struct JobDetailView: View {
         }
         .buttonStyle(.borderless)
         .sbwJobCardRow()
+    }
+
+    // MARK: Repeats
+
+    private var repeatsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Repeats", systemImage: "repeat")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(job.recurringCadence == nil ? .primary : SBWTheme.brand)
+                Spacer()
+                Menu {
+                    Button("Off") { setRecurringCadence(nil) }
+                    ForEach(RecurringCadence.allCases) { cadence in
+                        Button(cadence.displayName) { setRecurringCadence(cadence) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(job.recurringCadence?.displayName ?? "Off")
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(job.recurringCadence == nil ? .secondary : SBWTheme.brand)
+                }
+            }
+            if let nextAt = job.recurringNextOccurrenceAt {
+                Text("Next job: \(nextAt.formatted(date: .abbreviated, time: .omitted)) — created automatically")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sbwJobCardRow()
+    }
+
+    private func setRecurringCadence(_ cadence: RecurringCadence?) {
+        job.recurringCadence = cadence
+        job.recurringNextOccurrenceAt = cadence.map { $0.advancing(from: job.startDate) }
+        do {
+            try modelContext.save()
+        } catch {
+            actionError = "Couldn't update repeat settings."
+        }
     }
 
     // MARK: Mileage

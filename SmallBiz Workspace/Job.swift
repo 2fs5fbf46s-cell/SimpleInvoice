@@ -99,6 +99,23 @@ final class Job {
 
     /// ✅ New: workspace folder key (Folder.id.uuidString)
     var workspaceFolderKey: String? = nil
+
+    /// Recurrence, client-side only (see RecurringJobMaterializer) — unlike
+    /// RecurringInvoiceSchedule, there's no separate schedule object. The
+    /// rule lives on whichever Job is the current "head" of the chain:
+    /// nil cadence means this Job doesn't repeat; once
+    /// recurringNextOccurrenceAt is due, the next Job is created and the
+    /// chain (cadence + next date) hands off to it, leaving this one as
+    /// plain history.
+    var recurringCadenceRaw: String? = nil
+    var recurringNextOccurrenceAt: Date? = nil
+    /// The Job this one was generated from, when it's a repeat occurrence.
+    var recurringParentJobID: UUID? = nil
+
+    var recurringCadence: RecurringCadence? {
+        get { recurringCadenceRaw.flatMap(RecurringCadence.init(rawValue:)) }
+        set { recurringCadenceRaw = newValue?.rawValue }
+    }
     
     @Relationship(inverse: \Invoice.job)
     var invoices: [Invoice]? = []

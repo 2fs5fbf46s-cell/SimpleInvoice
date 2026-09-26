@@ -145,6 +145,13 @@ struct SmallBizWorkspaceApp: App {
         BusinessSitePublishService.shared.startMonitoring(context: context)
         await BusinessSitePublishService.shared.syncQueuedSites(context: context)
         await LocalReminderScheduler.shared.refreshReminders(modelContext: context, activeBusinessID: activeBiz.activeBusinessID)
+        // Client-side only, unlike recurring invoices: a repeating Job
+        // running a few hours late because the phone was off isn't a
+        // financial miss the way a missed invoice is, so this just checks
+        // on every foreground rather than needing server-side generation.
+        if let businessID = activeBiz.activeBusinessID {
+            RecurringJobMaterializer.materializeDueOccurrences(context: context, businessID: businessID)
+        }
         await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: activeBiz.activeBusinessID)
         // Generation itself is server/push-driven; this is the "next launch as
         // a fallback" leg, covering a push that never arrived or was denied.
