@@ -4,6 +4,7 @@ import SwiftData
 
 struct ExpenseListView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     private let businessID: UUID?
 
     @Query private var expenses: [Expense]
@@ -17,6 +18,7 @@ struct ExpenseListView: View {
 
     @State private var showingNewExpense = false
     @State private var newExpenseDraft: Expense? = nil
+    @State private var showingSubscriptionPaywall = false
 
     init(businessID: UUID? = nil) {
         self.businessID = businessID
@@ -274,6 +276,9 @@ struct ExpenseListView: View {
                 .accessibilityLabel("More")
             }
         }
+        .sheet(isPresented: $showingSubscriptionPaywall) {
+            SubscriptionPaywallView()
+        }
         .sheet(isPresented: $showingNewExpense, onDismiss: { newExpenseDraft = nil }) {
             NavigationStack {
                 if let newExpenseDraft {
@@ -340,6 +345,7 @@ struct ExpenseListView: View {
             SBWLog.ui.problem("❌ No active business selected")
             return
         }
+        guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
 
         let expense = Expense(businessID: bizID, date: .now)
 

@@ -12,6 +12,8 @@ struct CreateMenuSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
+    @State private var showingSubscriptionPaywall = false
 
     @Query private var profiles: [BusinessProfile]
 
@@ -66,6 +68,7 @@ struct CreateMenuSheet: View {
                                 systemImage: "doc.plaintext",
                                 chipFill: SBWTheme.chipFill(for: "Invoices")
                             ) {
+                                guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
                                 createInvoiceDraftAndOpen()
                             }
 
@@ -77,6 +80,7 @@ struct CreateMenuSheet: View {
                                 systemImage: "doc.text.magnifyingglass",
                                 chipFill: SBWTheme.chipFill(for: "Estimates")
                             ) {
+                                guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
                                 draftEstimateName = ""
                                 draftEstimateClient = nil
                                 showNewEstimateSheet = true
@@ -90,6 +94,7 @@ struct CreateMenuSheet: View {
                                 systemImage: "doc.text",
                                 chipFill: SBWTheme.chipFill(for: "Contracts")
                             ) {
+                                guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
                                 showNewContractSheet = true
                             }
 
@@ -101,6 +106,7 @@ struct CreateMenuSheet: View {
                                 systemImage: "creditcard",
                                 chipFill: SBWTheme.chipFill(for: "Expenses")
                             ) {
+                                guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
                                 startExpense()
                             }
                         }
@@ -112,6 +118,7 @@ struct CreateMenuSheet: View {
                                 systemImage: "person.badge.plus",
                                 chipFill: SBWTheme.chipFill(for: "Customers")
                             ) {
+                                guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
                                 addClientAndOpenSheet()
                             }
 
@@ -123,6 +130,7 @@ struct CreateMenuSheet: View {
                                 systemImage: "tray.full",
                                 chipFill: SBWTheme.chipFill(for: "Requests")
                             ) {
+                                guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
                                 addJobAndOpenSheet()
                             }
                         }
@@ -206,6 +214,10 @@ struct CreateMenuSheet: View {
                         DispatchQueue.main.async { openExistingClient = saved }
                     }
                 }
+            }
+
+            .sheet(isPresented: $showingSubscriptionPaywall) {
+                SubscriptionPaywallView()
             }
 
             .sheet(item: $newExpense) { expense in

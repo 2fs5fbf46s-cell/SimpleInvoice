@@ -14,6 +14,7 @@ struct BusinessSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     /// Passed in directly rather than resolved via `@EnvironmentObject`: this
     /// sheet's `.onAppear` is the only place that reads it, and an
     /// environment object read solely inside a closure — never in `body`
@@ -35,7 +36,7 @@ struct BusinessSettingsSheet: View {
 
     enum Route: Hashable {
         case switcher, profile, invoiceNumbers, savedItems
-        case payments, reminders
+        case payments, reminders, subscription
         case booking, website, clientPortal
         case reviewRequests, appointmentReminders
         case notifications, help
@@ -71,6 +72,8 @@ struct BusinessSettingsSheet: View {
                             badge: paymentsBadge)
                             .coachMark(id: "walkthrough.more.setup-payments")
                         row(.reminders, "Overdue Reminders", remindersSubtitle, "bell.badge")
+                        row(.subscription, "Subscription", subscriptionSubtitle, "star.circle",
+                            badge: subscriptionBadge)
                     }
                     section("What Clients See") {
                         row(.booking, "Booking Page", bookingSubtitle, "calendar.badge.clock", badge: bookingBadge)
@@ -260,6 +263,7 @@ struct BusinessSettingsSheet: View {
         case .savedItems: SavedItemsView(businessID: businessID)
         case .payments: SetupPaymentsView()
         case .reminders: OverdueReminderSettingsView()
+        case .subscription: SubscriptionSettingsView()
         case .booking: BookingPageView()
         case .website: WebsiteCustomizationView()
         case .clientPortal: PortalDirectoryLauncherView()
@@ -312,6 +316,23 @@ struct BusinessSettingsSheet: View {
         guard let profile, profile.overdueReminderEnabled else { return "Off" }
         let days = profile.overdueReminderCadenceDays
         return "On · \(days) day\(days == 1 ? "" : "s") after the due date"
+    }
+
+    private var subscriptionSubtitle: String {
+        switch subscriptionStore.state {
+        case .loading: return "Checking…"
+        case .trialing(let daysLeft): return "Trial · \(daysLeft) day\(daysLeft == 1 ? "" : "s") left"
+        case .active: return "Active"
+        case .notEntitled: return "Subscribe to keep creating new work"
+        }
+    }
+
+    private var subscriptionBadge: SettingsBadge? {
+        switch subscriptionStore.state {
+        case .trialing: return SettingsBadge(text: "Trial", color: SBWTheme.attention)
+        case .notEntitled: return SettingsBadge(text: "Inactive", color: SBWTheme.attention)
+        case .loading, .active: return nil
+        }
     }
 
     private var bookingSubtitle: String {

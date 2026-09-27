@@ -12,6 +12,7 @@
 		B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */; };
 		B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */; };
 		B7A00000000000000000000E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B7A00000000000000000000F /* XCTest.framework */; };
+		6E5B369712E84B5E3D5425E9 /* StoreKitTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C9805B086D2C1539C62CE34 /* StoreKitTest.framework */; };
 		B7A000000000000000000012 /* RoutingAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000013 /* RoutingAcceptanceTests.swift */; };
 		B7A000000000000000000014 /* ContractsNavigationSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */; };
 		B7A000000000000000000017 /* MusicSplitSheetSmartEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */; };
@@ -50,6 +51,8 @@
 		B7A000000000000000000062 /* JobMileageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000063 /* JobMileageTests.swift */; };
 		B7A000000000000000000064 /* RecurringJobMaterializerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000065 /* RecurringJobMaterializerTests.swift */; };
 		B7A000000000000000000066 /* JobAppointmentReminderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000067 /* JobAppointmentReminderTests.swift */; };
+		B7A000000000000000000068 /* SubscriptionGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000069 /* SubscriptionGateTests.swift */; };
+		2BB85FDE83151DDC7300633B /* Subscription.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 1061D2009BB04C0DABC51031 /* Subscription.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,10 +68,12 @@
 /* Begin PBXFileReference section */
 		B6256B792F2321B700BD717A /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
 		B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		1061D2009BB04C0DABC51031 /* Subscription.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = "Subscription.storekit"; path = "SmallBiz Workspace/Subscription.storekit"; sourceTree = SOURCE_ROOT; };
 		B6FAA46E2F14423E0063A7CD /* SmallBizWorkspace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SmallBizWorkspace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallBizWorkspaceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000004 /* SmallBizWorkspaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmallBizWorkspaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7A00000000000000000000F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		1C9805B086D2C1539C62CE34 /* StoreKitTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKitTest.framework; path = System/Library/Frameworks/StoreKitTest.framework; sourceTree = SDKROOT; };
 		B7A000000000000000000013 /* RoutingAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingAcceptanceTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000015 /* ContractsNavigationSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractsNavigationSmokeTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000016 /* MusicSplitSheetSmartEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSplitSheetSmartEditingTests.swift; sourceTree = "<group>"; };
@@ -107,6 +112,7 @@
 		B7A000000000000000000063 /* JobMileageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobMileageTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000065 /* RecurringJobMaterializerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringJobMaterializerTests.swift; sourceTree = "<group>"; };
 		B7A000000000000000000067 /* JobAppointmentReminderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobAppointmentReminderTests.swift; sourceTree = "<group>"; };
+		B7A000000000000000000069 /* SubscriptionGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionGateTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -131,6 +137,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B7A00000000000000000000E /* XCTest.framework in Frameworks */,
+				6E5B369712E84B5E3D5425E9 /* StoreKitTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -193,6 +200,8 @@
 				B7A000000000000000000063 /* JobMileageTests.swift */,
 				B7A000000000000000000065 /* RecurringJobMaterializerTests.swift */,
 				B7A000000000000000000067 /* JobAppointmentReminderTests.swift */,
+				B7A000000000000000000069 /* SubscriptionGateTests.swift */,
+				1061D2009BB04C0DABC51031 /* Subscription.storekit */,
 				B7A000000000000000000035 /* PortalBackendErrorTests.swift */,
 				B7A000000000000000000033 /* BackendAuthConformanceTests.swift */,
 				B7A00000000000000000002D /* ClientSnapshotTests.swift */,
@@ -208,6 +217,7 @@
 			isa = PBXGroup;
 			children = (
 				B7A00000000000000000000F /* XCTest.framework */,
+				1C9805B086D2C1539C62CE34 /* StoreKitTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -316,6 +326,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2BB85FDE83151DDC7300633B /* Subscription.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -364,6 +375,7 @@
 				B7A000000000000000000062 /* JobMileageTests.swift in Sources */,
 				B7A000000000000000000064 /* RecurringJobMaterializerTests.swift in Sources */,
 				B7A000000000000000000066 /* JobAppointmentReminderTests.swift in Sources */,
+				B7A000000000000000000068 /* SubscriptionGateTests.swift in Sources */,
 				B7A000000000000000000034 /* PortalBackendErrorTests.swift in Sources */,
 				B7A000000000000000000032 /* BackendAuthConformanceTests.swift in Sources */,
 				B7A00000000000000000002C /* ClientSnapshotTests.swift in Sources */,

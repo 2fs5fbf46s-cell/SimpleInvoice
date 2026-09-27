@@ -12,6 +12,8 @@ struct InvoiceDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dismissToDashboard) private var dismissToDashboard
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
+    @State private var showingSubscriptionPaywall = false
     @Bindable var invoice: Invoice
     @Query private var profiles: [BusinessProfile]
     @Query private var businesses: [Business]
@@ -383,6 +385,7 @@ struct InvoiceDetailView: View {
         }
 
         // Sheets
+        .sheet(isPresented: $showingSubscriptionPaywall) { SubscriptionPaywallView() }
         .sheet(isPresented: $showingItemPicker) { itemPickerSheet }
         .sheet(isPresented: $showTemplatePicker) {
             NavigationStack {
@@ -2722,6 +2725,7 @@ struct InvoiceDetailView: View {
     private func draftBundledContract() {
         exportError = nil
         guard let template = selectedContractTemplate else { return }
+        guard SubscriptionGate.allow(subscriptionStore, present: $showingSubscriptionPaywall) else { return }
 
         let bizID = invoice.businessID
         let business = profiles.first(where: { $0.businessID == bizID })

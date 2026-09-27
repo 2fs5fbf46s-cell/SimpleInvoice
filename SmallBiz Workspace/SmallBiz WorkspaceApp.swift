@@ -12,6 +12,7 @@ struct SmallBizWorkspaceApp: App {
     @StateObject private var launch = LaunchCoordinator()
     @StateObject private var lock = AppLockManager()
     @StateObject private var activeBiz = ActiveBusinessStore()
+    @StateObject private var subscriptionStore = SubscriptionStore()
     @State private var readyServicesTask: Task<Void, Never>? = nil
 
     var body: some Scene {
@@ -19,6 +20,7 @@ struct SmallBizWorkspaceApp: App {
             appContent
                 .environmentObject(lock)
                 .environmentObject(activeBiz)
+                .environmentObject(subscriptionStore)
 
                 // Close Safari when portal redirects back to app via scheme.
                 .onOpenURL { url in
@@ -37,6 +39,7 @@ struct SmallBizWorkspaceApp: App {
                 }
                 .task {
                     launch.start(activeBusiness: activeBiz)
+                    subscriptionStore.startObserving()
                 }
                 .onChange(of: launch.phase) { _, _ in
                     startReadyServicesIfNeeded()
