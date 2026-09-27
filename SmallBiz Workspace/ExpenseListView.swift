@@ -261,7 +261,7 @@ struct ExpenseListView: View {
             ExpenseFormView(expense: expense, isDraft: false)
         }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if let url = yearCSV {
                         ShareLink(item: url) {

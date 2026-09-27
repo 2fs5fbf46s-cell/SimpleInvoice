@@ -228,7 +228,7 @@ struct EstimateListView: View {
 
         // MARK: - Toolbar (matches InvoiceListView style)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
                         toolbarRoute = .businessProfile

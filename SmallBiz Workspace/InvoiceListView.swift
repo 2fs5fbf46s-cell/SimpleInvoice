@@ -311,7 +311,7 @@ struct InvoiceListView: View {
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { showingRecurringSchedules = true } label: {
                         Label("Recurring Invoices", systemImage: "arrow.triangle.2.circlepath")
