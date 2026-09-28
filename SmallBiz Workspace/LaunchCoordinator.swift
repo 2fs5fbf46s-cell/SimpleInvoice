@@ -137,6 +137,7 @@ final class LaunchCoordinator: ObservableObject {
 
             transition(to: .restoringBusiness)
             try activeBusiness.loadOrCreateDefaultBusiness(modelContext: context)
+            ContractTemplateSeeder.seedIfNeeded(context: context)
 
             transition(to: .loadingWorkspace)
             await waitForMinimumDisplayTime(since: startedAt)
