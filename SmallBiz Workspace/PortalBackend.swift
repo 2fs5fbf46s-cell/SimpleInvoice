@@ -220,6 +220,8 @@ struct PortalAllowedDTO: Decodable {
     let invoiceNumber: String?
     let amountCents: Int?
     let currency: String?
+    /// Set when the server made a part-payment link (see PaymentRequestService).
+    var paymentRequestId: String? = nil
 
     // contract
     let contractId: String?
@@ -227,23 +229,6 @@ struct PortalAllowedDTO: Decodable {
 
     // gate
     let clientPortalEnabled: Bool?
-}
-
-// MARK: - Payment Status
-
-struct PaymentStatusResponse: Decodable {
-    let paid: Bool
-    let receipt: ReceiptDTO?
-
-    struct ReceiptDTO: Decodable {
-        let status: String?
-        let invoiceId: String?
-        let businessId: String?
-        let sessionId: String?
-        let amountTotal: Int?
-        let currency: String?
-        let paidAt: String?
-    }
 }
 
 struct EstimateStatusResponseDTO: Decodable {
@@ -908,7 +893,8 @@ final class PortalBackend {
         invoice: Invoice,
         business: Business? = nil,
         businessName: String? = nil,
-        mode: String = "live"
+        mode: String = "live",
+        paymentRequest: (amountCents: Int, label: String)? = nil
     ) async throws -> String {
         guard let clientId = invoice.client?.id else {
             throw NSError(domain: "Portal", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invoice must be linked to a client to create a portal link."])
@@ -958,6 +944,26 @@ final class PortalBackend {
             body["estimateStatus"] = status
             body["status"] = status
             body["title"] = "Estimate \(invoice.invoiceNumber)"
+        }
+        // A link for part of the balance (a deposit): the server caps it at
+        // what's owed and charges exactly this, once.
+        if let paymentRequest, invoice.documentType != "estimate" {
+            body["paymentRequest"] = [
+                "amountCents": paymentRequest.amountCents,
+                "label": paymentRequest.label,
+            ]
+            let seeded = try await seedToken(payload: body)
+            // A server that predates payment requests ignores the field and
+            // mints a link for the whole balance; never hand that out as a
+            // deposit link.
+            guard seeded.session?.allowed?.paymentRequestId?.isEmpty == false,
+                  seeded.session?.allowed?.amountCents == paymentRequest.amountCents
+            else {
+                throw NSError(domain: "Portal", code: 501, userInfo: [
+                    NSLocalizedDescriptionKey: "Payment links aren't available yet. Try again later, or send the invoice instead.",
+                ])
+            }
+            return seeded.token
         }
 
         return try await seedToken(payload: body).token
@@ -1420,6 +1426,9 @@ final class PortalBackend {
         var fields: [String: Any] = [
             "paidCents": invoice.paidCents,
             "balanceDueCents": invoice.balanceDueCents,
+            // The server derives the balance from this plus its own record of
+            // online payments (see Invoice.offlinePaidCents).
+            "offlinePaidCents": invoice.offlinePaidCents,
         ]
         if invoice.balanceDueCents == 0 {
             fields["paid"] = true
@@ -2453,6 +2462,17 @@ final class PortalBackend {
         let sentAtMs: Double?
         let lastReminderAtMs: Double?
         let updatedAtMs: Double
+        /// Each online payment, when the backend's ledger has them (a deposit
+        /// link means one invoice can take several).
+        var payments: [InvoiceActivityPaymentDTO]? = nil
+    }
+
+    struct InvoiceActivityPaymentDTO: Decodable {
+        let id: String
+        let amountCents: Int
+        let provider: String?
+        let paidAtMs: Double?
+        var paymentRequestId: String? = nil
     }
 
     struct InvoiceActivityPage: Decodable {
@@ -2486,30 +2506,6 @@ final class PortalBackend {
             throw PortalBackendError.http(http.statusCode, body: raw)
         }
         return try decoder().decode(InvoiceActivityPage.self, from: data)
-    }
-
-    // MARK: - Payment status
-
-    func fetchPaymentStatus(businessId: String, invoiceId: String) async throws -> PaymentStatusResponse {
-        var comps = URLComponents(
-            url: baseURL.appendingPathComponent("/api/payment-status"),
-            resolvingAgainstBaseURL: false
-        )!
-        comps.queryItems = [
-            URLQueryItem(name: "businessId", value: businessId),
-            URLQueryItem(name: "invoiceId", value: invoiceId)
-        ]
-
-        guard let url = comps.url else { throw PortalBackendError.badURL }
-
-        let (data, resp) = try await PortalBackend.session.data(from: url)
-        let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-
-        guard let http = resp as? HTTPURLResponse else { throw PortalBackendError.http(-1, body: raw) }
-        guard (200...299).contains(http.statusCode) else { throw PortalBackendError.http(http.statusCode, body: raw) }
-
-        do { return try decoder().decode(PaymentStatusResponse.self, from: data) }
-        catch { throw PortalBackendError.decode(body: raw) }
     }
 
     // MARK: - Estimate status

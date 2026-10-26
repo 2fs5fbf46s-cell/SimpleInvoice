@@ -86,6 +86,7 @@ struct InvoiceDetailView: View {
     @State private var showPaymentMethods = false
     @State private var recurringDraftSaved = false
     @State private var showRecordPayment = false
+    @State private var showPaymentRequest = false
     @State private var invoiceSendKind: InvoiceSendService.Kind? = nil
     @State private var sendingInvoice = false
     @State private var showInvoiceDetails = false
@@ -161,6 +162,14 @@ struct InvoiceDetailView: View {
             // didn't present.
             .sheet(isPresented: $showRecordPayment) {
                 RecordPaymentSheet(invoice: invoice)
+            }
+            .sheet(isPresented: $showPaymentRequest) {
+                PaymentRequestSheet(
+                    invoice: invoice,
+                    businessName: resolvedPortalBusinessName(),
+                    canPayOnline: canPayOnline,
+                    onSetUpPayments: { showPaymentMethods = true }
+                )
             }
             .navigationDestination(isPresented: $showPaymentMethods) { SetupPaymentsView() }
             .navigationDestination(item: $estimateJobRoute) { job in
@@ -1147,6 +1156,17 @@ struct InvoiceDetailView: View {
                 .buttonStyle(.borderless)
                 .foregroundStyle(SBWTheme.brand)
         }
+        if invoice.client != nil, isClientPortalEnabled, invoice.cannotBeSentReason == nil {
+            requestPaymentLink("Need a deposit first? Send a payment link")
+        }
+    }
+
+    /// A link for part of the balance — a deposit, say. See PaymentRequestSheet.
+    private func requestPaymentLink(_ title: String) -> some View {
+        Button(title) { showPaymentRequest = true }
+            .font(.caption)
+            .buttonStyle(.borderless)
+            .foregroundStyle(SBWTheme.brand)
     }
 
     /// No card, PayPal, Venmo… is on, so the client can see the invoice but
@@ -1194,6 +1214,7 @@ struct InvoiceDetailView: View {
                 .disabled(openingPortal)
         }
         noPaymentMethodsNote
+        requestPaymentLink("Need part of it now? Send a payment link")
     }
 
     @ViewBuilder
@@ -1211,6 +1232,7 @@ struct InvoiceDetailView: View {
                 .buttonStyle(.bordered)
         }
         noPaymentMethodsNote
+        requestPaymentLink("Need part of it now? Send a payment link")
     }
 
     @ViewBuilder
@@ -1228,6 +1250,7 @@ struct InvoiceDetailView: View {
                 .disabled(sendingInvoice)
         }
         noPaymentMethodsNote
+        requestPaymentLink("Send a payment link for part of the rest")
     }
 
     @ViewBuilder
@@ -1470,6 +1493,9 @@ struct InvoiceDetailView: View {
             }
             if invoiceStage != .paid && invoice.totalCents > 0 {
                 Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
+                if invoice.documentType != "estimate" && invoice.client != nil {
+                    Button { showPaymentRequest = true } label: { Label("Request Payment", systemImage: "link.badge.plus") }
+                }
             }
             if isPricingLocked && !invoice.isPaid {
                 Button { confirmUnlockPricing = true } label: { Label("Unlock Pricing", systemImage: "lock.open") }
@@ -3097,32 +3123,23 @@ struct InvoiceDetailView: View {
         }
     }
 
+    /// Online payments (a deposit, or the whole thing) come in through the
+    /// activity feed. This used to ask /api/payment-status, which now needs
+    /// the client's link token, so it failed every time.
     @MainActor
     private func refreshInvoicePaidStatusFromPortal() async {
-        do {
-            let businessId = invoice.businessID.uuidString
-            let invoiceId = invoice.id.uuidString
-
-            let status = try await PortalBackend.shared.fetchPaymentStatus(
-                businessId: businessId,
-                invoiceId: invoiceId
+        guard invoice.documentType != "estimate" else { return }
+        let wasPaid = invoice.isPaid
+        await InvoiceActivityPullService.pull(context: modelContext, businessID: invoice.businessID)
+        if invoice.isPaid && !wasPaid {
+            _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
+                invoice: invoice,
+                profiles: profiles,
+                context: modelContext,
+                reason: .paid,
+                replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
             )
-
-            if status.paid && !invoice.isPaid {
-                _ = InvoicePDFService.lockBusinessSnapshotIfNeeded(
-                    invoice: invoice,
-                    profiles: profiles,
-                    context: modelContext,
-                    reason: .paid,
-                    replaceExistingUnlockedSnapshot: !invoice.isBusinessInfoLocked
-                )
-                InvoicePaymentService.markPaidOnline(invoice, context: modelContext)
-                try? modelContext.save()
-            }
-        } catch {
-            // Optional: show a non-blocking error
-            // portalError = "Couldn’t refresh payment status"
-            SBWLog.ui.problem("Payment status refresh failed: \(error)")
+            try? modelContext.save()
         }
     }
 
@@ -3150,11 +3167,13 @@ struct InvoiceDetailView: View {
 
         do {
             try await PortalPaymentsAPI.shared.resolveManualPaymentReport(reportId: reportId, action: action)
-            // Approving settles it on the server; record what the client said
-            // they paid so the payments list and balance match.
+            // Approving records it on the server; record what the client said
+            // they paid so the payments list and balance match. Same id as the
+            // server's ledger entry, so the activity pull won't add it again.
+            let externalId = "manual:\(reportId)"
             if action == "approve",
                let report = manualReports.first(where: { $0.id == reportId }),
-               !(invoice.payments ?? []).contains(where: { $0.source == "portal" }) {
+               !(invoice.payments ?? []).contains(where: { $0.externalId == externalId }) {
                 _ = try? InvoicePaymentService.record(
                     on: invoice,
                     amountCents: report.amountCents,
@@ -3162,6 +3181,7 @@ struct InvoiceDetailView: View {
                     method: report.method.lowercased(),
                     note: report.reference.map { "Ref \($0)" } ?? "Reported by client",
                     source: "portal",
+                    externalId: externalId,
                     context: modelContext
                 )
             }

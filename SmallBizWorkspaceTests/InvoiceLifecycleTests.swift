@@ -184,6 +184,145 @@ final class InvoiceLifecycleTests: XCTestCase {
         XCTAssertFalse(invoice.isPaid)
     }
 
+    // MARK: - Payment links (deposits)
+
+    private func ledgerActivity(
+        for invoice: Invoice,
+        paid: Bool = false,
+        payments: [(id: String, cents: Int)]
+    ) -> PortalBackend.InvoiceActivityDTO {
+        PortalBackend.InvoiceActivityDTO(
+            invoiceId: invoice.id.uuidString,
+            paid: paid,
+            paidAtMs: paid ? 1_790_000_000_000 : nil,
+            paidOnlineCents: nil,
+            provider: paid ? "stripe" : nil,
+            viewedAtMs: nil,
+            sentAtMs: nil,
+            lastReminderAtMs: nil,
+            updatedAtMs: 1_790_000_000_000,
+            payments: payments.map {
+                PortalBackend.InvoiceActivityPaymentDTO(
+                    id: $0.id,
+                    amountCents: $0.cents,
+                    provider: "stripe",
+                    paidAtMs: 1_790_000_000_000,
+                    paymentRequestId: "req-1"
+                )
+            }
+        )
+    }
+
+    func testADepositPaidOnlineLeavesTheRestOwed() throws {
+        let invoice = try makeInvoice()
+        invoice.sentAt = .now
+        let item = ledgerActivity(for: invoice, payments: [("pi_dep", 15_000)])
+
+        InvoiceActivityPullService.apply(item, businessID: invoice.businessID, context: context)
+        InvoiceActivityPullService.apply(item, businessID: invoice.businessID, context: context)
+
+        XCTAssertFalse(invoice.isPaid)
+        XCTAssertEqual(invoice.payments?.count, 1, "the same ledger payment pulled twice is one payment")
+        XCTAssertEqual(invoice.payments?.first?.externalId, "pi_dep")
+        XCTAssertEqual(invoice.balanceDueCents, 30_000)
+    }
+
+    func testTheLastLedgerPaymentPaysItOff() throws {
+        let invoice = try makeInvoice()
+        invoice.sentAt = .now
+        InvoiceActivityPullService.apply(
+            ledgerActivity(for: invoice, payments: [("pi_dep", 15_000)]),
+            businessID: invoice.businessID,
+            context: context
+        )
+
+        InvoiceActivityPullService.apply(
+            ledgerActivity(for: invoice, paid: true, payments: [("pi_dep", 15_000), ("pi_rest", 30_000)]),
+            businessID: invoice.businessID,
+            context: context
+        )
+
+        XCTAssertTrue(invoice.isPaid)
+        XCTAssertEqual(invoice.payments?.count, 2)
+        XCTAssertEqual(invoice.paidCents, 45_000)
+    }
+
+    /// A device on an older build records an online payment without the
+    /// ledger id; the newer device must not count it again.
+    func testALedgerPaymentClaimsTheOldStyleRecordOfIt() throws {
+        let invoice = try makeInvoice()
+        invoice.sentAt = .now
+        try InvoicePaymentService.record(
+            on: invoice, amountCents: 15_000, paidAt: .now, method: "stripe", source: "portal", context: context
+        )
+
+        InvoiceActivityPullService.apply(
+            ledgerActivity(for: invoice, payments: [("pi_dep", 15_000)]),
+            businessID: invoice.businessID,
+            context: context
+        )
+
+        XCTAssertEqual(invoice.payments?.count, 1)
+        XCTAssertEqual(invoice.payments?.first?.externalId, "pi_dep")
+    }
+
+    /// What the server adds its own ledger to: a check counts, an online
+    /// payment it reported does not (it already has that one).
+    func testOfflinePaidLeavesOutLedgerPayments() throws {
+        let invoice = try makeInvoice()
+        invoice.sentAt = .now
+        try InvoicePaymentService.record(on: invoice, amountCents: 10_000, paidAt: .now, method: "check", context: context)
+        InvoiceActivityPullService.apply(
+            ledgerActivity(for: invoice, payments: [("pi_dep", 15_000)]),
+            businessID: invoice.businessID,
+            context: context
+        )
+
+        XCTAssertEqual(invoice.paidCents, 25_000)
+        XCTAssertEqual(invoice.offlinePaidCents, 10_000)
+        XCTAssertEqual(PortalBackend.invoiceBalanceFields(invoice)["offlinePaidCents"] as? Int, 10_000)
+    }
+
+    func testAnInvoiceMarkedPaidTheOldWayIsAllOffline() throws {
+        let invoice = try makeInvoice()
+        invoice.isPaid = true
+
+        XCTAssertEqual(invoice.offlinePaidCents, 45_000)
+    }
+
+    func testAPaymentLinkAsksForNoMoreThanIsOwed() throws {
+        let invoice = try makeInvoice()
+
+        XCTAssertNoThrow(try PaymentRequestService.validate(invoice, amountCents: 15_000))
+        XCTAssertNoThrow(try PaymentRequestService.validate(invoice, amountCents: 45_000))
+        XCTAssertThrowsError(try PaymentRequestService.validate(invoice, amountCents: 45_001))
+        XCTAssertThrowsError(try PaymentRequestService.validate(invoice, amountCents: 0))
+
+        invoice.isPaid = true
+        XCTAssertThrowsError(try PaymentRequestService.validate(invoice, amountCents: 100))
+    }
+
+    func testAPaymentLinkNeedsAClientWithThePortalOn() throws {
+        let invoice = try makeInvoice()
+        invoice.client?.portalEnabled = false
+        XCTAssertThrowsError(try PaymentRequestService.validate(invoice, amountCents: 100))
+
+        invoice.client = nil
+        XCTAssertThrowsError(try PaymentRequestService.validate(invoice, amountCents: 100))
+    }
+
+    func testThePaymentLinkMessageNamesTheAmountAndInvoice() throws {
+        let invoice = try makeInvoice()
+        let url = URL(string: "https://portal.example.test/portal/invoice/x?t=abc")!
+
+        let message = PaymentRequestService.shareMessage(
+            for: invoice, amountCents: 15_000, label: "Deposit", businessName: "Freeman DJ", url: url
+        )
+
+        XCTAssertTrue(message.contains("deposit for invoice SI-2026-014 from Freeman DJ"), message)
+        XCTAssertTrue(message.contains(url.absoluteString))
+    }
+
     func testAnotherBusinesssActivityIsIgnored() throws {
         let invoice = try makeInvoice()
 

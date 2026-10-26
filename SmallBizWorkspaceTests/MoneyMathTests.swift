@@ -77,10 +77,26 @@ final class MoneyMathTests: XCTestCase {
         XCTAssertEqual(MoneyMath.tally(MoneyMath.received(invoices: [inv], jobs: []), in: MoneyMath.thisMonth()).cents, 10_000)
     }
 
-    func testAPortalPaymentRecordsAPaymentDatedToday() throws {
+    func testAPortalPaymentRecordsAPaymentDatedWhenItWasPaid() throws {
         let inv = try invoice(300)
         inv.issueDate = .now.addingTimeInterval(-60 * day)
-        InvoicePaymentService.markPaidOnline(inv, context: context)
+        let nowMs = Date().timeIntervalSince1970 * 1000
+        InvoiceActivityPullService.apply(
+            PortalBackend.InvoiceActivityDTO(
+                invoiceId: inv.id.uuidString,
+                paid: true,
+                paidAtMs: nowMs,
+                paidOnlineCents: 30_000,
+                provider: "stripe",
+                viewedAtMs: nil,
+                sentAtMs: nil,
+                lastReminderAtMs: nil,
+                updatedAtMs: nowMs,
+                payments: [.init(id: "pi_1", amountCents: 30_000, provider: "stripe", paidAtMs: nowMs)]
+            ),
+            businessID: inv.businessID,
+            context: context
+        )
         XCTAssertTrue(inv.isPaid)
         XCTAssertEqual(inv.payments?.count, 1)
         XCTAssertEqual(MoneyMath.tally(MoneyMath.received(invoices: [inv], jobs: []), in: MoneyMath.lastDays(1)).cents, 30_000)

@@ -71,6 +71,13 @@ enum InvoiceActivityPullService {
             if (invoice.lastReminderAt ?? .distantPast) < date { invoice.lastReminderAt = date }
         }
 
+        if let payments = item.payments, !payments.isEmpty {
+            applyLedger(payments, to: invoice, context: context)
+            // The portal says it's settled; trust it, as below.
+            if item.paid == true, !invoice.isPaid { invoice.isPaid = true }
+            return
+        }
+
         guard item.paid == true, !invoice.isPaid else { return }
         let alreadyRecorded = (invoice.payments ?? []).contains { $0.source == "portal" }
         guard !alreadyRecorded else { return }
@@ -92,6 +99,40 @@ enum InvoiceActivityPullService {
         // (a total edited after the client paid, say).
         if !invoice.isPaid {
             invoice.isPaid = true
+        }
+    }
+
+    /// One payment per ledger entry, by its id; paid-ness follows the balance
+    /// (InvoicePaymentService.settle), so a deposit leaves the rest owed.
+    private static func applyLedger(
+        _ payments: [PortalBackend.InvoiceActivityPaymentDTO],
+        to invoice: Invoice,
+        context: ModelContext
+    ) {
+        for payment in payments.sorted(by: { ($0.paidAtMs ?? 0) < ($1.paidAtMs ?? 0) }) {
+            guard payment.amountCents > 0 else { continue }
+            let existing = invoice.payments ?? []
+            if existing.contains(where: { $0.externalId == payment.id }) { continue }
+
+            // A device on an older build may have recorded this one the old
+            // way (no id): claim that row rather than count it twice.
+            if let unclaimed = existing.first(where: {
+                $0.source == "portal" && $0.externalId.isEmpty && $0.amountCents == payment.amountCents
+            }) {
+                unclaimed.externalId = payment.id
+                continue
+            }
+
+            _ = try? InvoicePaymentService.record(
+                on: invoice,
+                amountCents: payment.amountCents,
+                paidAt: payment.paidAtMs.map { Date(timeIntervalSince1970: $0 / 1000) } ?? .now,
+                method: payment.provider ?? "card",
+                note: payment.paymentRequestId == nil ? "Paid in the client portal" : "Paid with a payment link",
+                source: "portal",
+                externalId: payment.id,
+                context: context
+            )
         }
     }
 }

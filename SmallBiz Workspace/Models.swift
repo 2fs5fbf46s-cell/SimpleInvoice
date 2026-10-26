@@ -609,6 +609,21 @@ final class Invoice {
         isPaid ? 0 : max(totalCents - paidCents, 0)
     }
 
+    /// Paid in ways the backend's payment ledger doesn't hold: everything
+    /// except the online payments it reported one by one (those carry an
+    /// externalId). The server adds its ledger to this to work out the
+    /// balance, so a republish can't drop an online payment the app hasn't
+    /// pulled yet.
+    var offlinePaidCents: Int {
+        let payments = payments ?? []
+        if isPaid && payments.isEmpty { return totalCents }
+        let offline = payments
+            .filter { $0.externalId.isEmpty }
+            .reduce(0) { $0 + max(0, $1.amountCents) }
+        let depositPaid = (sourceBookingDepositPaidAtMs ?? 0) > 0 ? bookingDepositCents : 0
+        return offline + depositPaid
+    }
+
     /// In front of the client: sent from the app, already published to the
     /// portal by an older build, or paid.
     var wasSent: Bool {

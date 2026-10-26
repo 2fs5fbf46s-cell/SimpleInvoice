@@ -25,13 +25,18 @@ final class InvoicePayment {
     var note: String = ""
     /// "manual" or "portal".
     var source: String = "manual"
+    /// The backend's id for an online payment (its payment ledger entry), so
+    /// the same payment pulled twice is recorded once. Empty for payments
+    /// recorded in the app, and for portal payments from before the ledger.
+    var externalId: String = ""
 
     @Relationship var invoice: Invoice? = nil
 
     init() {}
 
-    init(invoice: Invoice, amountCents: Int, paidAt: Date, method: String, note: String = "", source: String = "manual") {
+    init(invoice: Invoice, amountCents: Int, paidAt: Date, method: String, note: String = "", source: String = "manual", externalId: String = "") {
         self.invoice = invoice
+        self.externalId = externalId
         self.invoiceKey = invoice.id.uuidString
         self.amountCents = amountCents
         self.paidAt = paidAt

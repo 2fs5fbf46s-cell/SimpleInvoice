@@ -63,19 +63,11 @@ enum InvoiceSendService {
         }
     }
 
-    static func send(
-        _ invoice: Invoice,
-        kind: Kind,
-        context: ModelContext,
-        businessName: String?
-    ) async throws -> Outcome {
-        guard !invoice.isPaid, invoice.balanceDueCents > 0 else { throw SendError.alreadyPaid }
-        guard let client = invoice.client else { throw SendError.noClient }
-        let email = client.email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard email.contains("@") else { throw SendError.noClientEmail }
-        guard client.portalEnabled else { throw SendError.portalDisabled }
-        if let reason = invoice.cannotBeSentReason { throw SendError.notReady(reason) }
-
+    /// Marks the invoice sent (numbering it and locking its business details
+    /// the first time) and publishes it to the client's portal. Undone if the
+    /// publish fails. Also the way in for a payment-request link on a draft:
+    /// once the client has a link to it, it's sent.
+    static func publishAsSent(_ invoice: Invoice, context: ModelContext) async throws {
         let wasSentBefore = invoice.sentAt
         if invoice.sentAt == nil {
             invoice.sentAt = .now
@@ -95,7 +87,6 @@ enum InvoiceSendService {
                 replaceExistingUnlockedSnapshot: true
             )
         }
-        // Republish so the client opens exactly what the email describes.
         invoice.portalNeedsUpload = true
         try? context.save()
 
@@ -111,6 +102,23 @@ enum InvoiceSendService {
             try? context.save()
             throw SendError.publishFailed(message)
         }
+    }
+
+    static func send(
+        _ invoice: Invoice,
+        kind: Kind,
+        context: ModelContext,
+        businessName: String?
+    ) async throws -> Outcome {
+        guard !invoice.isPaid, invoice.balanceDueCents > 0 else { throw SendError.alreadyPaid }
+        guard let client = invoice.client else { throw SendError.noClient }
+        let email = client.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard email.contains("@") else { throw SendError.noClientEmail }
+        guard client.portalEnabled else { throw SendError.portalDisabled }
+        if let reason = invoice.cannotBeSentReason { throw SendError.notReady(reason) }
+
+        // Republish so the client opens exactly what the email describes.
+        try await publishAsSent(invoice, context: context)
 
         do {
             switch try await PortalBackend.shared.sendInvoiceEmail(
