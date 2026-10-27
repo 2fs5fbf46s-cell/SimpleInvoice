@@ -20,6 +20,7 @@ enum ContractCreation {
         invoice: Invoice?,
         job: Job? = nil,
         depositAmountCents: Int? = nil,
+        terms: ContractTerms? = nil,
         extras: [String: String] = [:]
     ) throws -> Contract {
 
@@ -37,6 +38,7 @@ enum ContractCreation {
             invoice: invoice,
             job: job,
             depositAmountCents: depositAmountCents,
+            terms: terms,
             extras: extras
         )
 

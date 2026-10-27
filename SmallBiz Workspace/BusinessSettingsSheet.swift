@@ -35,7 +35,7 @@ struct BusinessSettingsSheet: View {
     @State private var notificationsAllowed: Bool? = nil
 
     enum Route: Hashable {
-        case switcher, profile, invoiceNumbers, savedItems
+        case switcher, profile, invoiceNumbers, savedItems, contractTerms
         case payments, reminders, subscription
         case booking, website, clientPortal
         case reviewRequests, appointmentReminders, estimateFollowUps
@@ -66,6 +66,7 @@ struct BusinessSettingsSheet: View {
                         row(.profile, "Profile and Brand", profileSubtitle, "building.2")
                         row(.invoiceNumbers, "Invoice Numbers", invoiceNumberSubtitle, "number")
                         row(.savedItems, "Saved Items", savedItemsSubtitle, "tray.full")
+                        row(.contractTerms, "Contract Terms", contractTermsSubtitle, "signature")
                     }
                     section("Getting Paid") {
                         row(.payments, "Payment Methods", paymentsSubtitle, "creditcard",
@@ -262,6 +263,7 @@ struct BusinessSettingsSheet: View {
         case .profile: BusinessProfileView()
         case .invoiceNumbers: InvoiceNumbersView()
         case .savedItems: SavedItemsView(businessID: businessID)
+        case .contractTerms: ContractTermsSettingsView()
         case .payments: SetupPaymentsView()
         case .reminders: OverdueReminderSettingsView()
         case .subscription: SubscriptionSettingsView()
@@ -357,6 +359,11 @@ struct BusinessSettingsSheet: View {
 
     private var appointmentRemindersSubtitle: String {
         profile?.appointmentRemindersEnabled == true ? "On" : "Off"
+    }
+
+    private var contractTermsSubtitle: String {
+        let t = ContractTerms(profile: profile).normalized
+        return "Cancellation tiers · balance due \(t.balanceDueHours) hrs before"
     }
 
     private var estimateFollowUpsSubtitle: String {

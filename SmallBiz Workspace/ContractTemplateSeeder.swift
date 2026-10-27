@@ -17,7 +17,7 @@ enum ContractTemplateSeeder {
     /// a built-in template's text ("You can change its text"), so an owner's
     /// own rewrite is never overwritten just because the app shipped a
     /// better default.
-    private static let currentVersion = 2
+    private static let currentVersion = 3
 
     static func seedIfNeeded(context: ModelContext) {
         do {
@@ -54,7 +54,10 @@ enum ContractTemplateSeeder {
     private static func upgradeBuiltInTemplatesIfNeeded(existing: [ContractTemplate]) -> Int {
         var upgradedCount = 0
         let current = Dictionary(uniqueKeysWithValues: builtInTemplates().map { (normalizedName($0.name), $0) })
-        let legacy = Dictionary(uniqueKeysWithValues: legacyV1Templates().map { (normalizedName($0.name), $0) })
+        var legacy: [String: [String]] = [:]
+        for old in legacyV1Templates() + legacyV2Templates() {
+            legacy[normalizedName(old.name), default: []].append(old.body)
+        }
 
         for template in existing where template.isBuiltIn {
             guard template.version < currentVersion else { continue }
@@ -62,7 +65,7 @@ enum ContractTemplateSeeder {
             guard let currentDefault = current[key] else { continue }
 
             let untouched = template.body == currentDefault.body
-                || (legacy[key].map { template.body == $0.body } ?? false)
+                || (legacy[key]?.contains(template.body) ?? false)
             guard untouched else { continue }
 
             template.body = currentDefault.body
@@ -78,21 +81,21 @@ enum ContractTemplateSeeder {
             ContractTemplate(
                 name: "General Service Agreement",
                 category: "General",
-                body: defaultGeneralTemplate(),
+                body: generalAgreement(),
                 isBuiltIn: true,
                 version: currentVersion
             ),
             ContractTemplate(
                 name: "Photography Agreement (Basic)",
                 category: "Photography",
-                body: defaultPhotoTemplate(),
+                body: photographyAgreement(),
                 isBuiltIn: true,
                 version: currentVersion
             ),
             ContractTemplate(
                 name: "DJ Services Agreement (Basic)",
                 category: "DJ",
-                body: defaultDJTemplate(),
+                body: djAgreement(),
                 isBuiltIn: true,
                 version: currentVersion
             ),
@@ -110,13 +113,20 @@ enum ContractTemplateSeeder {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    // MARK: - Shared clauses
+    // MARK: - Legacy (v2) bodies — used only to detect an untouched template
+    // when upgrading, never seeded directly.
 
-    /// The clauses that barely differ between a photo shoot and a fence
-    /// repair: schedule/change orders, cancellation, liability, insurance,
-    /// force majeure, governing law, and entire-agreement. Written out once
-    /// here so General/Photography/DJ stay identical where they should be —
-    /// only the scope, delivery and trade-specific sections vary by template.
+    static func legacyV2Templates() -> [ContractTemplate] {
+        [
+            ContractTemplate(name: "General Service Agreement", category: "General", body: legacyV2GeneralTemplate(), isBuiltIn: true, version: 2),
+            ContractTemplate(name: "Photography Agreement (Basic)", category: "Photography", body: legacyV2PhotoTemplate(), isBuiltIn: true, version: 2),
+            ContractTemplate(name: "DJ Services Agreement (Basic)", category: "DJ", body: legacyV2DJTemplate(), isBuiltIn: true, version: 2)
+        ]
+    }
+
+    /// The v2 shared clauses and sections below must stay word for word as
+    /// shipped: they're how an untouched v2 template is recognized. The
+    /// current templates are in ContractTemplateBodies.swift.
     private static func standardClauses(startingAt n: Int) -> String {
         """
         \(n). SCHEDULE & CHANGE ORDERS
@@ -182,9 +192,7 @@ enum ContractTemplateSeeder {
         """
     }
 
-    // MARK: - Templates
-
-    private static func defaultGeneralTemplate() -> String {
+    private static func legacyV2GeneralTemplate() -> String {
         """
         SERVICE AGREEMENT
 
@@ -206,7 +214,7 @@ enum ContractTemplateSeeder {
         """
     }
 
-    private static func defaultPhotoTemplate() -> String {
+    private static func legacyV2PhotoTemplate() -> String {
         """
         PHOTOGRAPHY AGREEMENT
 
@@ -234,7 +242,7 @@ enum ContractTemplateSeeder {
         """
     }
 
-    private static func defaultDJTemplate() -> String {
+    private static func legacyV2DJTemplate() -> String {
         """
         DJ SERVICES AGREEMENT
 

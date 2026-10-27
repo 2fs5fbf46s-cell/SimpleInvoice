@@ -37,8 +37,10 @@ struct CreateContractStartView: View {
     @State private var selectedInvoice: Invoice?
     @State private var selectedClient: Client?
 
-    @State private var previewText: String = ""
-    @State private var showingPreview = false
+    @State private var previewURL: URL?
+    /// The business's contract terms, changeable for this one contract.
+    @State private var terms = ContractTerms()
+    @State private var termsLoaded = false
 
     @State private var createError: String?
     @State private var showJobsPicker = false
@@ -221,6 +223,10 @@ struct CreateContractStartView: View {
                         }
                     }
 
+                    if usesTerms {
+                        card { termsCard }
+                    }
+
                     card {
                         VStack(spacing: 10) {
                             Button {
@@ -258,20 +264,18 @@ struct CreateContractStartView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingPreview) {
-            NavigationStack {
-                ScrollView {
-                    Text(previewText.isEmpty ? "Nothing to preview." : previewText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
-                .navigationTitle("Preview")
-                .navigationBarTitleDisplayMode(.inline)
-                .sbwNavigationBarBackdrop()
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Close") { showingPreview = false }
-                    }
+        .sheet(isPresented: Binding(
+            get: { previewURL != nil },
+            set: { if !$0 { previewURL = nil } }
+        )) {
+            if let previewURL {
+                NavigationStack {
+                    PDFPreviewView(url: previewURL)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Close") { self.previewURL = nil }
+                            }
+                        }
                 }
             }
         }
@@ -315,6 +319,10 @@ struct CreateContractStartView: View {
             // the DJ agreement first.
             if selectedTemplate == nil {
                 selectedTemplate = templates.first { $0.category == "General" } ?? templates.first
+            }
+            if !termsLoaded {
+                terms = ContractTerms(profile: business)
+                termsLoaded = true
             }
             // No client or invoice is picked for you: a guessed default made
             // it easy to send a contract to the wrong person.
@@ -362,6 +370,24 @@ struct CreateContractStartView: View {
         .frame(minHeight: 42)
     }
 
+
+    /// Only templates written with the cancellation/balance terms show them.
+    private var usesTerms: Bool {
+        selectedTemplate?.body.contains("{{Terms.") ?? false
+    }
+
+    private var termsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Contract Terms")
+                .font(.headline)
+
+            Text("Your defaults from Business → Contract Terms. Changes here apply to this contract only.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            ContractTermsFields(terms: $terms)
+        }
+    }
 
     private var business: BusinessProfile? {
         guard let bizID = businessID else { return nil }
@@ -414,11 +440,24 @@ struct CreateContractStartView: View {
             invoice: inv,
             job: resolvedJob(invoice: inv),
             depositAmountCents: resolvedDepositCents(invoice: inv),
+            terms: terms,
             extras: [:]
         )
 
-        previewText = ContractTemplateEngine.render(template: template.body, context: ctx)
-        showingPreview = true
+        let body = ContractTemplateEngine.render(template: template.body, context: ctx)
+        let data = ContractPDFGenerator.makePDFData(ContractPDFGenerator.Input(
+            title: template.name,
+            body: body,
+            preparedDate: .now,
+            business: business,
+            client: client.map { ClientSnapshot(name: $0.name, email: $0.email, phone: $0.phone, address: $0.address) },
+            clientSignature: nil
+        ))
+        do {
+            previewURL = try ContractPDFGenerator.writePDFToTemporaryFile(data: data, filename: "Contract Preview")
+        } catch {
+            createError = "Couldn’t build the preview. \(error.localizedDescription)"
+        }
     }
 
     private func saveDraft() {
@@ -444,6 +483,7 @@ struct CreateContractStartView: View {
                 invoice: inv,
                 job: job,
                 depositAmountCents: deposit,
+                terms: terms,
                 extras: [:]
             )
 

@@ -32,9 +32,16 @@ final class ContractTemplateSeederTests: XCTestCase {
         ContractTemplateSeeder.seedIfNeeded(context: context)
 
         let general = try fetchTemplate(named: "General Service Agreement")
-        XCTAssertTrue(general.body.contains("PAYMENT SCHEDULE"))
+        XCTAssertTrue(general.body.contains("KEY TERMS AT A GLANCE"))
         XCTAssertTrue(general.body.contains("{{Job.Location}}"), "the template source keeps its {{}} tokens until rendered")
-        XCTAssertGreaterThan(general.version, 1)
+        XCTAssertEqual(general.version, 3)
+
+        for name in ["General Service Agreement", "Photography Agreement (Basic)", "DJ Services Agreement (Basic)"] {
+            let body = try fetchTemplate(named: name).body
+            XCTAssertTrue(body.contains(ContractDocument.signaturesMarker), "\(name) has its signature page")
+            XCTAssertTrue(body.contains("# EXHIBIT A"), "\(name) has Exhibit A")
+            XCTAssertTrue(body.contains("{{Terms.CancelMidFee}}"), "\(name) uses the business's cancellation tiers")
+        }
     }
 
     func testAnUntouchedV1TemplateIsUpgradedToTheNewText() throws {
@@ -80,8 +87,37 @@ final class ContractTemplateSeederTests: XCTestCase {
         ContractTemplateSeeder.seedIfNeeded(context: context)
 
         let upgraded = try fetchTemplate(named: "General Service Agreement")
-        XCTAssertTrue(upgraded.body.contains("PAYMENT SCHEDULE"), "should now have the fuller content")
-        XCTAssertGreaterThan(upgraded.version, 1)
+        XCTAssertTrue(upgraded.body.contains("KEY TERMS AT A GLANCE"), "should now have the fuller content")
+        XCTAssertEqual(upgraded.version, 3)
+    }
+
+    func testAnUntouchedV2TemplateIsUpgradedToTheNewText() throws {
+        for old in ContractTemplateSeeder.legacyV2Templates() {
+            context.insert(old)
+        }
+        try context.save()
+
+        ContractTemplateSeeder.seedIfNeeded(context: context)
+
+        for name in ["General Service Agreement", "Photography Agreement (Basic)", "DJ Services Agreement (Basic)"] {
+            let upgraded = try fetchTemplate(named: name)
+            XCTAssertTrue(upgraded.body.contains("KEY TERMS AT A GLANCE"), name)
+            XCTAssertFalse(upgraded.body.contains("PAYMENT SCHEDULE"), name)
+            XCTAssertEqual(upgraded.version, 3, name)
+        }
+    }
+
+    func testAnOwnerEditedV2TemplateIsNeverOverwritten() throws {
+        let v2 = try XCTUnwrap(ContractTemplateSeeder.legacyV2Templates().first { $0.name == "DJ Services Agreement (Basic)" })
+        v2.body += "\n\nBring your own glow sticks."
+        context.insert(v2)
+        try context.save()
+
+        ContractTemplateSeeder.seedIfNeeded(context: context)
+
+        let kept = try fetchTemplate(named: "DJ Services Agreement (Basic)")
+        XCTAssertTrue(kept.body.hasSuffix("Bring your own glow sticks."))
+        XCTAssertEqual(kept.version, 2)
     }
 
     func testAnOwnerEditedTemplateIsNeverOverwritten() throws {
