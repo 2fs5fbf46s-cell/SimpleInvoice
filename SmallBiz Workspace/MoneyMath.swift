@@ -75,7 +75,8 @@ enum MoneyMath {
                 for payment in payments where payment.amountCents > 0 {
                     out.append(Received(
                         date: payment.paidAt,
-                        amountCents: payment.amountCents,
+                        // A tip doesn't pay the invoice, but it's money in.
+                        amountCents: payment.amountCents + max(0, payment.tipCents),
                         clientName: invoice.displayClientName,
                         source: .payment
                     ))

@@ -1336,7 +1336,11 @@ struct InvoiceDetailView: View {
                 ForEach(payments) { payment in
                     paymentRow(
                         title: payment.methodLabel,
-                        detail: [payment.paidAt.formatted(date: .abbreviated, time: .omitted), payment.note]
+                        detail: [
+                            payment.paidAt.formatted(date: .abbreviated, time: .omitted),
+                            payment.note,
+                            payment.tipCents > 0 ? "+ \(currencyString(fromCents: payment.tipCents)) tip" : "",
+                        ]
                             .filter { !$0.isEmpty }.joined(separator: " · "),
                         amountCents: payment.amountCents
                     )
@@ -1357,6 +1361,14 @@ struct InvoiceDetailView: View {
                     Text(currencyString(fromCents: invoice.totalCents))
                 }
                 .font(.subheadline)
+                if invoice.tipsReceivedCents > 0 {
+                    HStack {
+                        Text("Tips received").foregroundStyle(.secondary)
+                        Spacer()
+                        Text(currencyString(fromCents: invoice.tipsReceivedCents))
+                    }
+                    .font(.subheadline)
+                }
                 HStack {
                     Text("Balance due").font(.headline)
                     Spacer()

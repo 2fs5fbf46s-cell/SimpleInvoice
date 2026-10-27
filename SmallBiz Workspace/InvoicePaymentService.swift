@@ -35,6 +35,7 @@ enum InvoicePaymentService {
         note: String = "",
         source: String = "manual",
         externalId: String = "",
+        tipCents: Int = 0,
         context: ModelContext
     ) throws -> InvoicePayment {
         guard amountCents > 0 else { throw PaymentError.notPositive }
@@ -52,6 +53,7 @@ enum InvoicePaymentService {
             source: source,
             externalId: externalId
         )
+        payment.tipCents = max(0, tipCents)
         context.insert(payment)
         invoice.payments = (invoice.payments ?? []) + [payment]
         settle(invoice, context: context)

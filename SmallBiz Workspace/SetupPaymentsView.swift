@@ -48,6 +48,7 @@ struct SetupPaymentsView: View {
     @State private var showingCashAppSheet = false
     @State private var showingVenmoSheet = false
     @State private var showingPayPalConfigSheet = false
+    @State private var tipSyncError: String? = nil
 
     var body: some View {
         ZStack {
@@ -68,6 +69,7 @@ struct SetupPaymentsView: View {
                     if let business {
                         stripeCard(business)
                         payPalCard(business)
+                        tipsCard(business)
                     } else {
                         loadingCard
                     }
@@ -528,6 +530,49 @@ struct SetupPaymentsView: View {
             Text(venmoSummaryText(for: business, configured: configured))
                 .font(.caption)
                 .foregroundColor(configured ? .secondary : SBWTheme.attention)
+        }
+    }
+
+    private func tipsCard(_ business: Business) -> some View {
+        PaymentProviderCard(
+            logoName: nil,
+            fallbackSymbol: "heart.circle.fill",
+            title: "Tips",
+            subtitle: "When clients pay by card or PayPal, they can add 10%, 15%, 20% or their own amount. Never asked on deposit links.",
+            tags: [],
+            statusText: business.tipsEnabled ? "On" : "Off",
+            statusStyle: business.tipsEnabled ? .active : .disabled,
+            enabledBinding: Binding(
+                get: { business.tipsEnabled },
+                set: { newValue in
+                    business.tipsEnabled = newValue
+                    save()
+                    syncTips(newValue)
+                }
+            ),
+            hintWhenDisabled: "Turn on to let clients add a tip.",
+            primaryAction: nil
+        ) {
+            if let tipSyncError {
+                Text(tipSyncError)
+                    .font(.caption)
+                    .foregroundStyle(SBWTheme.attention)
+            } else if business.tipsEnabled {
+                Text("Tips show on the payment, aren't counted toward the invoice, and are included in Money In.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func syncTips(_ enabled: Bool) {
+        tipSyncError = nil
+        Task {
+            do {
+                try await PortalBackend.shared.syncTipSettings(enabled: enabled)
+            } catch {
+                tipSyncError = "Saved on this phone, but it couldn't reach the server, so clients won't see the change yet. Try switching it again."
+            }
         }
     }
 

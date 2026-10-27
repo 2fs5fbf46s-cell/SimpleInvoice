@@ -27,6 +27,10 @@ final class Business {
     /// The owner's "Card" switch in Payment methods. Off hides "Pay by card"
     /// on invoices without disconnecting Stripe.
     var stripeOffered: Bool = true
+    /// Clients may add a tip when paying online (card or PayPal). Lives on
+    /// the server too (notification settings "tipping"); the portal reads it
+    /// live, so it applies to invoices already sent.
+    var tipsEnabled: Bool = false
     var squareEnabled: Bool = false
     var squareLink: String? = nil
     var cashAppEnabled: Bool = false

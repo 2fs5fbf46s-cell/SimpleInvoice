@@ -120,6 +120,7 @@ enum InvoiceActivityPullService {
                 $0.source == "portal" && $0.externalId.isEmpty && $0.amountCents == payment.amountCents
             }) {
                 unclaimed.externalId = payment.id
+                unclaimed.tipCents = max(0, payment.tipCents ?? 0)
                 continue
             }
 
@@ -131,6 +132,7 @@ enum InvoiceActivityPullService {
                 note: payment.paymentRequestId == nil ? "Paid in the client portal" : "Paid with a payment link",
                 source: "portal",
                 externalId: payment.id,
+                tipCents: payment.tipCents ?? 0,
                 context: context
             )
         }

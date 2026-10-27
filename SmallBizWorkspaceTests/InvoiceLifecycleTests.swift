@@ -227,6 +227,23 @@ final class InvoiceLifecycleTests: XCTestCase {
         XCTAssertEqual(invoice.balanceDueCents, 30_000)
     }
 
+    func testATipIsRecordedButDoesntPayDownTheInvoice() throws {
+        let invoice = try makeInvoice()
+        invoice.sentAt = .now
+        var item = ledgerActivity(for: invoice, paid: true, payments: [("pi_tip", 45_000)])
+        item.payments?[0].tipCents = 9_000
+
+        InvoiceActivityPullService.apply(item, businessID: invoice.businessID, context: context)
+
+        XCTAssertTrue(invoice.isPaid)
+        XCTAssertEqual(invoice.paidCents, 45_000)
+        XCTAssertEqual(invoice.balanceDueCents, 0)
+        XCTAssertEqual(invoice.payments?.first?.tipCents, 9_000)
+        XCTAssertEqual(invoice.tipsReceivedCents, 9_000)
+        let received = MoneyMath.received(invoices: [invoice], jobs: [])
+        XCTAssertEqual(received.reduce(0) { $0 + $1.amountCents }, 54_000, "a tip is money in")
+    }
+
     func testTheLastLedgerPaymentPaysItOff() throws {
         let invoice = try makeInvoice()
         invoice.sentAt = .now

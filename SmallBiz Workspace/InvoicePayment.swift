@@ -29,6 +29,9 @@ final class InvoicePayment {
     /// the same payment pulled twice is recorded once. Empty for payments
     /// recorded in the app, and for portal payments from before the ledger.
     var externalId: String = ""
+    /// A tip the client added on top of an online payment. Not part of
+    /// amountCents: it doesn't pay down the invoice, but it is money in.
+    var tipCents: Int = 0
 
     @Relationship var invoice: Invoice? = nil
 

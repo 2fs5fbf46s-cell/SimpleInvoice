@@ -620,6 +620,11 @@ final class Invoice {
     /// externalId). The server adds its ledger to this to work out the
     /// balance, so a republish can't drop an online payment the app hasn't
     /// pulled yet.
+    /// Tips clients added to online payments. Kept out of every balance.
+    var tipsReceivedCents: Int {
+        (payments ?? []).reduce(0) { $0 + max(0, $1.tipCents) }
+    }
+
     var offlinePaidCents: Int {
         let payments = payments ?? []
         if isPaid && payments.isEmpty { return totalCents }

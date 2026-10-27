@@ -1955,6 +1955,29 @@ final class PortalBackend {
     /// Pushes whether the backend cron should email a client ~24h before
     /// their scheduled job. Same best-effort shape as the other settings
     /// syncs above.
+    /// Pushes whether clients may add a tip; the portal page and checkout
+    /// read it live. Same best-effort shape as the overdue-reminder sync.
+    func syncTipSettings(enabled: Bool) async throws {
+        let adminKey = try requireAdminKey()
+
+        let endpoint = baseURL.appendingPathComponent("/api/notifications/settings")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+
+        let payload: [String: Any] = ["settings": ["tipping": ["enabled": enabled]]]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw PortalBackendError.http(-1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http(http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
     /// Pushes the estimate follow-up preference up for the backend cron job
     /// (see `runEstimateFollowUpJob`). Same best-effort shape as the
     /// overdue-reminder sync above.
@@ -2504,6 +2527,7 @@ final class PortalBackend {
         let provider: String?
         let paidAtMs: Double?
         var paymentRequestId: String? = nil
+        var tipCents: Int? = nil
     }
 
     struct InvoiceActivityPage: Decodable {
