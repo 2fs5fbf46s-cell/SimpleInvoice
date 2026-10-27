@@ -455,6 +455,7 @@ private struct DeveloperToolsView: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @Query private var businesses: [Business]
     @Query private var sites: [PublishedBusinessSite]
+    @State private var schemaUploadArmed = CloudKitSchemaUploader.isRequested
 
     var body: some View {
         let business = businesses.first { $0.id == activeBiz.activeBusinessID }
@@ -469,6 +470,20 @@ private struct DeveloperToolsView: View {
                 LabeledContent("Website handle", value: site?.handle ?? "—")
             }
             .font(.footnote)
+            Section {
+                Button(schemaUploadArmed ? "Will Send on Next Launch" : "Send Data Layout to iCloud") {
+                    CloudKitSchemaUploader.requestUploadOnNextLaunch()
+                    schemaUploadArmed = true
+                }
+                .disabled(schemaUploadArmed)
+                if let last = CloudKitSchemaUploader.lastResult {
+                    Text(last).font(.footnote).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("iCloud (Development)")
+            } footer: {
+                Text("Adds every record type and field to the Development environment so Production can be deployed from it. After tapping, close the app from the app switcher and open it again.")
+            }
             Section("Onboarding") {
                 Button("Run Walkthrough") { WalkthroughState.requestRun() }
                 Button("Reset Onboarding and Walkthrough", role: .destructive) {

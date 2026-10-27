@@ -67,6 +67,20 @@ final class BusinessProfile {
     var estimateFollowUpEnabled: Bool = false
     var estimateFollowUpAfterDays: Int = 3
 
+    // Contract terms: defaults for every new contract (the owner can change
+    // them on one contract while creating it). Cancellation: more than
+    // `contractCancelEarlyDays` out, the deposit is kept; from there down to
+    // `contractCancelLateDays` + 1 days, `contractCancelMidPercent` of the
+    // total; at `contractCancelLateDays` or fewer, `contractCancelLatePercent`.
+    var contractCancelEarlyDays: Int = 30
+    var contractCancelMidPercent: Int = 75
+    var contractCancelLateDays: Int = 7
+    var contractCancelLatePercent: Int = 100
+    /// The final balance is due this many hours before the job/event starts.
+    var contractBalanceDueHours: Int = 48
+    /// e.g. "South Carolina". Empty: "the state where the Provider is based".
+    var contractGoverningState: String = ""
+
     var invoicePrefix: String = "SI"
     var nextInvoiceNumber: Int = 1
     var lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date())

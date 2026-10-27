@@ -244,6 +244,9 @@ enum AppModelContainerFactory {
     static func makeContainer() throws -> ModelContainer {
         let schema = Schema(models)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        #if DEBUG
+        CloudKitSchemaUploader.uploadIfRequested(storeURL: config.url)
+        #endif
         return try ModelContainer(for: schema, configurations: [config])
     }
 
