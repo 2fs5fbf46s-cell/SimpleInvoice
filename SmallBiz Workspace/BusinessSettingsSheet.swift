@@ -38,7 +38,7 @@ struct BusinessSettingsSheet: View {
         case switcher, profile, invoiceNumbers, savedItems
         case payments, reminders, subscription
         case booking, website, clientPortal
-        case reviewRequests, appointmentReminders
+        case reviewRequests, appointmentReminders, estimateFollowUps
         case notifications, help
         #if DEBUG
         case portalPreview, developer
@@ -83,6 +83,7 @@ struct BusinessSettingsSheet: View {
                     section("Client Communications") {
                         row(.reviewRequests, "Review Requests", reviewRequestsSubtitle, "star.bubble")
                         row(.appointmentReminders, "Appointment Reminders", appointmentRemindersSubtitle, "bell.and.waves.left.and.right")
+                        row(.estimateFollowUps, "Estimate Follow-ups", estimateFollowUpsSubtitle, "arrow.uturn.forward.circle")
                     }
                     section("Alerts and Help") {
                         row(.notifications, "Notifications", notificationsSubtitle, "bell")
@@ -269,6 +270,7 @@ struct BusinessSettingsSheet: View {
         case .clientPortal: PortalDirectoryLauncherView()
         case .reviewRequests: ReviewRequestSettingsView()
         case .appointmentReminders: AppointmentReminderSettingsView()
+        case .estimateFollowUps: EstimateFollowUpSettingsView()
         case .notifications: NotificationSettingsView()
         case .help: HelpCenterView()
         #if DEBUG
@@ -355,6 +357,11 @@ struct BusinessSettingsSheet: View {
 
     private var appointmentRemindersSubtitle: String {
         profile?.appointmentRemindersEnabled == true ? "On" : "Off"
+    }
+
+    private var estimateFollowUpsSubtitle: String {
+        guard let profile, profile.estimateFollowUpEnabled else { return "Off" }
+        return "After \(profile.estimateFollowUpAfterDays) days"
     }
 
     private var site: PublishedBusinessSite? { sites.first { $0.businessID == businessID } }

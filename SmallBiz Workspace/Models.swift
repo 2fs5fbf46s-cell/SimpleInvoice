@@ -61,6 +61,12 @@ final class BusinessProfile {
     // schedule up to the backend — see JobAppointmentReminderEligibility.
     var appointmentRemindersEnabled: Bool = false
 
+    // Estimate follow-ups (client-facing email, opt-in). The server emails a
+    // client who hasn't answered an estimate after this many days, and a
+    // last time at twice that.
+    var estimateFollowUpEnabled: Bool = false
+    var estimateFollowUpAfterDays: Int = 3
+
     var invoicePrefix: String = "SI"
     var nextInvoiceNumber: Int = 1
     var lastInvoiceYear: Int = Calendar.current.component(.year, from: Foundation.Date())
