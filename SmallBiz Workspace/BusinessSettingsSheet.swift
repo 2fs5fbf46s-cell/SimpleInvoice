@@ -36,7 +36,7 @@ struct BusinessSettingsSheet: View {
 
     enum Route: Hashable {
         case switcher, profile, invoiceNumbers, savedItems, contractTerms
-        case payments, reminders, subscription
+        case payments, tapToPay, reminders, subscription
         case booking, website, clientPortal
         case reviewRequests, appointmentReminders, estimateFollowUps
         case notifications, help
@@ -72,6 +72,9 @@ struct BusinessSettingsSheet: View {
                         row(.payments, "Payment Methods", paymentsSubtitle, "creditcard",
                             badge: paymentsBadge)
                             .coachMark(id: "walkthrough.more.setup-payments")
+                        if TapToPayReader.isOffered(for: business) {
+                            row(.tapToPay, "Tap to Pay on iPhone", tapToPaySubtitle, "wave.3.right.circle")
+                        }
                         row(.reminders, "Overdue Reminders", remindersSubtitle, "bell.badge")
                         row(.subscription, "Subscription", subscriptionSubtitle, "star.circle",
                             badge: subscriptionBadge)
@@ -265,6 +268,7 @@ struct BusinessSettingsSheet: View {
         case .savedItems: SavedItemsView(businessID: businessID)
         case .contractTerms: ContractTermsSettingsView()
         case .payments: SetupPaymentsView()
+        case .tapToPay: TapToPaySettingsView()
         case .reminders: OverdueReminderSettingsView()
         case .subscription: SubscriptionSettingsView()
         case .booking: BookingPageView()
@@ -314,6 +318,14 @@ struct BusinessSettingsSheet: View {
         guard let business else { return nil }
         return PaymentMethodSummary(business: business).offered.isEmpty
             ? SettingsBadge(text: "Not set up", color: SBWTheme.attention) : nil
+    }
+
+    private var tapToPaySubtitle: String {
+        switch TapToPayReader.shared.status {
+        case .ready: return "Ready on this iPhone"
+        case .preparing: return "Getting ready"
+        default: return "Accept cards and wallets in person"
+        }
     }
 
     private var remindersSubtitle: String {

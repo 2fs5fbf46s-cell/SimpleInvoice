@@ -143,6 +143,9 @@ struct SmallBizWorkspaceApp: App {
         if let businessID = activeBiz.activeBusinessID {
             await BusinessRegistrationService.ensureRegistered(businessID: businessID)
         }
+        // Apple wants the tap screen up within a second at checkout, so the
+        // reader is made ready on every launch and foreground.
+        TapToPayReader.warmUp(context: context, businessID: activeBiz.activeBusinessID)
 
         EstimateDecisionSync.applyPendingDecisions(in: context)
         BusinessSitePublishService.shared.startMonitoring(context: context)

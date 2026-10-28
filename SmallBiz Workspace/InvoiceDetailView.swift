@@ -87,6 +87,10 @@ struct InvoiceDetailView: View {
     @State private var recurringDraftSaved = false
     @State private var showRecordPayment = false
     @State private var showPaymentRequest = false
+    @State private var showCollectPayment = false
+    /// Another way to pay picked from Collect Payment, opened once it closes.
+    @State private var afterCollectPayment: AfterCollectPayment?
+    private enum AfterCollectPayment { case paymentLink, recordPayment }
     @State private var invoiceSendKind: InvoiceSendService.Kind? = nil
     @State private var sendingInvoice = false
     @State private var showInvoiceDetails = false
@@ -169,6 +173,22 @@ struct InvoiceDetailView: View {
                     businessName: resolvedPortalBusinessName(),
                     canPayOnline: canPayOnline,
                     onSetUpPayments: { showPaymentMethods = true }
+                )
+            }
+            .sheet(isPresented: $showCollectPayment, onDismiss: {
+                switch afterCollectPayment {
+                case .paymentLink: showPaymentRequest = true
+                case .recordPayment: showRecordPayment = true
+                case nil: break
+                }
+                afterCollectPayment = nil
+            }) {
+                CollectPaymentSheet(
+                    invoice: invoice,
+                    business: resolvedBusiness(),
+                    profile: resolvedBusinessProfile(),
+                    onSendLink: invoice.client != nil && isClientPortalEnabled ? { afterCollectPayment = .paymentLink } : nil,
+                    onRecordPayment: { afterCollectPayment = .recordPayment }
                 )
             }
             .navigationDestination(isPresented: $showPaymentMethods) { SetupPaymentsView() }
@@ -1151,6 +1171,7 @@ struct InvoiceDetailView: View {
             noPaymentMethodsNote
         }
         if invoice.totalCents > 0 {
+            tapToPayButton
             Button("Paid already? Record a payment") { showRecordPayment = true }
                 .font(.caption)
                 .buttonStyle(.borderless)
@@ -1158,6 +1179,15 @@ struct InvoiceDetailView: View {
         }
         if invoice.client != nil, isClientPortalEnabled, invoice.cannotBeSentReason == nil {
             requestPaymentLink("Need a deposit first? Send a payment link")
+        }
+    }
+
+    /// Tap to Pay on iPhone, whenever money is owed and Stripe can take it.
+    /// Apple wants it prominent and never hidden behind a menu (5.1, 5.2).
+    @ViewBuilder
+    private var tapToPayButton: some View {
+        if invoice.balanceDueCents > 0, TapToPayReader.isOffered(for: resolvedBusiness()) {
+            TapToPayButton { showCollectPayment = true }
         }
     }
 
@@ -1196,6 +1226,7 @@ struct InvoiceDetailView: View {
             detail: invoice.viewedAt.map { "Viewed \($0.formatted(date: .abbreviated, time: .omitted)). You'll get a notification when it's paid." }
                 ?? "You'll get a notification when it's paid."
         )
+        tapToPayButton
         NextStepButtons {
             Button { openClientPortal() } label: {
                 if openingPortal { ProgressView() } else { Label("View in Portal", systemImage: "rectangle.and.hand.point.up.left") }
@@ -1224,6 +1255,7 @@ struct InvoiceDetailView: View {
             "\(currencyString(fromCents: invoice.balanceDueCents)) is \(days) day\(days == 1 ? "" : "s") overdue",
             detail: invoice.lastReminderAt.map { "Last reminder sent \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "No reminder sent yet."
         )
+        tapToPayButton
         NextStepButtons {
             Button { invoiceSendKind = .reminder } label: { sendingLabel("Remind", icon: "bell.fill") }
                 .sbwProminentButton(.red)
@@ -1242,6 +1274,7 @@ struct InvoiceDetailView: View {
             "\(currencyString(fromCents: invoice.balanceDueCents)) still owed",
             detail: lastPayment.map { "Paid \(currencyString(fromCents: $0.amountCents)) by \($0.methodLabel.lowercased()) on \($0.paidAt.formatted(date: .abbreviated, time: .omitted))." } ?? ""
         )
+        tapToPayButton
         NextStepButtons {
             Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
                 .sbwProminentButton()

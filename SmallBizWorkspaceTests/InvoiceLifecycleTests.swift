@@ -340,6 +340,41 @@ final class InvoiceLifecycleTests: XCTestCase {
         XCTAssertTrue(message.contains(url.absoluteString))
     }
 
+    // MARK: - Tap to Pay on iPhone
+
+    /// What TapToPayReader records after an approved tap.
+    @discardableResult
+    private func recordTap(on invoice: Invoice, id: String, cents: Int, tip: Int = 0) throws -> InvoicePayment {
+        try InvoicePaymentService.record(
+            on: invoice, amountCents: cents, paidAt: .now, method: "card", note: "Tap to Pay on iPhone",
+            source: "tap_to_pay", externalId: id, tipCents: tip, context: context
+        )
+    }
+
+    func testATapToPayDepositLeavesTheRestOwed() throws {
+        let invoice = try makeInvoice()
+        try recordTap(on: invoice, id: "pi_tap1", cents: 15_000)
+
+        XCTAssertEqual(invoice.balanceDueCents, 30_000)
+        XCTAssertEqual(invoice.offlinePaidCents, 0, "the server's ledger holds it, so it isn't offline")
+    }
+
+    func testATapToPayPaymentPulledBackFromTheLedgerIsRecordedOnce() throws {
+        let invoice = try makeInvoice()
+        invoice.sentAt = .now
+        try recordTap(on: invoice, id: "pi_tap2", cents: 45_000, tip: 6_750)
+
+        InvoiceActivityPullService.apply(
+            ledgerActivity(for: invoice, paid: true, payments: [("pi_tap2", 45_000)]),
+            businessID: invoice.businessID,
+            context: context
+        )
+
+        XCTAssertEqual(invoice.payments?.count, 1, "the tap and its ledger entry are one payment")
+        XCTAssertTrue(invoice.isPaid)
+        XCTAssertEqual(invoice.tipsReceivedCents, 6_750)
+    }
+
     func testAnotherBusinesssActivityIsIgnored() throws {
         let invoice = try makeInvoice()
 
@@ -350,5 +385,56 @@ final class InvoiceLifecycleTests: XCTestCase {
         )
 
         XCTAssertFalse(invoice.isPaid)
+    }
+}
+
+/// Tap to Pay on iPhone's own rules: the address Stripe needs, tips, receipts.
+final class TapToPayModelTests: XCTestCase {
+    func testTheProfileAddressSplitsIntoStripesParts() {
+        XCTAssertEqual(
+            TapToPayAddress.parse("1 Main St, Columbia, SC 29201"),
+            TapToPayAddress(line1: "1 Main St", city: "Columbia", state: "SC", postalCode: "29201")
+        )
+        XCTAssertEqual(
+            TapToPayAddress.parse("1 Main St\nSuite 4\nColumbia, South Carolina 29201-1234\nUSA"),
+            TapToPayAddress(line1: "1 Main St", line2: "Suite 4", city: "Columbia", state: "SC", postalCode: "29201-1234")
+        )
+        XCTAssertEqual(TapToPayAddress.parse("1 Main St, Columbia, sc, 29201")?.state, "SC")
+    }
+
+    func testAnAddressThatIsntAFullOneIsLeftForTheOwner() {
+        XCTAssertNil(TapToPayAddress.parse(""))
+        XCTAssertNil(TapToPayAddress.parse("Columbia, SC 29201"), "no street")
+        XCTAssertNil(TapToPayAddress.parse("1 Main St, Columbia"), "no state or ZIP")
+        XCTAssertNil(TapToPayAddress.parse("1 Main St, Columbia, Nowhere 29201"), "not a state")
+        XCTAssertFalse(TapToPayAddress(line1: "1 Main St", city: "Columbia", state: "SC").isComplete)
+    }
+
+    func testTipsOnlyOnThePaymentThatSettlesTheInvoice() {
+        XCTAssertTrue(TapToPayCharge.allowsTip(amountCents: 40_000, balanceDueCents: 40_000, tipsEnabled: true))
+        XCTAssertFalse(TapToPayCharge.allowsTip(amountCents: 10_000, balanceDueCents: 40_000, tipsEnabled: true), "a deposit")
+        XCTAssertFalse(TapToPayCharge.allowsTip(amountCents: 40_000, balanceDueCents: 40_000, tipsEnabled: false))
+        XCTAssertEqual(TapToPayCharge.tipCents(percent: 15, of: 40_000), 6_000)
+        XCTAssertEqual(TapToPayCharge.tipCents(percent: 15, of: 3_333), 500, "rounded to the nearest cent")
+        XCTAssertEqual(TapToPayCharge.tipPercents, [10, 15, 20])
+    }
+
+    func testTheReceiptShowsTheCardByBrandAndLastFourOnly() {
+        XCTAssertEqual(TapToPayReceipt.cardDescription(brand: "visa (apple pay)", last4: "4242"), "Visa (Apple Pay) •••• 4242")
+        XCTAssertEqual(TapToPayReceipt.cardDescription(brand: "amex", last4: "0005"), "American Express •••• 0005")
+        XCTAssertNil(TapToPayReceipt.cardDescription(brand: "visa", last4: nil))
+
+        let approved = TapToPayReceipt(
+            businessName: "Reed Sound", invoiceNumber: "SI-2026-014", amountCents: 40_000, tipCents: 6_000,
+            currencyCode: "USD", card: "Visa •••• 4242", date: .now, approved: true, receiptURL: nil
+        )
+        XCTAssertTrue(approved.text.contains("Payment approved"))
+        XCTAssertTrue(approved.text.contains("Tip: $60.00"))
+        XCTAssertTrue(approved.text.contains("Total: $460.00"))
+        XCTAssertTrue(approved.text.contains("Visa •••• 4242"))
+
+        var declined = approved
+        declined.approved = false
+        XCTAssertTrue(declined.text.contains("you were not charged"))
     }
 }

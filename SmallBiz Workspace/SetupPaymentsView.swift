@@ -11,6 +11,8 @@ struct SetupPaymentsView: View {
     @State private var business: Business?
 
     @State private var stripeStatus: StripeConnectStatus?
+    /// Stripe just finished: offer Tap to Pay on iPhone now (Apple 3.4).
+    @State private var showTapToPayIntro = false
     @State private var isLoadingStripe = false
     @State private var isStartingStripe = false
     @State private var stripeAlertMessage: String?
@@ -114,6 +116,9 @@ struct SetupPaymentsView: View {
         .navigationTitle("Payment Methods")
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
+        .fullScreenCover(isPresented: $showTapToPayIntro) {
+            TapToPayAnnouncementView(business: business, profile: tapToPayProfile) { showTapToPayIntro = false }
+        }
         .onAppear {
             reloadForActiveBusiness()
             if methodsOnAppear == nil, let business { methodsOnAppear = Self.methodsSignature(business) }
@@ -908,6 +913,11 @@ struct SetupPaymentsView: View {
         }
     }
 
+    private var tapToPayProfile: BusinessProfile? {
+        guard let id = business?.id else { return nil }
+        return try? modelContext.fetch(FetchDescriptor<BusinessProfile>(predicate: #Predicate { $0.businessID == id })).first
+    }
+
     private func refreshStripeStatus() async {
         guard let business else { return }
         guard !isLoadingStripe else { return }
@@ -920,11 +930,17 @@ struct SetupPaymentsView: View {
             guard self.business?.id == businessID else { return }
             stripeStatus = status
             stripeStatusError = false
+            let becameChargeable = !business.stripeChargesEnabled && status.chargesEnabled
             business.stripeAccountId = status.stripeAccountId
             business.stripeOnboardingStatus = status.onboardingStatus
             business.stripeChargesEnabled = status.chargesEnabled
             business.stripePayoutsEnabled = status.payoutsEnabled
             save()
+            if becameChargeable, TapToPayReader.isOffered(for: business),
+               !TapToPayAnnouncementView.wasShown(for: businessID) {
+                TapToPayAnnouncementView.markShown(for: businessID)
+                showTapToPayIntro = true
+            }
         } catch {
             guard self.business?.id == businessID else { return }
             // A status read the user didn't ask for must not block the screen.

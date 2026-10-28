@@ -16,6 +16,7 @@ struct RootGateView: View {
                 OnboardingFlowView()
             } else {
                 AppTabView(businessID: activeBiz.activeBusinessID)
+                    .tapToPayAnnouncement()
             }
         }
         .task(id: gateTaskKey) {

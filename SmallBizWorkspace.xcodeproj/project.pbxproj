@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B6068C312F1A049600FE0A15 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = B6068C302F1A049600FE0A15 /* ZIPFoundation */; };
+		7A9A0C032F90000100A1B2C3 /* StripeTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 7A9A0C022F90000100A1B2C3 /* StripeTerminal */; };
 		B6256B7A2F2321B700BD717A /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6256B792F2321B700BD717A /* SafariView.swift */; };
 		B66A07142F23E2BC00075D6A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B66A07132F23E2BC00075D6A /* LaunchScreen.storyboard */; };
 		B7A000000000000000000001 /* SmallBizWorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A000000000000000000002 /* SmallBizWorkspaceTests.swift */; };
@@ -129,6 +130,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B6068C312F1A049600FE0A15 /* ZIPFoundation in Frameworks */,
+				7A9A0C032F90000100A1B2C3 /* StripeTerminal in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -243,6 +245,7 @@
 			name = "SmallBiz Workspace";
 			packageProductDependencies = (
 				B6068C302F1A049600FE0A15 /* ZIPFoundation */,
+				7A9A0C022F90000100A1B2C3 /* StripeTerminal */,
 			);
 			productName = SimpleInvoice;
 			productReference = B6FAA46E2F14423E0063A7CD /* SmallBizWorkspace.app */;
@@ -301,6 +304,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B6068C2F2F1A049600FE0A15 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+				7A9A0C012F90000100A1B2C3 /* XCRemoteSwiftPackageReference "stripe-terminal-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B6FAA46F2F14423E0063A7CD /* Products */;
@@ -684,6 +688,14 @@
 				minimumVersion = 0.9.20;
 			};
 		};
+		7A9A0C012F90000100A1B2C3 /* XCRemoteSwiftPackageReference "stripe-terminal-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-terminal-ios-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -691,6 +703,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B6068C2F2F1A049600FE0A15 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
 			productName = ZIPFoundation;
+		};
+		7A9A0C022F90000100A1B2C3 /* StripeTerminal */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A9A0C012F90000100A1B2C3 /* XCRemoteSwiftPackageReference "stripe-terminal-ios-spm" */;
+			productName = StripeTerminal;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
