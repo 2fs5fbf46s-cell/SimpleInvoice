@@ -247,6 +247,20 @@ struct AppTabView: View {
             // A link or push that launched the app arrived before this view
             // existed, so onChange never saw it.
             routeFromNotification(notificationRouter.pendingPayload)
+            #if DEBUG
+            if let screen = ScreenshotSeed.screen {
+                switch screen {
+                case "clients": tab = .clients
+                case "money": tab = .money
+                case "work": tab = .work
+                default:
+                    if let number = screen.split(separator: ":").last, let url = ScreenshotSeed.invoiceURL(String(number)) {
+                        notificationRouter.handleIncomingURL(url)
+                        routeFromNotification(notificationRouter.pendingPayload)
+                    }
+                }
+            }
+            #endif
             if OnboardingState.isComplete && !WalkthroughState.isComplete {
                 startWalkthrough(force: false)
             }

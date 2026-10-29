@@ -103,6 +103,10 @@ struct SmallBizWorkspaceApp: App {
             await runPushSync(context: context)
         }
 
+        #if DEBUG
+        ScreenshotSeed.seedIfEmpty(context: context, activeBusiness: activeBiz)
+        #endif
+
         readyServicesTask?.cancel()
         readyServicesTask = Task {
             processQueuedIncomingURLs(context: context)

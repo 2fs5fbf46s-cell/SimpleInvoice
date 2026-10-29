@@ -175,6 +175,14 @@ struct InvoiceDetailView: View {
                     onSetUpPayments: { showPaymentMethods = true }
                 )
             }
+            #if DEBUG
+            .task {
+                if ScreenshotSeed.screen?.hasPrefix("collect:") == true {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    showCollectPayment = true
+                }
+            }
+            #endif
             .sheet(isPresented: $showCollectPayment, onDismiss: {
                 switch afterCollectPayment {
                 case .paymentLink: showPaymentRequest = true

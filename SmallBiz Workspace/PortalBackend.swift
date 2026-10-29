@@ -10,7 +10,15 @@ import OSLog
 
 final class PortalConfig {
     static let shared = PortalConfig()
-    let baseURL = URL(string: "https://portal.smallbizworkspace.com")!
+    let baseURL: URL = {
+        #if DEBUG
+        // Screenshot runs are made-up data; keep them off the live portal.
+        if ProcessInfo.processInfo.arguments.contains("-SBWScreenshotSeed") {
+            return URL(string: "https://offline.invalid")!
+        }
+        #endif
+        return URL(string: "https://portal.smallbizworkspace.com")!
+    }()
     private init() {}
 }
 
