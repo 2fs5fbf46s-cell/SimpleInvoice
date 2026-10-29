@@ -9,6 +9,9 @@ import StoreKit
 struct SubscriptionPaywallView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
+    /// Nil until StoreKit answers. A first-time user hasn't had a trial to
+    /// end, so they're told what they can start instead.
+    @State private var canStartTrial: Bool?
 
     var body: some View {
         NavigationStack {
@@ -17,9 +20,11 @@ struct SubscriptionPaywallView: View {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.largeTitle)
                         .foregroundStyle(SBWTheme.brand)
-                    Text("Your trial has ended")
+                    Text(canStartTrial == true ? "Start your free trial" : "Subscribe to keep going")
                         .font(.title3.weight(.semibold))
-                    Text("Subscribe to keep creating invoices, jobs, clients and more. Everything you already have stays exactly as it is.")
+                    Text(canStartTrial == true
+                         ? "Create invoices, jobs, clients and more. Cancel anytime in Settings."
+                         : "Subscribe to keep creating invoices, jobs, clients and more. Everything you already have stays exactly as it is.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -31,6 +36,13 @@ struct SubscriptionPaywallView: View {
             .storeButton(.visible, for: .restorePurchases, .policies)
             .subscriptionStorePolicyDestination(url: URL(string: "https://portal.smallbizworkspace.com/terms")!, for: .termsOfService)
             .subscriptionStorePolicyDestination(url: URL(string: "https://portal.smallbizworkspace.com/privacy")!, for: .privacyPolicy)
+            .task(id: subscriptionStore.product?.id) {
+                if let subscription = subscriptionStore.product?.subscription, subscription.introductoryOffer != nil {
+                    canStartTrial = await subscription.isEligibleForIntroOffer
+                } else {
+                    canStartTrial = false
+                }
+            }
             .navigationTitle("Subscribe")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
