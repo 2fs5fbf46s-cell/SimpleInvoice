@@ -27,6 +27,10 @@ struct SubscriptionPaywallView: View {
                 .padding()
             }
             .subscriptionStoreControlStyle(.prominentPicker)
+            // Apple requires Terms and Privacy links beside any subscription offer.
+            .storeButton(.visible, for: .restorePurchases, .policies)
+            .subscriptionStorePolicyDestination(url: URL(string: "https://portal.smallbizworkspace.com/terms")!, for: .termsOfService)
+            .subscriptionStorePolicyDestination(url: URL(string: "https://portal.smallbizworkspace.com/privacy")!, for: .privacyPolicy)
             .navigationTitle("Subscribe")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

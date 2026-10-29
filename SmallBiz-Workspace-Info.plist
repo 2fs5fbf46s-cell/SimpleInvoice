@@ -13,12 +13,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>SmallBiz Workspace doesn't connect to Bluetooth devices. The card-payment software it includes asks for this permission to support card readers.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>SmallBiz Workspace uses your calendar to add and update job appointments you create.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>SmallBiz Workspace uses your camera to capture job photos on site.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>SmallBiz Workspace uses Face ID to unlock the app when App Lock is on.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>SmallBiz Workspace uses your location to pin the job site on the map, and to confirm where you take Tap to Pay on iPhone payments, which card networks require.</string>
 	<key>UIBackgroundModes</key>

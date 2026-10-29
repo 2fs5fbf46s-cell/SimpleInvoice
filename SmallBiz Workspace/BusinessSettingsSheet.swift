@@ -72,8 +72,12 @@ struct BusinessSettingsSheet: View {
                         row(.payments, "Payment Methods", paymentsSubtitle, "creditcard",
                             badge: paymentsBadge)
                             .coachMark(id: "walkthrough.more.setup-payments")
+                        // Shown before Stripe is connected too, so a new owner can
+                        // find it (Apple 2.1, 3.1); until then it leads to Stripe.
                         if TapToPayReader.isOffered(for: business) {
                             row(.tapToPay, "Tap to Pay on iPhone", tapToPaySubtitle, "wave.3.right.circle")
+                        } else if TapToPayReader.deviceSupportMessage() == nil {
+                            row(.payments, "Tap to Pay on iPhone", "Connect Stripe to accept cards in person", "wave.3.right.circle")
                         }
                         row(.reminders, "Overdue Reminders", remindersSubtitle, "bell.badge")
                         row(.subscription, "Subscription", subscriptionSubtitle, "star.circle",

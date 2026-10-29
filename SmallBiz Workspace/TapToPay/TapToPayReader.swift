@@ -292,6 +292,11 @@ final class TapToPayReader: NSObject, ObservableObject {
         profile: BusinessProfile?,
         context: ModelContext
     ) async -> TapToPayOutcome {
+        // Keeps going if the owner leaves mid-payment, so the result still
+        // gets recorded and, if it wasn't approved, they hear about it (5.12).
+        let backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Tap to Pay payment")
+        defer { UIApplication.shared.endBackgroundTask(backgroundTask) }
+
         if Terminal.shared.connectedReader == nil {
             guard await setUp(business: business, profile: profile) else {
                 if case .problem(let message) = status { return .failed(message) }
@@ -340,8 +345,9 @@ final class TapToPayReader: NSObject, ObservableObject {
             outcome = Self.outcome(afterPaymentError: error, receipt: receipt)
         }
 
-        if UIApplication.shared.applicationState != .active {
-            Self.notifyIfMissed(outcome)
+        // Not .inactive: that's Apple's tap screen in front, not the owner leaving.
+        if UIApplication.shared.applicationState == .background {
+            Self.notifyIfMissed(outcome, invoiceID: invoice.id, businessID: business?.id, paymentIntentID: start.paymentIntentId)
         }
         return outcome
     }
@@ -409,7 +415,9 @@ final class TapToPayReader: NSObject, ObservableObject {
     }
 
     /// Apple 5.12: an outcome the owner didn't see because they'd left the app.
-    static func notifyIfMissed(_ outcome: TapToPayOutcome) {
+    /// The server sends a declined one too, if the app was closed for good;
+    /// the shared id means they only ever see one. Tapping opens the invoice.
+    static func notifyIfMissed(_ outcome: TapToPayOutcome, invoiceID: UUID, businessID: UUID?, paymentIntentID: String) {
         let body: String
         switch outcome {
         case .approved: return
@@ -422,8 +430,11 @@ final class TapToPayReader: NSObject, ObservableObject {
         content.title = "Payment not approved"
         content.body = body
         content.sound = .default
+        var userInfo: [String: String] = ["type": "invoice_card_declined", "invoiceId": invoiceID.uuidString]
+        if let businessID { userInfo["businessId"] = businessID.uuidString }
+        content.userInfo = userInfo
         UNUserNotificationCenter.current().add(
-            UNNotificationRequest(identifier: "tap-to-pay-\(UUID().uuidString)", content: content, trigger: nil)
+            UNNotificationRequest(identifier: "tap-to-pay-\(paymentIntentID)", content: content, trigger: nil)
         )
     }
 }

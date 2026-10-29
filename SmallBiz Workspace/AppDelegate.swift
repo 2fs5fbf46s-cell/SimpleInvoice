@@ -53,6 +53,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         if NotificationInboxService.payloadSuggestsInboxRefresh(userInfo) {
             NotificationInboxService.shared.markNeedsRefresh()
         }
+        // A declined tap with the app open: the owner is looking at the result.
+        if userInfo["type"] as? String == "invoice_card_declined" {
+            completionHandler([])
+            return
+        }
         completionHandler([.banner, .list, .sound, .badge])
     }
 

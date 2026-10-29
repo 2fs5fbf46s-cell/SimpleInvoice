@@ -89,13 +89,13 @@ struct HelpCenterView: View {
                             }
 
                             supportRow(title: "Privacy Policy", systemImage: "hand.raised") {
-                                if let url = URL(string: "https://smallbizworkspace-portal-backend.vercel.app/privacy") {
+                                if let url = URL(string: "https://portal.smallbizworkspace.com/privacy") {
                                     openURL(url)
                                 }
                             }
 
                             supportRow(title: "User Agreement", systemImage: "doc.text") {
-                                if let url = URL(string: "https://smallbizworkspace-portal-backend.vercel.app/terms") {
+                                if let url = URL(string: "https://portal.smallbizworkspace.com/terms") {
                                     openURL(url)
                                 }
                             }

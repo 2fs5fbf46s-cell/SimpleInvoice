@@ -61,6 +61,7 @@ struct CollectPaymentSheet: View {
     @State private var otherAmountText = ""
     @State private var tip: Tip = .none
     @State private var customTipText = ""
+    @State private var showAmountNeeded = false
 
     private var balanceCents: Int { invoice.balanceDueCents }
     private var amountCents: Int {
@@ -178,8 +179,13 @@ struct CollectPaymentSheet: View {
                     .background(card)
                 }
 
+                // Never disabled (5.3): an empty amount is caught on tap.
                 TapToPayButton { tapToPay() }
-                    .disabled(amountCents <= 0)
+                if showAmountNeeded {
+                    Text("Enter an amount to charge.")
+                        .font(.footnote)
+                        .foregroundStyle(SBWTheme.attention)
+                }
 
                 VStack(spacing: 0) {
                     if let onSendLink {
@@ -229,6 +235,11 @@ struct CollectPaymentSheet: View {
     }
 
     private func tapToPay() {
+        guard amountCents > 0 else {
+            showAmountNeeded = true
+            return
+        }
+        showAmountNeeded = false
         if case .ready = reader.status { startCollecting() } else { stage = .setUp }
     }
 
