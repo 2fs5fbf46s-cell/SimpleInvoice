@@ -106,9 +106,12 @@ struct TapToPaySettingsView: View {
 /// The one-time announcement (3.1–3.3, 6.2): full screen, once per business
 /// on this iPhone, to owners who could use Tap to Pay but haven't set it up.
 ///
-/// Placeholder art and copy: before release this must be the "Hero" in-app
-/// banner from Apple's Tap to Pay on iPhone Marketing Toolkit — custom
-/// marketing art isn't allowed.
+/// Apple's "Hero" in-app banner from the Tap to Pay on iPhone Marketing
+/// Toolkit (In-App Banners › Hero › Card to iPhone, 9x16), laid out as the
+/// template is. The artwork is Apple's, unaltered; the headline and body are
+/// the template's copy word for word, set as text so they scale with Dynamic
+/// Type, and the template's "[Your CTA]" placeholder is the real button.
+/// Custom marketing art or copy isn't allowed here.
 struct TapToPayAnnouncementView: View {
     let business: Business?
     let profile: BusinessProfile?
@@ -118,37 +121,73 @@ struct TapToPayAnnouncementView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if settingUp {
-                    TapToPaySetupFlow(business: business, profile: profile) { _ in onClose() }
-                } else {
-                    VStack(spacing: 18) {
-                        Spacer()
-                        Image(systemName: "wave.3.right.circle.fill")
-                            .font(.scaledSystem(size: 88, relativeTo: .largeTitle))
-                            .foregroundStyle(SBWTheme.brand)
-                        Text("Tap to Pay on iPhone")
-                            .font(.largeTitle.weight(.bold))
-                            .multilineTextAlignment(.center)
-                        Text("Accept contactless cards, Apple Pay and other digital wallets right on your iPhone. No extra hardware needed.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        Spacer()
-                        Button("Set Up Tap to Pay on iPhone") { settingUp = true }
-                            .sbwProminentButton()
-                        Button("Not Now", action: onClose)
-                            .buttonStyle(.borderless)
+            if settingUp {
+                TapToPaySetupFlow(business: business, profile: profile) { _ in onClose() }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onClose) }
                     }
-                    .padding(24)
-                }
-            }
-            .toolbar {
-                if settingUp {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onClose) }
-                }
+            } else {
+                hero
+                    .toolbar(.hidden, for: .navigationBar)
             }
         }
+    }
+
+    /// The template is black on white in both appearances, like the artwork.
+    private var hero: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Tap to Pay\non iPhone")
+                    .font(.scaledSystem(size: 38, weight: .bold, relativeTo: .largeTitle))
+                    .padding(.horizontal, 36)
+                    .padding(.top, 56)
+                    .accessibilityAddTraits(.isHeader)
+
+                Image("TapToPayHero")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 28) {
+                    Text("Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.")
+                        .font(.scaledSystem(size: 17, relativeTo: .body))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button { settingUp = true } label: {
+                        Text("Set Up Tap to Pay on iPhone")
+                            .font(.scaledSystem(size: 17, relativeTo: .body))
+                            .padding(.vertical, 11)
+                            .padding(.horizontal, 22)
+                            .overlay(Capsule().strokeBorder(.black, lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("Terms apply.")
+                        .font(.scaledSystem(size: 13, relativeTo: .footnote))
+                        .foregroundStyle(Color(white: 0.45))
+                }
+                .padding(.horizontal, 36)
+                .padding(.bottom, 32)
+            }
+            .foregroundStyle(.black)
+        }
+        .background(Color.white.ignoresSafeArea())
+        .overlay(alignment: .topTrailing) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.scaledSystem(size: 15, weight: .semibold, relativeTo: .body))
+                    .foregroundStyle(Color(white: 0.3))
+                    .padding(9)
+                    .background(Circle().fill(Color(white: 0.93)))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Not Now")
+            .padding(.trailing, 12)
+        }
+        .environment(\.colorScheme, .light)
     }
 
     static func defaultsKey(_ businessID: UUID) -> String { "tapToPay.announced.\(businessID.uuidString)" }
