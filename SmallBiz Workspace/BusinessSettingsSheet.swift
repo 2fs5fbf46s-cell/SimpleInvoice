@@ -509,6 +509,17 @@ private struct DeveloperToolsView: View {
             } footer: {
                 Text("Adds every record type and field to the Development environment so Production can be deployed from it. After tapping, close the app from the app switcher and open it again.")
             }
+            Section {
+                Button("Show Announcement Again") {
+                    if let id = activeBiz.activeBusinessID {
+                        UserDefaults.standard.removeObject(forKey: TapToPayAnnouncementView.defaultsKey(id))
+                    }
+                }
+            } header: {
+                Text("Tap to Pay on iPhone")
+            } footer: {
+                Text("For filming Apple's review videos. Shows on the next launch, if this business hasn't accepted Apple's terms.")
+            }
             Section("Onboarding") {
                 Button("Run Walkthrough") { WalkthroughState.requestRun() }
                 Button("Reset Onboarding and Walkthrough", role: .destructive) {
