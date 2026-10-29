@@ -12,6 +12,7 @@ import Combine
 final class BusinessSettingsPresenter: ObservableObject {
     enum Destination: Hashable {
         case setupPayments
+        case tapToPay
     }
 
     @Published var isPresented = false

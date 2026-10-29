@@ -2289,6 +2289,22 @@ final class PortalBackend {
         }
     }
 
+    /// The owner's own email (the business profile's), for SmallBiz Workspace
+    /// announcements such as the Tap to Pay on iPhone launch email. An empty
+    /// email tells the server to forget it.
+    func saveOwnerContact(email: String, name: String) async throws {
+        let adminKey = try requireAdminKey()
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/business/owner-contact"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuthHeaders(&req, adminKey: adminKey)
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "name": name], options: [])
+        let (data, resp) = try await PortalBackend.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PortalBackendError.http((resp as? HTTPURLResponse)?.statusCode ?? -1, body: String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
     /// Takes a business's website offline (when the business is deleted).
     func unpublishSite(handle: String, businessToken: String? = nil) async throws {
         let adminKey = try requireAdminKey()

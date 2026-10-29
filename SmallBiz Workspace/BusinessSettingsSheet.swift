@@ -114,10 +114,12 @@ struct BusinessSettingsSheet: View {
             }
             .navigationDestination(item: $route) { destination($0) }
             .onAppear {
-                if presenter.pendingDestination == .setupPayments {
-                    presenter.pendingDestination = nil
-                    route = .payments
+                switch presenter.pendingDestination {
+                case .setupPayments: route = .payments
+                case .tapToPay: route = .tapToPay
+                case nil: break
                 }
+                presenter.pendingDestination = nil
             }
             .task { await refreshNotificationStatus() }
         }

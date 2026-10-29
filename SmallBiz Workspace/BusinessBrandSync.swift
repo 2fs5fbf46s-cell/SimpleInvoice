@@ -23,7 +23,11 @@ enum BusinessBrandSync {
         // The ID now: the profile may be gone by the time the task runs.
         let businessID = profile.businessID
         UserDefaults.standard.set(true, forKey: dirtyKey(businessID))
-        Task { await push(businessID: businessID, context: context) }
+        Task {
+            await push(businessID: businessID, context: context)
+            // The same profile edits change the owner's email.
+            await OwnerContactSync.pushIfNeeded(businessID: businessID, context: context)
+        }
     }
 
     /// Pushes if there's an unsent change for this business.

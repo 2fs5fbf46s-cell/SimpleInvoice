@@ -164,6 +164,7 @@ struct SmallBizWorkspaceApp: App {
         await RecurringInvoicePullService.pullAndMaterialize(context: context, businessID: activeBiz.activeBusinessID)
         await RecurringScheduleSync.retryPending(context: context, businessID: activeBiz.activeBusinessID)
         await BusinessBrandSync.pushIfNeeded(businessID: activeBiz.activeBusinessID, context: context)
+        await OwnerContactSync.pushIfNeeded(businessID: activeBiz.activeBusinessID, context: context)
         // Same reasoning: estimate decisions (accepted and declined) are
         // server/push-driven (POST /api/portal/estimate/decision), this is
         // the fallback leg — and the only one, now that per-estimate status

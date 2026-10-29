@@ -244,6 +244,9 @@ struct AppTabView: View {
             if let requested = portalReturn.requestedEstimateID {
                 routeToEstimate(id: requested)
             }
+            // A link or push that launched the app arrived before this view
+            // existed, so onChange never saw it.
+            routeFromNotification(notificationRouter.pendingPayload)
             if OnboardingState.isComplete && !WalkthroughState.isComplete {
                 startWalkthrough(force: false)
             }
@@ -552,6 +555,14 @@ struct AppTabView: View {
         if eventKey.contains("booking") {
             tab = .work
             showBookingsList()
+            notificationRouter.consumePendingPayload()
+            return
+        }
+
+        // The Tap to Pay on iPhone launch email (and its push): Business ›
+        // Tap to Pay on iPhone, where setup starts.
+        if eventKey.contains("tap_to_pay") {
+            reopenBusinessSettings(at: .tapToPay)
             notificationRouter.consumePendingPayload()
             return
         }

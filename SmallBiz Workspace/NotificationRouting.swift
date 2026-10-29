@@ -133,6 +133,13 @@ final class NotificationRouter: ObservableObject {
     private static func payload(fromDeepLink url: URL) -> NotificationRoutePayload? {
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
 
+        // smallbizworkspace://tap-to-pay, from the Tap to Pay on iPhone launch
+        // email's landing page.
+        if (comps.host ?? "").lowercased() == "tap-to-pay" {
+            let businessId = UserDefaults.standard.string(forKey: "activeBusinessID") ?? ""
+            return NotificationRoutePayload(event: "tap_to_pay", businessId: businessId, deepLink: url.absoluteString)
+        }
+
         // Inbox items link to the portal page ("/portal/contract/<id>"), which
         // the app opens as its own record instead.
         if (comps.scheme ?? "").lowercased() != "sbw" {
