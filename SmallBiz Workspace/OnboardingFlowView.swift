@@ -258,6 +258,10 @@ struct OnboardingFlowView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 featureRow(icon: "creditcard.fill", title: "Card payments", subtitle: "Stripe or Square, cards and wallets")
+                // Where a new owner first hears of it (Apple 2.1).
+                if TapToPayReader.deviceSupportMessage() == nil {
+                    featureRow(icon: "wave.3.right.circle.fill", title: "Tap to Pay on iPhone", subtitle: "Take cards and digital wallets in person, with Stripe")
+                }
                 featureRow(icon: "arrow.left.arrow.right", title: "PayPal", subtitle: "Route payments to your PayPal account")
                 featureRow(icon: "banknote", title: "Cash App, Venmo, ACH", subtitle: "Whatever your clients already use")
             }
