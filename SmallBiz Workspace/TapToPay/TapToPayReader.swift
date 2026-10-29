@@ -403,7 +403,7 @@ final class TapToPayReader: NSObject, ObservableObject {
         case "insufficient_funds": return "The card was declined for insufficient funds."
         case "expired_card": return "The card has expired."
         case "online_or_offline_pin_required", "offline_pin_required":
-            return "This card needs a PIN that Tap to Pay can't take. Ask for another card or a digital wallet."
+            return "This card needs a PIN that Tap to Pay on iPhone can't take. Ask for another card or a digital wallet."
         default: return "The card was declined. Ask for another card or a digital wallet."
         }
     }
