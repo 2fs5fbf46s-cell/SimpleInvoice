@@ -45,6 +45,12 @@ struct TapToPaySettingsView: View {
             } footer: {
                 Text("Accept contactless cards, Apple Pay and other digital wallets right on this iPhone, with no extra hardware. Payments go to your Stripe account. Requires iPhone XS or later.")
             }
+
+            // Where the launch push's and announcement's "Terms apply." lead.
+            Section {
+            } footer: {
+                TapToPayDisclaimer.text
+            }
         }
         .navigationTitle("Tap to Pay on iPhone")
         .navigationBarTitleDisplayMode(.inline)
@@ -118,6 +124,7 @@ struct TapToPayAnnouncementView: View {
     let onClose: () -> Void
 
     @State private var settingUp = false
+    @State private var showTerms = false
 
     var body: some View {
         NavigationStack {
@@ -164,9 +171,13 @@ struct TapToPayAnnouncementView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("Terms apply.")
-                        .font(.scaledSystem(size: 13, relativeTo: .footnote))
-                        .foregroundStyle(Color(white: 0.45))
+                    Button { showTerms = true } label: {
+                        Text("Terms apply.")
+                            .font(.scaledSystem(size: 13, relativeTo: .footnote))
+                            .foregroundStyle(Color(white: 0.45))
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 36)
                 .padding(.bottom, 32)
@@ -188,6 +199,7 @@ struct TapToPayAnnouncementView: View {
             .padding(.trailing, 12)
         }
         .environment(\.colorScheme, .light)
+        .sheet(isPresented: $showTerms) { TapToPayDisclaimer.Sheet() }
     }
 
     static func defaultsKey(_ businessID: UUID) -> String { "tapToPay.announced.\(businessID.uuidString)" }
@@ -232,4 +244,41 @@ struct TapToPayAnnouncementHost: ViewModifier {
 
 extension View {
     func tapToPayAnnouncement() -> some View { modifier(TapToPayAnnouncementHost()) }
+}
+
+/// Apple's full disclaimer, and its Apple Pay one, from the Tap to Pay on
+/// iPhone Marketing Guide (September 2026), word for word. A short "Terms
+/// apply." must lead to these.
+enum TapToPayDisclaimer {
+    static let full = "Tap to Pay on iPhone requires a supported payment app and the latest version of iOS. Update to the latest version by going to Settings > General > Software Update. Some contactless cards may not be accepted by your payment app. Transaction limits may apply. Tap to Pay on iPhone is not available in all markets. For Tap to Pay on iPhone countries and regions, see https://developer.apple.com/tap-to-pay/regions/."
+    static let applePay = "Apple Pay is a service provided by Apple Payments Services LLC, a subsidiary of Apple Inc. Neither Apple Inc. nor Apple Payments Services LLC is a bank. Any card used in Apple Pay is offered by the card issuer."
+
+    static var text: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(full)
+            Text(applePay)
+        }
+    }
+
+    struct Sheet: View {
+        @Environment(\.dismiss) private var dismiss
+
+        var body: some View {
+            NavigationStack {
+                ScrollView {
+                    TapToPayDisclaimer.text
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                .navigationTitle("Terms")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+    }
 }

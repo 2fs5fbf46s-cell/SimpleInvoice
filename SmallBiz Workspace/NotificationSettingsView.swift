@@ -51,6 +51,12 @@ struct NotificationSettingsView: View {
                 } footer: {
                     Text("Bookings requested, invoices paid and contracts signed in the last day, once a day.")
                 }
+
+                Section {
+                    toggle("SmallBiz Workspace news", \.productNews, key: "product.news", settings)
+                } footer: {
+                    Text("A notification when SmallBiz Workspace adds something you can use, like Tap to Pay on iPhone. Rarely, and never ads for anyone else.")
+                }
             } else if let loadError {
                 Section {
                     Text(loadError).foregroundStyle(.secondary)

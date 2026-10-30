@@ -2122,19 +2122,22 @@ final class PortalBackend {
             var invoicePaid: Bool
             var contractSigned: Bool
             var bookingRequested: Bool
+            var productNews: Bool
 
             private enum CodingKeys: String, CodingKey {
                 case invoiceSent = "invoice.sent"
                 case invoicePaid = "invoice.paid"
                 case contractSigned = "contract.signed"
                 case bookingRequested = "booking.requested"
+                case productNews = "product.news"
             }
 
-            init(invoiceSent: Bool = true, invoicePaid: Bool = true, contractSigned: Bool = true, bookingRequested: Bool = true) {
+            init(invoiceSent: Bool = true, invoicePaid: Bool = true, contractSigned: Bool = true, bookingRequested: Bool = true, productNews: Bool = true) {
                 self.invoiceSent = invoiceSent
                 self.invoicePaid = invoicePaid
                 self.contractSigned = contractSigned
                 self.bookingRequested = bookingRequested
+                self.productNews = productNews
             }
 
             init(from decoder: Decoder) throws {
@@ -2143,6 +2146,7 @@ final class PortalBackend {
                 invoicePaid = (try? c.decode(Bool.self, forKey: .invoicePaid)) ?? true
                 contractSigned = (try? c.decode(Bool.self, forKey: .contractSigned)) ?? true
                 bookingRequested = (try? c.decode(Bool.self, forKey: .bookingRequested)) ?? true
+                productNews = (try? c.decode(Bool.self, forKey: .productNews)) ?? true
             }
         }
 
