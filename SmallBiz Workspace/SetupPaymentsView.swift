@@ -379,6 +379,10 @@ struct SetupPaymentsView: View {
                 .tint(SBWTheme.brand)
                 .disabled(isStartingStripe || isLoadingStripe)
             }
+            // Matches the server's platformFee.ts; change both together.
+            Text("Each card payment pays Stripe's processing fee, plus 0.5% of the invoice amount to SmallBiz Workspace. Tips aren't included in the 0.5%.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
