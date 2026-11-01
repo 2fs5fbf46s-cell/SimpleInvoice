@@ -348,7 +348,9 @@ struct TapToPayResultView: View {
                 .multilineTextAlignment(.center)
             Spacer(minLength: 12)
 
-            if let receipt {
+            // Only a payment that went through gets a receipt; a declined
+            // one used to offer one too.
+            if case .approved(let receipt) = outcome {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("SEND A RECEIPT")
                         .font(.caption.weight(.semibold))
