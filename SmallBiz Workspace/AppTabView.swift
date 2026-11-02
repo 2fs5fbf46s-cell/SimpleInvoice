@@ -152,6 +152,7 @@ struct AppTabView: View {
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateMenuSheet()
+                .recordSheetSize()
         }
         .sheet(isPresented: $businessSettingsPresenter.isPresented) {
             BusinessSettingsSheet(presenter: businessSettingsPresenter)
@@ -162,11 +163,13 @@ struct AppTabView: View {
             NavigationStack {
                 InvoiceOverviewView(invoice: estimate)
             }
+            .recordSheetSize()
         }
         .sheet(item: $deepLinkedInvoice) { invoice in
             NavigationStack {
                 InvoiceOverviewView(invoice: invoice)
             }
+            .recordSheetSize()
         }
         .sheet(item: $deepLinkedJob) { job in
             NavigationStack {
@@ -177,11 +180,13 @@ struct AppTabView: View {
                         }
                     }
             }
+            .recordSheetSize()
         }
         .sheet(item: $deepLinkedContract) { contract in
             NavigationStack {
                 ContractDetailView(contract: contract)
             }
+            .recordSheetSize()
         }
         .sheet(item: $deepLinkedBookingRequest) { request in
             NavigationStack {
@@ -192,6 +197,7 @@ struct AppTabView: View {
                         }
                     }
             }
+            .recordSheetSize()
         }
         .onChange(of: portalReturn.requestedEstimateID) { _, id in
             routeToEstimate(id: id)
@@ -740,6 +746,20 @@ private struct TabBarReselectObserver: UIViewControllerRepresentable {
             }
 
             lastSelectedIndex = idx
+        }
+    }
+}
+
+extension View {
+    /// A record opened in a sheet (from a link, a notification or Create)
+    /// takes most of an iPad's screen instead of a small card. iPhone sheets
+    /// are full width already, so nothing changes there.
+    @ViewBuilder
+    func recordSheetSize() -> some View {
+        if #available(iOS 18.0, *) {
+            presentationSizing(.page)
+        } else {
+            self
         }
     }
 }
