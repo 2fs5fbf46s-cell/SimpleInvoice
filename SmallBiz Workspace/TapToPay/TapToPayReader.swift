@@ -75,6 +75,12 @@ final class TapToPayReader: NSObject, ObservableObject {
     /// the app runs.
     static func deviceSupportMessage() -> String? {
         if let checked = shared.supportMessage { return checked.isEmpty ? nil : checked }
+        // iPhone only. Stripe already turns an iPad down, but its simulated
+        // reader doesn't, and nothing about Tap to Pay belongs on an iPad.
+        if UIDevice.current.userInterfaceIdiom != .phone {
+            shared.supportMessage = "Tap to Pay on iPhone works on iPhone only."
+            return shared.supportMessage
+        }
         startTerminal()
         var message = ""
         if case .failure = Terminal.shared.supportsReaders(of: .tapToPay, discoveryMethod: .tapToPay, simulated: isSimulated) {
