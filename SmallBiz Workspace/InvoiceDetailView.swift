@@ -1135,6 +1135,9 @@ struct InvoiceDetailView: View {
                 Button(kind == .reminder ? "Send Reminder" : (invoice.sentAt == nil ? "Send Invoice" : "Resend Invoice")) {
                     sendInvoice(kind)
                 }
+                if !canPayOnline {
+                    Button("Set Up Payments First") { showPaymentMethods = true }
+                }
                 Button("Cancel", role: .cancel) {}
             } message: { kind in
                 Text(InvoiceSendService.confirmationMessage(for: invoice, kind: kind, canPayOnline: canPayOnline))

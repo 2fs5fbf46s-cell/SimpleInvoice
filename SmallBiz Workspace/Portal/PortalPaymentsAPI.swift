@@ -40,6 +40,26 @@ struct StripeConnectStatus: Equatable {
     let detailsSubmitted: Bool?
 }
 
+extension Business {
+    /// Copies Stripe's answer onto the business. True when this is the read
+    /// that first finds it able to take cards.
+    @discardableResult
+    func apply(_ status: StripeConnectStatus) -> Bool {
+        let becameChargeable = !stripeChargesEnabled && status.chargesEnabled
+        stripeAccountId = status.stripeAccountId
+        stripeOnboardingStatus = status.onboardingStatus
+        stripeChargesEnabled = status.chargesEnabled
+        stripePayoutsEnabled = status.payoutsEnabled
+        return becameChargeable
+    }
+
+    /// Stripe's sign-up is finished or under way, but Stripe hasn't turned
+    /// on card payments yet. It can take a minute after the owner returns.
+    var stripeAwaitingCharges: Bool {
+        !(stripeAccountId ?? "").trimmingCharacters(in: .whitespaces).isEmpty && !stripeChargesEnabled
+    }
+}
+
 struct PayPalPlatformStatus: Equatable {
     let ok: Bool
     let configured: Bool

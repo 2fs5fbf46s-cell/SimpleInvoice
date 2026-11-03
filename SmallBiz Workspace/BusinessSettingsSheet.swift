@@ -77,7 +77,11 @@ struct BusinessSettingsSheet: View {
                         if TapToPayReader.isOffered(for: business) {
                             row(.tapToPay, "Tap to Pay on iPhone", tapToPaySubtitle, "wave.3.right.circle")
                         } else if TapToPayReader.deviceSupportMessage() == nil {
-                            row(.payments, "Tap to Pay on iPhone", "Connect Stripe to accept cards in person", "wave.3.right.circle")
+                            row(.payments, "Tap to Pay on iPhone",
+                                business?.stripeAwaitingCharges == true
+                                    ? "Ready once Stripe finishes checking your details"
+                                    : "Connect Stripe to accept cards in person",
+                                "wave.3.right.circle")
                         }
                         row(.reminders, "Overdue Reminders", remindersSubtitle, "bell.badge")
                         row(.subscription, "Subscription", subscriptionSubtitle, "star.circle",
@@ -126,7 +130,19 @@ struct BusinessSettingsSheet: View {
                 presenter.pendingDestination = nil
             }
             .task { await refreshNotificationStatus() }
+            .task { await refreshPendingStripe() }
         }
+    }
+
+    /// Stripe can take a minute to turn on card payments after an owner
+    /// finishes its sign-up, and only Payment Methods used to ask again, so
+    /// Tap to Pay here kept saying "Connect Stripe" to someone who just had.
+    private func refreshPendingStripe() async {
+        guard let business, business.stripeAwaitingCharges,
+              let status = try? await PortalPaymentsAPI.shared.fetchStripeConnectStatus(businessId: business.id)
+        else { return }
+        business.apply(status)
+        try? modelContext.save()
     }
 
     // MARK: - Header and next step
@@ -242,7 +258,8 @@ struct BusinessSettingsSheet: View {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 8)
                 if let badge {

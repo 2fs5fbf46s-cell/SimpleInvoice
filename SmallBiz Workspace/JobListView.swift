@@ -246,6 +246,7 @@ struct JobsListView: View {
                     addJobAndOpenSheet()
                 } label: {
                     Label("New Job", systemImage: "plus")
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(SBWTheme.brand)

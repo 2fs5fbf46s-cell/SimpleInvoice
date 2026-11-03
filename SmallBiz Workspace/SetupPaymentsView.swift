@@ -934,11 +934,7 @@ struct SetupPaymentsView: View {
             guard self.business?.id == businessID else { return }
             stripeStatus = status
             stripeStatusError = false
-            let becameChargeable = !business.stripeChargesEnabled && status.chargesEnabled
-            business.stripeAccountId = status.stripeAccountId
-            business.stripeOnboardingStatus = status.onboardingStatus
-            business.stripeChargesEnabled = status.chargesEnabled
-            business.stripePayoutsEnabled = status.payoutsEnabled
+            let becameChargeable = business.apply(status)
             save()
             if becameChargeable, TapToPayReader.isOffered(for: business),
                !TapToPayAnnouncementView.wasShown(for: businessID) {

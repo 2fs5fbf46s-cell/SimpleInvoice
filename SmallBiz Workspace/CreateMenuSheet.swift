@@ -146,19 +146,10 @@ struct CreateMenuSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .sbwNavigationBarBackdrop()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
                         hapticTap()
                         dismiss()
-                    } label: {
-                        Text("Done")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay(
-                                Capsule().stroke(SBWTheme.cardStroke, lineWidth: 1)
-                            )
                     }
                 }
             }
@@ -281,11 +272,6 @@ struct CreateMenuSheet: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                
-            }
-            .frame(width: 44, height: 44)
-
             VStack(alignment: .leading, spacing: 4) {
                 Text("What are we creating?")
                     .font(.scaledSystem(size: 22, weight: .bold, relativeTo: .title2))
