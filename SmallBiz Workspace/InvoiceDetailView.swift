@@ -274,7 +274,8 @@ struct InvoiceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sbwNavigationBarBackdrop()
         .toolbar { toolbarContent }
-        
+        .onDisappear { syncChangesOnLeave() }
+
         .navigationDestination(item: $createdContract) { c in
             ContractDetailView(contract: c)
         }
@@ -3017,6 +3018,20 @@ struct InvoiceDetailView: View {
         } catch {
             exportError = error.localizedDescription
         }
+    }
+
+    /// Leaving by the back button or a swipe kept edits on the phone: only
+    /// Done sent them to the client's portal, so a client could pay from an
+    /// invoice the owner had already corrected. Nothing is sent when nothing
+    /// changed (the hash check), when the invoice was just deleted, or while
+    /// Done's own upload is still going.
+    private func syncChangesOnLeave() {
+        guard !invoice.isDeleted, invoice.modelContext != nil, invoice.wasSent,
+              !invoice.portalUploadInFlight else { return }
+        PortalAutoSyncService.markInvoiceNeedsUploadIfChanged(invoice: invoice, business: resolvedBusiness())
+        guard invoice.portalNeedsUpload else { return }
+        forceSaveNow()
+        triggerInvoicePortalAutoSync()
     }
 
     private func forceSaveNow() {
