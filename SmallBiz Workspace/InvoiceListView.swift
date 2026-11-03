@@ -243,7 +243,10 @@ struct InvoiceListView: View {
                         .accessibilityLabel("New Invoice")
                     }
                     .padding(.vertical, 4)
+                }
+                .listSectionSpacing(8)
 
+                Section {
                     SBWFilterChips(
                         options: InvoiceListFilter.allCases,
                         title: { $0.rawValue },

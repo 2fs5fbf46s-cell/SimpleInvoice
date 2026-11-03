@@ -13,18 +13,41 @@ import SwiftUI
 
 // MARK: - Filter chips
 
-/// A row of single-choice filters that wraps instead of clipping.
+/// One row of single-choice filters, on the screen's background rather than
+/// in a box of its own.
 ///
-/// Bookings and Jobs scrolled theirs horizontally with no fade and no partial
-/// chip showing, so "Cancelled" appeared as "Car" cut mid-glyph and read as a
-/// rendering bug rather than as something you could scroll.
+/// When the chips don't fit, the row scrolls and fades out at the trailing
+/// edge. Bookings and Jobs once scrolled with no fade, so "Cancelled" showed
+/// as "Car" cut mid-glyph and read as a rendering bug; this then wrapped
+/// instead, which left a lone "All" on a second line and cost a row of
+/// screen. In a List, give it a Section of its own: its row background is
+/// clear.
 struct SBWFilterChips<Value: Hashable>: View {
     let options: [Value]
     let title: (Value) -> String
     @Binding var selection: Value
 
     var body: some View {
-        FlowLayout(spacing: 8) {
+        ViewThatFits(in: .horizontal) {
+            chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                chips.padding(.trailing, 28)
+            }
+            .mask {
+                LinearGradient(
+                    stops: [.init(color: .black, location: 0.86), .init(color: .clear, location: 1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var chips: some View {
+        HStack(spacing: 8) {
             ForEach(options, id: \.self) { option in
                 let isSelected = option == selection
                 Button {
@@ -48,72 +71,7 @@ struct SBWFilterChips<Value: Hashable>: View {
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-        )
-    }
-}
-
-/// Lays children left to right, wrapping to the next line when they run out of
-/// room — which is the whole point, given the labels these carry.
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var rows: [[CGSize]] = [[]]
-        var lineWidth: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            let needed = rows[rows.count - 1].isEmpty ? size.width : lineWidth + spacing + size.width
-            if needed > maxWidth, !rows[rows.count - 1].isEmpty {
-                rows.append([size])
-                lineWidth = size.width
-            } else {
-                rows[rows.count - 1].append(size)
-                lineWidth = needed
-            }
-        }
-
-        var height: CGFloat = 0
-        for row in rows {
-            let tallest: CGFloat = row.map(\.height).max() ?? 0
-            height += tallest
-        }
-        let gaps = CGFloat(max(0, rows.count - 1)) * spacing
-        height += gaps
-
-        var widest: CGFloat = 0
-        for row in rows {
-            var rowWidth: CGFloat = 0
-            for size in row { rowWidth += size.width }
-            rowWidth += CGFloat(max(0, row.count - 1)) * spacing
-            widest = max(widest, rowWidth)
-        }
-
-        return CGSize(width: min(widest, maxWidth), height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var lineHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += lineHeight + spacing
-                lineHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
-        }
+        .fixedSize()
     }
 }
 

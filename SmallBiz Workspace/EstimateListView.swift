@@ -150,7 +150,10 @@ struct EstimateListView: View {
                 Section {
                     estimateTiles
                         .buttonStyle(.plain)
+                }
+                .listSectionSpacing(8)
 
+                Section {
                     SBWFilterChips(
                         options: Filter.allCases,
                         title: { option in

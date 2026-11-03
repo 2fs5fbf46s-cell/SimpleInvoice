@@ -140,7 +140,10 @@ struct JobsListView: View {
                         .accessibilityLabel("New Job")
                     }
                     .padding(.vertical, 4)
+                }
+                .listSectionSpacing(8)
 
+                Section {
                     SBWFilterChips(
                         options: Filter.allCases,
                         title: { $0.rawValue },

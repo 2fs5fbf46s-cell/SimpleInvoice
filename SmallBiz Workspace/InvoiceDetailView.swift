@@ -1238,25 +1238,53 @@ struct InvoiceDetailView: View {
                 ?? "You'll get a notification when it's paid."
         )
         tapToPayButton
-        NextStepButtons {
-            Button { openClientPortal() } label: {
-                if openingPortal { ProgressView() } else { Label("View in Portal", systemImage: "rectangle.and.hand.point.up.left") }
+        // Two buttons. Resend, Copy Link and View in Portal were four pills of
+        // different sizes; they're all ways of sharing the invoice. Side by
+        // side when Record Payment fits whole, stacked when it doesn't.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                waitingRecordButton(fill: false)
+                waitingShareMenu
             }
-            .buttonStyle(.bordered)
-            .disabled(openingPortal)
-            Button { showRecordPayment = true } label: { Label("Record Payment", systemImage: "banknote") }
-                .buttonStyle(.bordered)
-        }
-        NextStepButtons {
-            Button { invoiceSendKind = .send } label: { sendingLabel("Resend", icon: "paperplane") }
-                .buttonStyle(.bordered)
-                .disabled(sendingInvoice)
-            Button { copyClientLink() } label: { Label("Copy Link", systemImage: "doc.on.doc") }
-                .buttonStyle(.bordered)
-                .disabled(openingPortal)
+            VStack(spacing: 10) {
+                waitingRecordButton(fill: true)
+                waitingShareMenu
+            }
         }
         noPaymentMethodsNote
         requestPaymentLink("Need part of it now? Send a payment link")
+    }
+
+    /// Never truncated: "Record Pay…" is what it said at larger text sizes.
+    private func waitingRecordButton(fill: Bool) -> some View {
+        Button { showRecordPayment = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "banknote")
+                Text("Record Payment").fixedSize()
+            }
+            .frame(maxWidth: fill ? .infinity : nil)
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private var waitingShareMenu: some View {
+        Menu {
+            Button { invoiceSendKind = .send } label: { Label("Resend Email", systemImage: "paperplane") }
+            Button { copyClientLink() } label: { Label("Copy Link", systemImage: "doc.on.doc") }
+            Button { openClientPortal() } label: { Label("View in Portal", systemImage: "rectangle.and.hand.point.up.left") }
+        } label: {
+            Group {
+                if sendingInvoice || openingPortal {
+                    ProgressView()
+                } else {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .disabled(sendingInvoice || openingPortal)
     }
 
     @ViewBuilder
@@ -1355,16 +1383,10 @@ struct InvoiceDetailView: View {
     private var InvoicePaymentsSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Payments")
-                        .font(.headline)
-                    Spacer()
-                    if invoiceStage != .paid && invoice.totalCents > 0 {
-                        Button { showRecordPayment = true } label: { Label("Record", systemImage: "plus") }
-                            .font(.subheadline)
-                            .buttonStyle(.borderless)
-                    }
-                }
+                // Recording a payment lives in Next step, in every state that
+                // has money owed; a second Record here was the same button.
+                Text("Payments")
+                    .font(.headline)
 
                 let payments = (invoice.payments ?? []).sorted { $0.paidAt < $1.paidAt }
                 if invoice.bookingDepositCents > 0 {

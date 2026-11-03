@@ -135,7 +135,10 @@ struct ContractListView: View {
                         .accessibilityLabel("New Contract")
                     }
                     .padding(.vertical, 4)
+                }
+                .listSectionSpacing(8)
 
+                Section {
                     SBWFilterChips(
                         options: ContractListFilter.allCases,
                         title: { option in

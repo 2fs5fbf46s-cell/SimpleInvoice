@@ -46,6 +46,11 @@ struct BusinessAvatarButton: View {
         profiles.first(where: { $0.businessID == activeBiz.activeBusinessID })
     }
 
+    private var displayName: String {
+        let name = (profile?.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Your Business" : name
+    }
+
     private var initials: String {
         let name = profile?.name
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -63,24 +68,41 @@ struct BusinessAvatarButton: View {
             onTap()
         } label: {
             // The business's logo, or its initials on its own color: this is
-            // the business, not the app.
-            Group {
-                if let data = profile?.logoData, let image = UIImage(data: data) {
-                    Image(uiImage: image).resizable().scaledToFill()
-                } else {
-                    Text(initials)
-                        .font(.scaledSystem(size: 12, weight: .bold, relativeTo: .caption))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(profile?.brandColorHex))))
+            // the business, not the app. Its name and a chevron beside it say
+            // this opens something; the badge alone didn't.
+            HStack(spacing: 8) {
+                Group {
+                    if let data = profile?.logoData, let image = UIImage(data: data) {
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } else {
+                        Text(initials)
+                            .font(.scaledSystem(size: 12, weight: .bold, relativeTo: .caption))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(profile?.brandColorHex))))
+                    }
                 }
+                .frame(width: 30, height: 30)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                Text(displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .frame(maxWidth: 110, alignment: .leading)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
-            .frame(width: 30, height: 30)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            // A toolbar offers its items next to no width; without this the
+            // name was squeezed to nothing. Long names stop at 110 points.
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .frame(height: 44)
+            .contentShape(Rectangle())
         }
-        .accessibilityLabel("Business Settings")
+        .buttonStyle(.plain)
+        .accessibilityLabel("Business Settings, \(displayName)")
         .coachMark(id: "walkthrough.avatar")
     }
 }

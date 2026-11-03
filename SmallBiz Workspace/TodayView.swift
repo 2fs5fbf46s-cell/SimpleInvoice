@@ -111,6 +111,12 @@ struct TodayView: View {
             ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }
             }
+            // No "Today" in the bar: the date heading below names the screen,
+            // and the business name beside the badge pushed it off center.
+            // The title still labels the back button on screens opened here.
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showNotifications = true } label: {
                     Image(systemName: unreadNotificationCount > 0 ? "bell.badge" : "bell")

@@ -150,7 +150,10 @@ struct ClientListView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                }
+                .listSectionSpacing(8)
 
+                Section {
                     SBWFilterChips(
                         options: ClientListFilter.allCases,
                         title: { option in chipTitle(option, all: all) },

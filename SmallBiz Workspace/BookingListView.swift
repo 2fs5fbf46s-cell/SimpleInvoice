@@ -114,7 +114,10 @@ struct BookingListView: View {
                             .autocorrectionDisabled()
                     }
                     .padding(.vertical, 4)
+                }
+                .listSectionSpacing(8)
 
+                Section {
                     SBWFilterChips(
                         options: BookingListFilter.allCases,
                         title: { option in
