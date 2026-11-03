@@ -186,7 +186,6 @@ struct JobsListView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Jobs")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedJob) { job in

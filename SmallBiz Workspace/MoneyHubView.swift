@@ -58,6 +58,10 @@ struct MoneyHubView: View {
             }
         }
         .onChange(of: segment) { _, new in if new != .invoices { invoiceFilter = nil } }
+        // The tab's name, with the segment picker saying which part you're
+        // in. Each list used to title itself, so the Money tab read "Invoices".
+        .navigationTitle("Money")
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }

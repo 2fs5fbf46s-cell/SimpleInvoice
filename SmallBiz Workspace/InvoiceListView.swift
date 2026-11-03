@@ -306,7 +306,6 @@ struct InvoiceListView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Invoices")
         .onChange(of: requestedFilter) { _, requested in
             if let requested { filter = requested }
         }
@@ -568,16 +567,24 @@ private struct InvoiceListRow: View {
         switch stage {
         case .paid:
             let paid = (invoice.payments ?? []).map(\.paidAt).max()
-            when = paid.map { "paid \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "paid"
+            when = paid.map { "paid \(Self.shortDate($0))" } ?? "paid"
         case .overdue:
             let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: invoice.dueDate), to: calendar.startOfDay(for: .now)).day ?? 0
             when = "\(days) day\(days == 1 ? "" : "s") late"
         case .draft:
             when = "not sent"
         case .sent, .partPaid:
-            when = "due \(invoice.dueDate.formatted(date: .abbreviated, time: .omitted))" + (invoice.viewedAt != nil ? " · viewed" : "")
+            when = "due \(Self.shortDate(invoice.dueDate))" + (invoice.viewedAt != nil ? " · viewed" : "")
         }
         return [number, (job?.isEmpty == false ? job : nil), when].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// "Nov 9" this year, "Nov 9, 2027" otherwise. The year made the line
+    /// run out of room and cut off "viewed".
+    static func shortDate(_ date: Date) -> String {
+        Calendar.current.isDate(date, equalTo: .now, toGranularity: .year)
+            ? date.formatted(.dateTime.month(.abbreviated).day())
+            : date.formatted(date: .abbreviated, time: .omitted)
     }
 }
 

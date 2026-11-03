@@ -256,7 +256,6 @@ struct ExpenseListView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Expenses")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedExpense) { expense in

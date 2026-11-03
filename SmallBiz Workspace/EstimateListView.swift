@@ -225,7 +225,6 @@ struct EstimateListView: View {
                 EstimateDecisionSync.applyPendingDecisions(in: modelContext)
             }
         }
-        .navigationTitle("Estimates")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
 

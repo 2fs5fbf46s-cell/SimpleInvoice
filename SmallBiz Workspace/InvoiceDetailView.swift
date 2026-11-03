@@ -1554,14 +1554,13 @@ struct InvoiceDetailView: View {
 
     @ViewBuilder
     private var invoiceToolbarButtons: some View {
-        Button {
-            handleDoneTapped()
-        } label: {
-            Image(systemName: "checkmark")
-        }
-        .accessibilityLabel("Done")
+        // Saves, sends any change to the client portal and closes. The word,
+        // not a bare checkmark: beside the back button, a checkmark didn't
+        // say what it did.
+        Button("Done") { handleDoneTapped() }
+            .fontWeight(.semibold)
 
-        Button { previewPDF() } label: { Image(systemName: "doc.richtext") }
+        Button { previewPDF() } label: { Image(systemName: "doc.text.magnifyingglass") }
             .accessibilityLabel("Preview PDF")
 
         Menu {
@@ -1906,14 +1905,13 @@ struct InvoiceDetailView: View {
 
     @ViewBuilder
     private var estimateToolbarButtons: some View {
-        Button {
-            handleDoneTapped()
-        } label: {
-            Image(systemName: "checkmark")
-        }
-        .accessibilityLabel("Done")
+        // Saves, sends any change to the client portal and closes. The word,
+        // not a bare checkmark: beside the back button, a checkmark didn't
+        // say what it did.
+        Button("Done") { handleDoneTapped() }
+            .fontWeight(.semibold)
 
-        Button { previewPDF() } label: { Image(systemName: "doc.richtext") }
+        Button { previewPDF() } label: { Image(systemName: "doc.text.magnifyingglass") }
             .accessibilityLabel("Preview PDF")
 
         Menu {

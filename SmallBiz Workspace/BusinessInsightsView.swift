@@ -130,7 +130,6 @@ struct BusinessInsightsView: View {
                 }
             }
         }
-        .navigationTitle("Insights")
         .navigationDestination(isPresented: $showNoClient) { NoClientInvoicesView(invoices: noClientInvoices) }
     }
 

@@ -42,6 +42,9 @@ struct WorkHubView: View {
                 ContractListView(businessID: activeBiz.activeBusinessID)
             }
         }
+        // The tab's name; the picker says which part. See MoneyHubView.
+        .navigationTitle("Work")
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }

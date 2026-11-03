@@ -88,7 +88,7 @@ struct AppTabView: View {
             }
             .id(moneyResetID)
             .tag(AppTab.money)
-            .tabItem { Label("Money", systemImage: "doc.plaintext") }
+            .tabItem { Label("Money", systemImage: "banknote") }
 
             NavigationStack(path: $workPath) {
                 WorkHubView()

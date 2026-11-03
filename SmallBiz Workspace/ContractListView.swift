@@ -180,7 +180,6 @@ struct ContractListView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Contracts")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .navigationDestination(item: $selectedContract) { ContractDetailView(contract: $0) }

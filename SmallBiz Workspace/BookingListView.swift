@@ -163,7 +163,6 @@ struct BookingListView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Bookings")
         .navigationBarTitleDisplayMode(.large)
         .sbwNavigationBarBackdrop()
         .toolbar {
