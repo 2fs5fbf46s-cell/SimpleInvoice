@@ -19,6 +19,7 @@ struct SmallBizWorkspaceApp: App {
     var body: some Scene {
         WindowGroup {
             appContent
+                .overlay { AppLockCover() }
                 .environmentObject(lock)
                 .environmentObject(activeBiz)
                 .environmentObject(subscriptionStore)
@@ -92,6 +93,10 @@ struct SmallBizWorkspaceApp: App {
         // badge stayed forever. Opening the app is seeing what's new.
         if newPhase == .active {
             UNUserNotificationCenter.current().setBadgeCount(0)
+            lock.didBecomeActive()
+        }
+        if newPhase == .background {
+            lock.didEnterBackground()
         }
         // Leaving the app is when records have changed; Spotlight catches up.
         if newPhase == .background, let context = readyModelContext {

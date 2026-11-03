@@ -9,10 +9,11 @@ import UniformTypeIdentifiers
 /// on the Home Screen opens the record.
 ///
 /// Rebuilt whole each time (the app going to the background, a business
-/// switch): one business's records at a time, so a result always belongs to
-/// the business that's open, and nothing deleted lingers. Owners who don't
-/// want them in Spotlight turn it off in Settings › Apps › SmallBiz Workspace
-/// › Search, which iOS honors without us.
+/// switch, the lock being turned on or off): one business's records at a
+/// time, so a result always belongs to the business that's open, and nothing
+/// deleted lingers. Empty while "Require Face ID" is on. Owners who don't
+/// want them in Spotlight otherwise turn it off in Settings › Apps ›
+/// SmallBiz Workspace › Search, which iOS honors without us.
 @MainActor
 enum SpotlightIndexer {
     private static let log = Logger(subsystem: "SmallBizWorkspace", category: "spotlight")
@@ -21,7 +22,9 @@ enum SpotlightIndexer {
         let index = CSSearchableIndex.default()
         do {
             try await index.deleteAllSearchableItems()
-            guard let businessID else { return }
+            // With the app locked, names and amounts mustn't be one Home
+            // Screen search away.
+            guard let businessID, !AppLockManager.isEnabledInDefaults else { return }
             let items = SearchDocuments.all(businessID: businessID, context: context, includeExpenses: false)
                 .map(item)
             guard !items.isEmpty else { return }

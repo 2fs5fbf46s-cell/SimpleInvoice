@@ -15,6 +15,7 @@ struct BusinessSettingsSheet: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
+    @EnvironmentObject private var lock: AppLockManager
     /// Passed in directly rather than resolved via `@EnvironmentObject`: this
     /// sheet's `.onAppear` is the only place that reads it, and an
     /// environment object read solely inside a closure — never in `body`
@@ -33,6 +34,8 @@ struct BusinessSettingsSheet: View {
 
     @State private var route: Route?
     @State private var notificationsAllowed: Bool? = nil
+    @State private var changingLock = false
+    @State private var showNoPasscode = false
 
     enum Route: Hashable {
         case switcher, profile, invoiceNumbers, savedItems, contractTerms
@@ -97,6 +100,9 @@ struct BusinessSettingsSheet: View {
                         row(.appointmentReminders, "Appointment Reminders", appointmentRemindersSubtitle, "bell.and.waves.left.and.right")
                         row(.estimateFollowUps, "Estimate Follow-ups", estimateFollowUpsSubtitle, "arrow.uturn.forward.circle")
                     }
+                    section("Privacy") {
+                        lockRow
+                    }
                     section("Alerts and Help") {
                         row(.notifications, "Notifications", notificationsSubtitle, "bell")
                         row(.help, "Help and About", "Guides, questions and support", "questionmark.circle")
@@ -131,6 +137,54 @@ struct BusinessSettingsSheet: View {
             }
             .task { await refreshNotificationStatus() }
             .task { await refreshPendingStripe() }
+            .alert("Set a passcode first", isPresented: $showNoPasscode) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("This iPhone has no passcode, so there's nothing to unlock with. Add one in Settings › Face ID & Passcode, then turn this on.")
+            }
+        }
+    }
+
+    /// "Require Face ID". A switch, not a row that opens a screen: there's
+    /// nothing else to set.
+    private var lockRow: some View {
+        let name = AppLockManager.biometryName
+        return HStack(spacing: 12) {
+            Image(systemName: name == "Touch ID" ? "touchid" : (name == "Passcode" ? "lock" : "faceid"))
+                .font(.body)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Require \(name)")
+                    .foregroundStyle(.primary)
+                Text(lock.isEnabled
+                     ? "Asks when you open the app. Records are kept out of iPhone search."
+                     : "Off")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Toggle("Require \(name)", isOn: Binding(get: { lock.isEnabled }, set: setLock))
+                .labelsHidden()
+                .disabled(changingLock)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    private func setLock(_ enabled: Bool) {
+        guard !changingLock else { return }
+        if enabled, !AppLockManager.deviceCanAuthenticate {
+            showNoPasscode = true
+            return
+        }
+        changingLock = true
+        Task {
+            defer { changingLock = false }
+            guard await lock.setEnabled(enabled) else { return }
+            // On: Spotlight empties. Off: it fills again.
+            await SpotlightIndexer.reindex(context: modelContext, businessID: businessID)
         }
     }
 
