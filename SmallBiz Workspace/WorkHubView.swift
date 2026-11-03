@@ -49,6 +49,9 @@ struct WorkHubView: View {
             ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                GlobalSearchButton()
+            }
         }
     }
 }

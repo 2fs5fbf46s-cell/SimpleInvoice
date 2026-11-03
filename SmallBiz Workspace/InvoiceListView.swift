@@ -76,7 +76,7 @@ private enum InvoiceListToolbarRoute: Hashable, Identifiable {
 }
 
 /// Where an invoice is, for the list: the same stages as the invoice screen.
-private enum InvoiceListStage {
+enum InvoiceListStage {
     case draft, sent, overdue, partPaid, paid
 
     init(_ invoice: Invoice) {

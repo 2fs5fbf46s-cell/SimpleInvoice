@@ -42,12 +42,15 @@ struct AppTabView: View {
     @State private var deepLinkedJob: Job? = nil
     @State private var deepLinkedContract: Contract? = nil
     @State private var deepLinkedBookingRequest: BookingRequestItem? = nil
+    @State private var deepLinkedClient: Client? = nil
     @State private var toastDismissTask: Task<Void, Never>? = nil
     @State private var coachMarkFrames: [String: CGRect] = [:]
     @State private var isWalkthroughPresented = false
     @State private var walkthroughStepIndex = 0
     @State private var walkthroughValidationTask: Task<Void, Never>? = nil
     @StateObject private var businessSettingsPresenter = BusinessSettingsPresenter()
+    @StateObject private var searchPresenter = GlobalSearchPresenter()
+    @ObservedObject private var spotlight = SpotlightRouter.shared
 
     // MUST be @State so NavigationStack(path:) can push.
     @State private var todayPath = NavigationPath()
@@ -98,6 +101,7 @@ struct AppTabView: View {
             .tabItem { Label("Work", systemImage: "rectangle.stack") }
         }
         .environmentObject(businessSettingsPresenter)
+        .environmentObject(searchPresenter)
         .coordinateSpace(name: CoachMarksOverlay.coordinateSpaceName)
         .overlay(alignment: .bottom) {
             if let message = notificationRouter.toastMessage {
@@ -157,6 +161,23 @@ struct AppTabView: View {
         .sheet(isPresented: $businessSettingsPresenter.isPresented) {
             BusinessSettingsSheet(presenter: businessSettingsPresenter)
         }
+        .sheet(isPresented: $searchPresenter.isPresented) {
+            if let businessID = activeBiz.activeBusinessID {
+                GlobalSearchView(businessID: businessID)
+                    .recordSheetSize()
+            }
+        }
+        .sheet(item: $deepLinkedClient) { client in
+            NavigationStack {
+                ClientDetailView(client: client)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { deepLinkedClient = nil }
+                        }
+                    }
+            }
+            .recordSheetSize()
+        }
         .sheet(item: $deepLinkedEstimate, onDismiss: {
             portalReturn.consumeEstimateRequest()
         }) { estimate in
@@ -204,6 +225,9 @@ struct AppTabView: View {
         }
         .onChange(of: notificationRouter.pendingPayload) { _, payload in
             routeFromNotification(payload)
+        }
+        .onChange(of: spotlight.pendingIdentifier) { _, identifier in
+            routeFromSpotlight(identifier)
         }
         .onChange(of: notificationRouter.toastMessage) { _, message in
             guard message != nil else {
@@ -253,6 +277,7 @@ struct AppTabView: View {
             // A link or push that launched the app arrived before this view
             // existed, so onChange never saw it.
             routeFromNotification(notificationRouter.pendingPayload)
+            routeFromSpotlight(spotlight.pendingIdentifier)
             #if DEBUG
             if let screen = ScreenshotSeed.screen {
                 switch screen {
@@ -522,6 +547,44 @@ struct AppTabView: View {
         guard let invoice = invoice(withID: id) else { return }
         tab = .money
         deepLinkedEstimate = invoice
+    }
+
+    /// A record tapped in iPhone Spotlight. The index only ever holds the
+    /// active business's records (see SpotlightIndexer), so there's no
+    /// business to switch to.
+    private func routeFromSpotlight(_ identifier: String?) {
+        guard let identifier else { return }
+        spotlight.consume()
+        guard let (kind, id) = SearchDocument.parse(identifier) else { return }
+        switch kind {
+        case .client:
+            if let client = (try? modelContext.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == id })))?.first {
+                tab = .clients
+                deepLinkedClient = client
+                return
+            }
+        case .invoice, .estimate:
+            if let invoice = invoice(withID: id) {
+                tab = .money
+                if invoice.documentType == "estimate" { deepLinkedEstimate = invoice } else { deepLinkedInvoice = invoice }
+                return
+            }
+        case .job:
+            if let job = (try? modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id })))?.first {
+                tab = .work
+                deepLinkedJob = job
+                return
+            }
+        case .contract:
+            if let contract = contract(withID: id) {
+                tab = .work
+                deepLinkedContract = contract
+                return
+            }
+        case .expense:
+            break
+        }
+        notificationRouter.showToast("That's no longer in your records.")
     }
 
     private func routeFromNotification(_ payload: NotificationRoutePayload?) {

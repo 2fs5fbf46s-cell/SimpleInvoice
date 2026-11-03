@@ -1,3 +1,4 @@
+import CoreSpotlight
 import OSLog
 import SwiftUI
 import SwiftData
@@ -29,6 +30,10 @@ struct SmallBizWorkspaceApp: App {
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
                     guard let url = userActivity.webpageURL else { return }
                     handleIncomingURL(url)
+                }
+                // A record tapped in iPhone Spotlight.
+                .onContinueUserActivity(CSSearchableItemActionType) { userActivity in
+                    SpotlightRouter.shared.open(userActivity)
                 }
 
                 .onChange(of: scenePhase) { _, newPhase in
@@ -88,6 +93,11 @@ struct SmallBizWorkspaceApp: App {
         if newPhase == .active {
             UNUserNotificationCenter.current().setBadgeCount(0)
         }
+        // Leaving the app is when records have changed; Spotlight catches up.
+        if newPhase == .background, let context = readyModelContext {
+            let businessID = activeBiz.activeBusinessID
+            Task { await SpotlightIndexer.reindex(context: context, businessID: businessID) }
+        }
         guard newPhase == .active, let context = readyModelContext else { return }
 
         Task {
@@ -111,6 +121,7 @@ struct SmallBizWorkspaceApp: App {
         readyServicesTask = Task {
             processQueuedIncomingURLs(context: context)
             await runWorkspaceServices(context: context)
+            await SpotlightIndexer.reindex(context: context, businessID: activeBiz.activeBusinessID)
         }
     }
 
@@ -202,6 +213,7 @@ struct SmallBizWorkspaceApp: App {
                 activeBusinessID: businessID
             )
             await NotificationInboxService.shared.refreshIfNeeded(modelContext: context, businessId: businessID)
+            await SpotlightIndexer.reindex(context: context, businessID: businessID)
         }
     }
 

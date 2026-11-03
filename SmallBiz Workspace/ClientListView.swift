@@ -222,6 +222,9 @@ struct ClientListView: View {
             ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                GlobalSearchButton()
+            }
         }
         .sheet(item: $newClientDraft) { draft in
             NewClientSheet(draft: draft) { saved in

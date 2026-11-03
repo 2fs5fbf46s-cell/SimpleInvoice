@@ -66,6 +66,9 @@ struct MoneyHubView: View {
             ToolbarItem(placement: .topBarLeading) {
                 BusinessAvatarButton { businessSettingsPresenter.open() }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                GlobalSearchButton()
+            }
         }
     }
 }

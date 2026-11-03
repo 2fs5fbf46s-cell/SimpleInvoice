@@ -118,6 +118,9 @@ struct TodayView: View {
                 Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
             }
             ToolbarItem(placement: .topBarTrailing) {
+                GlobalSearchButton()
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { showNotifications = true } label: {
                     Image(systemName: unreadNotificationCount > 0 ? "bell.badge" : "bell")
                         .symbolRenderingMode(.multicolor)
