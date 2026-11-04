@@ -39,6 +39,7 @@ final class BusinessSettingsPresenter: ObservableObject {
 /// from the caller's own body sidesteps it entirely.
 struct BusinessAvatarButton: View {
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Query(sort: [SortDescriptor(\BusinessProfile.name, order: .forward)]) private var profiles: [BusinessProfile]
     var onTap: () -> Void
 
@@ -89,13 +90,14 @@ struct BusinessAvatarButton: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .frame(maxWidth: 110, alignment: .leading)
+                    .frame(maxWidth: sizeClass == .regular ? 240 : 110, alignment: .leading)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             // A toolbar offers its items next to no width; without this the
-            // name was squeezed to nothing. Long names stop at 110 points.
+            // name was squeezed to nothing. Long names stop at 110 points,
+            // or 240 on an iPad's wider bar.
             .fixedSize()
             // The bar is a fixed height: past this its initials read "…".
             .sbwCappedType()
