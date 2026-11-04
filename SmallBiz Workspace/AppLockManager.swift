@@ -15,7 +15,7 @@ import SwiftUI
 final class AppLockManager: ObservableObject {
     enum AuthResult { case success, failed, unavailable }
 
-    static let enabledKey = "sbw.requireFaceID"
+    nonisolated static let enabledKey = "sbw.requireFaceID"
     /// Away for longer than this, and it asks again. Under it, switching to
     /// Messages for a code and back doesn't.
     static let gracePeriod: TimeInterval = 60
