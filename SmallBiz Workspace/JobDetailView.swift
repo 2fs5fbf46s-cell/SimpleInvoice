@@ -367,23 +367,23 @@ struct JobDetailView: View {
     // Solid, not material: the list scrolled visibly underneath the old one.
     private var pinnedHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
+            SBWAdaptiveStack(verticalAlignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(jobTitleText)
                         .font(.headline)
-                        .lineLimit(2)
+                        .sbwLineLimit(2)
                     if !jobPlaceText.isEmpty {
                         Text(jobPlaceText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .sbwLineLimit(1)
                     }
                     if !isDraft {
                         Text(jobWhenText)
                             .font(.caption)
                     }
                 }
-                Spacer()
+                SBWRowSpacer()
                 if !isDraft {
                     jobStatusPill
                 }
@@ -392,6 +392,8 @@ struct JobDetailView: View {
                 jobStageTrack
             }
         }
+        // Pinned above the scrolling screen: past this it took half of it.
+        .sbwCappedType(.accessibility1)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(.systemBackground))
@@ -401,6 +403,7 @@ struct JobDetailView: View {
     private var jobStatusPill: some View {
         Text(displayStatus.label)
             .font(.caption.weight(.semibold))
+            .fixedSize()
             .padding(.vertical, 4)
             .padding(.horizontal, 10)
             .background(Capsule().fill(displayStatus.foreground.opacity(0.15)))
@@ -433,6 +436,7 @@ struct JobDetailView: View {
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
+            .sbwHiddenWhenLarge()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Status: \(displayStatus.label)")
@@ -701,7 +705,7 @@ struct JobDetailView: View {
     }
 
     private var contactRow: some View {
-        HStack {
+        SBWActionGrid {
             contactButton("Call", icon: "phone.fill", enabled: clientPhoneDigits != nil) {
                 if let digits = clientPhoneDigits, let url = URL(string: "tel:\(digits)") { openURL(url) }
             }
@@ -971,17 +975,21 @@ struct JobDetailView: View {
                 // .secondary resolve to the button's blue tint.
                 Image(systemName: icon)
                     .foregroundStyle(Color.secondary)
+                    .sbwCappedType()
                     .frame(width: 22)
-                Text(title)
-                    .foregroundStyle(Color.primary)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(status)
-                    .font(.caption.weight(.semibold))
-                    .padding(.vertical, 3)
-                    .padding(.horizontal, 8)
-                    .background(Capsule().fill(tint.opacity(0.15)))
-                    .foregroundStyle(tint)
+                SBWAdaptiveStack(spacing: 4) {
+                    Text(title)
+                        .foregroundStyle(Color.primary)
+                        .sbwLineLimit(1)
+                    SBWRowSpacer(minLength: 8)
+                    Text(status)
+                        .font(.caption.weight(.semibold))
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8)
+                        .background(Capsule().fill(tint.opacity(0.15)))
+                        .foregroundStyle(tint)
+                        .fixedSize()
+                }
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(Color.secondary)
@@ -1057,14 +1065,14 @@ struct JobDetailView: View {
     }
 
     private func groupLabel(_ title: String, icon: String, detail: String) -> some View {
-        HStack {
+        SBWAdaptiveStack(spacing: 2) {
             Label(title, systemImage: icon)
                 .font(.headline)
-            Spacer()
+            SBWRowSpacer(minLength: 8)
             Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .sbwLineLimit(1)
         }
     }
 
@@ -1626,7 +1634,7 @@ struct JobDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             // One button and a menu: seven grey folder buttons weighed more
             // on the page than anything else for something rarely opened.
-            HStack(spacing: 10) {
+            NextStepButtons {
                 Button {
                     openFolder(kind: nil)
                 } label: {

@@ -127,7 +127,7 @@ struct ClientListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search name, email, phone, address", text: $searchText)
+                        SBWSearchTextField("Search name, email, phone, address", text: $searchText)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                         Button {
@@ -135,6 +135,7 @@ struct ClientListView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
+                                .sbwCappedType()
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
@@ -144,7 +145,7 @@ struct ClientListView: View {
                     .padding(.vertical, 4)
 
                     if owed > 0 {
-                        HStack(spacing: 10) {
+                        SBWAdaptiveStack(spacing: 10) {
                             metricTile("Owed to you", cents: owed, color: .primary) { filter = .owing }
                             metricTile("Overdue", cents: overdue, color: overdue > 0 ? .red : .primary) { filter = .owing }
                         }
@@ -274,15 +275,13 @@ struct ClientListView: View {
 
     private func metricTile(_ title: String, cents: Int, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(color == .red ? Color.red : Color.secondary)
-                Text(InvoicePaymentService.currency(cents))
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(color)
-                    .monospacedDigit()
-            }
+            SBWTileText(
+                title: title,
+                value: InvoicePaymentService.currency(cents),
+                valueFont: .title3.weight(.semibold),
+                titleColor: color == .red ? .red : .secondary,
+                valueColor: color
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
@@ -356,24 +355,27 @@ private struct ClientListRow: View {
         HStack(spacing: 12) {
             Text(client.initials)
                 .font(.subheadline.weight(.semibold))
+                .sbwCappedType()
                 .foregroundStyle(client.isArchived ? Color.secondary : SBWTheme.brand)
                 .frame(width: 38, height: 38)
                 .background(Circle().fill((client.isArchived ? Color.secondary : SBWTheme.brand).opacity(0.14)))
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(client.displayName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(client.isArchived ? .secondary : .primary)
-                    .lineLimit(1)
-                Text(contextLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            SBWAdaptiveStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(client.displayName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(client.isArchived ? .secondary : .primary)
+                        .sbwLineLimit(1)
+                    Text(contextLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .sbwLineLimit(1)
+                }
+
+                SBWRowSpacer(minLength: 8)
+
+                trailing
             }
-
-            Spacer(minLength: 8)
-
-            trailing
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -383,10 +385,10 @@ private struct ClientListRow: View {
     private var trailing: some View {
         if overview.owedCents > 0 {
             let late = overview.overdueCents > 0
-            VStack(alignment: .trailing, spacing: 2) {
+            SBWAdaptiveStack(normally: .vertical, horizontalAlignment: .trailing, spacing: 2) {
                 Text(InvoicePaymentService.currency(overview.owedCents))
                     .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
+                    .sbwAmount()
                     .foregroundStyle(late ? Color.red : Color.primary)
                 Text(late ? "Overdue" : "Owed")
                     .font(.caption2)

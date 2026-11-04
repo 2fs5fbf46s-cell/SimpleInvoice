@@ -154,19 +154,20 @@ struct ContractDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
+            SBWAdaptiveStack(verticalAlignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(titleText)
                         .font(.headline)
-                        .lineLimit(2)
+                        .sbwLineLimit(2)
                     Text(headerSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .sbwLineLimit(1)
                 }
-                Spacer()
+                SBWRowSpacer()
                 Text(display.label)
                     .font(.caption.weight(.semibold))
+                    .fixedSize()
                     .padding(.vertical, 4)
                     .padding(.horizontal, 10)
                     .background(Capsule().fill(display.foreground.opacity(0.15)))
@@ -174,6 +175,8 @@ struct ContractDetailView: View {
             }
             stageTrack
         }
+        // Pinned above the scrolling screen: past this it took half of it.
+        .sbwCappedType(.accessibility1)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(.systemBackground))
@@ -223,6 +226,7 @@ struct ContractDetailView: View {
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
+            .sbwHiddenWhenLarge()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Status: \(display.label)")
@@ -605,14 +609,17 @@ struct ContractDetailView: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .foregroundStyle(SBWTheme.brand)
+                .sbwCappedType()
                 .frame(width: 22)
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.primary)
-            Spacer()
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            SBWAdaptiveStack(spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                SBWRowSpacer(minLength: 8)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

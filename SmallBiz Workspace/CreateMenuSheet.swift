@@ -486,6 +486,7 @@ struct CreateActionRow: View {
 
                     Image(systemName: systemImage)
                         .font(.scaledSystem(size: 16, weight: .semibold, relativeTo: .body))
+                        .sbwCappedType()
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 36, height: 36)

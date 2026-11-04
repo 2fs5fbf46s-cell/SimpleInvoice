@@ -20,6 +20,7 @@ struct ClientDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Bindable var client: Client
 
     @Query private var invoices: [Invoice]
@@ -203,22 +204,25 @@ struct ClientDetailView: View {
         HStack(alignment: .center, spacing: 12) {
             Text(client.initials)
                 .font(.title3.weight(.semibold))
+                .sbwCappedType()
                 .foregroundStyle(SBWTheme.brand)
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(SBWTheme.brand.opacity(0.14)))
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(client.displayName)
-                    .font(.title3.weight(.bold))
-                    .lineLimit(2)
-                if let since = overview.clientSince {
-                    Text("Client since \(since.formatted(.dateTime.month(.abbreviated).year()))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            SBWAdaptiveStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(client.displayName)
+                        .font(.title3.weight(.bold))
+                        .sbwLineLimit(2)
+                    if let since = overview.clientSince {
+                        Text("Client since \(since.formatted(.dateTime.month(.abbreviated).year()))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                SBWRowSpacer(minLength: 8)
+                statusPill(overview)
             }
-            Spacer(minLength: 8)
-            statusPill(overview)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -268,7 +272,7 @@ struct ClientDetailView: View {
         let sms = ClientContact.phoneURL(client, scheme: "sms")
         let email = ClientContact.emailURL(client)
         let directions = ClientContact.directionsURL(client)
-        return HStack {
+        return SBWActionGrid {
             contactButton("Call", icon: "phone.fill", url: phone)
             contactButton("Text", icon: "message.fill", url: sms)
             contactButton("Email", icon: "envelope.fill", url: email)
@@ -309,7 +313,7 @@ struct ClientDetailView: View {
                     "\(ClientWorkItem.documentName(invoice)) is \(days) day\(days == 1 ? "" : "s") overdue",
                     detail: owedDetail(invoice)
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { reminderInvoice = invoice } label: {
                         Label(sendingReminder ? "Sending…" : "Send Reminder", systemImage: "bell")
                     }
@@ -325,7 +329,7 @@ struct ClientDetailView: View {
                     "Bill for \(jobName(job))",
                     detail: "Finished \((job.completedAt ?? job.startDate).formatted(date: .abbreviated, time: .omitted)). There's no invoice for it yet."
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { createInvoice(for: job) } label: { Label("Create Invoice", systemImage: "doc.badge.plus") }
                         .sbwProminentButton()
                     Button { jobRoute = job } label: { Label("Open Job", systemImage: "wrench.and.screwdriver") }
@@ -358,7 +362,7 @@ struct ClientDetailView: View {
                     "Waiting on \(ClientWorkItem.documentName(estimate, lowercased: true))",
                     detail: "\(InvoicePaymentService.currency(estimate.totalCents)), sent \((estimate.sentAt ?? estimate.issueDate).formatted(date: .abbreviated, time: .omitted)). Follow up if you haven't heard back."
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { documentRoute = estimate } label: { Label("Open Estimate", systemImage: "doc.text.magnifyingglass") }
                         .sbwProminentButton()
                     if let url = ClientContact.phoneURL(client, scheme: "sms") {
@@ -372,7 +376,7 @@ struct ClientDetailView: View {
                     "Waiting on payment for \(ClientWorkItem.documentName(invoice, lowercased: true))",
                     detail: "\(owedDetail(invoice)) Due \(invoice.dueDate.formatted(date: .abbreviated, time: .omitted))."
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { paymentInvoice = invoice } label: { Label("Record Payment", systemImage: "dollarsign") }
                         .sbwProminentButton()
                     Button { documentRoute = invoice } label: { Label("Open", systemImage: "doc.plaintext") }
@@ -401,7 +405,7 @@ struct ClientDetailView: View {
                     client.isArchived ? "Nothing open" : "Nothing open right now",
                     detail: "Quote the next piece of work, or put a job on the calendar."
                 )
-                HStack(spacing: 10) {
+                NextStepButtons {
                     Button { startNewEstimate() } label: { Label("New Estimate", systemImage: "doc.text.magnifyingglass") }
                         .sbwProminentButton()
                     Button { startNewJob() } label: { Label("New Job", systemImage: "wrench.and.screwdriver") }
@@ -464,7 +468,7 @@ struct ClientDetailView: View {
     // MARK: - Money
 
     private func moneyTiles(_ overview: ClientOverview) -> some View {
-        HStack(spacing: 12) {
+        SBWAdaptiveStack(spacing: 12) {
             moneyTile(
                 "Owed",
                 value: InvoicePaymentService.currency(overview.owedCents),
@@ -483,21 +487,8 @@ struct ClientDetailView: View {
     }
 
     private func moneyTile(_ title: String, value: String, detail: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(color)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(detail)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .clientCard()
+        SBWTileText(title: title, value: value, detail: detail, valueFont: .title3.weight(.semibold), valueColor: color)
+            .clientCard()
     }
 
     // MARK: - Work
@@ -622,11 +613,11 @@ struct ClientDetailView: View {
 
     private func detailRow(_ label: String, _ value: String) -> some View {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return HStack(alignment: .top) {
+        return SBWAdaptiveStack(verticalAlignment: .top, spacing: typeSize.isAccessibilitySize ? 2 : nil) {
             Text(label)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .leading)
+                .frame(width: typeSize.isAccessibilitySize ? nil : 70, alignment: .leading)
             if trimmed.isEmpty {
                 Button("Add") { showEdit = true }
                     .font(.subheadline)
@@ -674,14 +665,17 @@ struct ClientDetailView: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .foregroundStyle(SBWTheme.brand)
+                .sbwCappedType()
                 .frame(width: 22)
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.primary)
-            Spacer()
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            SBWAdaptiveStack(spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                SBWRowSpacer(minLength: 8)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -835,24 +829,28 @@ struct ClientWorkRow: View {
             Image(systemName: item.kind.systemImage)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .sbwCappedType()
                 .frame(width: 22)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(item.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            SBWAdaptiveStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .sbwLineLimit(1)
+                    Text(item.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .sbwLineLimit(1)
+                }
+                SBWRowSpacer(minLength: 8)
+                Text(item.status)
+                    .font(.caption.weight(.semibold))
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 8)
+                    .background(Capsule().fill(item.statusColor.opacity(0.14)))
+                    .foregroundStyle(item.statusColor)
+                    .fixedSize()
             }
-            Spacer(minLength: 8)
-            Text(item.status)
-                .font(.caption.weight(.semibold))
-                .padding(.vertical, 3)
-                .padding(.horizontal, 8)
-                .background(Capsule().fill(item.statusColor.opacity(0.14)))
-                .foregroundStyle(item.statusColor)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

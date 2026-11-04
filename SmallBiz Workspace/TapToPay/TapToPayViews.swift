@@ -20,6 +20,11 @@ struct TapToPayButton: View {
         Button(action: action) {
             Label("Tap to Pay on iPhone", systemImage: "wave.3.right.circle.fill")
                 .font(.body.weight(.semibold))
+                // The name whole and on one line, as Apple writes it, at any
+                // text size: shrinking alone still cut it to "Tap to Pay…".
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .sbwCappedType(.accessibility1)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
                 .foregroundStyle(Color(.systemBackground))

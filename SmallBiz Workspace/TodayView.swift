@@ -11,6 +11,7 @@ import UIKit
 /// match Money and each client.
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var typeSize
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @EnvironmentObject private var businessSettingsPresenter: BusinessSettingsPresenter
     @StateObject private var metricsVM = DashboardMetricsVM()
@@ -212,7 +213,9 @@ struct TodayView: View {
     }
 
     private func attentionRow(_ item: AttentionItem) -> some View {
-        HStack(spacing: 10) {
+        // At large sizes the action button goes under the words instead of
+        // squeezing them to "Oakridge HOA is 6…".
+        SBWAdaptiveStack(spacing: 10) {
             Button { open(item) } label: {
                 HStack(spacing: 10) {
                     Circle()
@@ -222,11 +225,11 @@ struct TodayView: View {
                         Text(item.title)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
-                            .lineLimit(2)
+                            .sbwLineLimit(2)
                         Text(item.subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .sbwLineLimit(2)
                     }
                     Spacer(minLength: 6)
                 }
@@ -294,19 +297,24 @@ struct TodayView: View {
         return HStack(spacing: 10) {
             Button { selectedJob = job } label: {
                 HStack(spacing: 10) {
-                    Text(job.startDate.formatted(date: .omitted, time: .shortened))
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .frame(width: 58, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(AttentionFeedService.jobName(job))
+                    // The time over the job at large sizes: in its 58-point
+                    // column "08:00" broke into "08:" and "00".
+                    SBWAdaptiveStack(spacing: typeSize.isAccessibilitySize ? 2 : 10) {
+                        Text(job.startDate.formatted(date: .omitted, time: .shortened))
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
+                            .monospacedDigit()
                             .lineLimit(1)
-                        Text(location.isEmpty ? status.label : "\(location) · \(status.label)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .frame(width: typeSize.isAccessibilitySize ? nil : 58, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(AttentionFeedService.jobName(job))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .sbwLineLimit(1)
+                            Text(location.isEmpty ? status.label : "\(location) · \(status.label)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .sbwLineLimit(1)
+                        }
                     }
                     Spacer(minLength: 6)
                 }
@@ -336,6 +344,8 @@ struct TodayView: View {
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }
     }
 
+    // Seven days across can't grow with the text past a point; VoiceOver
+    // reads each day in full.
     private var weekStrip: some View {
         HStack(spacing: 6) {
             ForEach(weekDays, id: \.self) { day in
@@ -368,6 +378,7 @@ struct TodayView: View {
                 .accessibilityLabel("\(day.formatted(.dateTime.weekday(.wide).month().day())), \(count) job\(count == 1 ? "" : "s")")
             }
         }
+        .sbwCappedType()
     }
 
     // MARK: - Snapshot
@@ -385,7 +396,7 @@ struct TodayView: View {
             : done == week ? "all done"
             : done > 0 ? "\(done) done"
             : "scheduled"
-        return HStack(spacing: 8) {
+        return SBWAdaptiveStack(spacing: 8) {
             tile("In, 7 days", InvoicePaymentService.currency(received.cents),
                  "\(received.count) payment\(received.count == 1 ? "" : "s")") {
                 MoneyHubView.show(.insights)
@@ -406,12 +417,8 @@ struct TodayView: View {
 
     private func tile(_ title: String, _ value: String, _ detail: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Text(value).font(.headline).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            SBWTileText(title: title, value: value, detail: detail)
+                .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .todayCard(radius: 12)
         }

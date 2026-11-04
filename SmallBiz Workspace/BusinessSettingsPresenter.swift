@@ -97,6 +97,8 @@ struct BusinessAvatarButton: View {
             // A toolbar offers its items next to no width; without this the
             // name was squeezed to nothing. Long names stop at 110 points.
             .fixedSize()
+            // The bar is a fixed height: past this its initials read "…".
+            .sbwCappedType()
             .padding(.horizontal, 7)
             .frame(height: 44)
             .contentShape(Rectangle())

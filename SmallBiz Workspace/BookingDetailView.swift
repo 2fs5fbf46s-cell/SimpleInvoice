@@ -108,18 +108,19 @@ struct BookingDetailView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
+        SBWAdaptiveStack(verticalAlignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(booking.customerName)
                     .font(.title3.weight(.bold))
-                    .lineLimit(2)
+                    .sbwLineLimit(2)
                 Text("\(booking.serviceName) · \(booking.whenText)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+            SBWRowSpacer()
             Text(booking.stage.label)
                 .font(.caption.weight(.semibold))
+                .fixedSize()
                 .padding(.vertical, 4)
                 .padding(.horizontal, 10)
                 .background(Capsule().fill(booking.stage.foreground.opacity(0.15)))
@@ -131,7 +132,7 @@ struct BookingDetailView: View {
     private var contactRow: some View {
         let digits = (booking.clientPhone ?? "").filter { $0.isNumber || $0 == "+" }
         let email = (booking.clientEmail ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return HStack {
+        return SBWActionGrid {
             contactButton("Call", icon: "phone.fill", url: digits.isEmpty ? nil : URL(string: "tel:\(digits)"))
             contactButton("Text", icon: "message.fill", url: digits.isEmpty ? nil : URL(string: "sms:\(digits)"))
             contactButton("Email", icon: "envelope.fill", url: email.contains("@") ? URL(string: "mailto:\(email)") : nil)

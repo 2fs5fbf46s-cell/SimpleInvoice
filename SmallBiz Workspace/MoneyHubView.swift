@@ -37,6 +37,9 @@ struct MoneyHubView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 6)
+            // Fixed above the list: stacked, past this they'd leave the list
+            // a sliver of the screen.
+            .sbwCappedType(.accessibility1)
 
             Picker("Money section", selection: $segment) {
                 ForEach(Segment.allCases) { Text($0.rawValue).tag($0) }
@@ -92,7 +95,7 @@ struct MoneySummaryTiles: View {
         let owed = MoneyMath.owed(invoices)
         let overdue = MoneyMath.overdue(invoices)
         let inThisMonth = MoneyMath.tally(MoneyMath.received(invoices: invoices, jobs: jobs), in: MoneyMath.thisMonth())
-        HStack(spacing: 8) {
+        SBWAdaptiveStack(spacing: 8) {
             tile("Owed to you", owed, noun: "invoice", danger: false) { onTap(.owed) }
             tile("Overdue", overdue, noun: "invoice", danger: overdue.cents > 0) { onTap(.overdue) }
             tile("In this month", inThisMonth, noun: "payment", danger: false) { onTap(.received) }
@@ -102,21 +105,15 @@ struct MoneySummaryTiles: View {
 
     private func tile(_ title: String, _ tally: MoneyMath.Tally, noun: String, danger: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(danger ? Color.red : Color.secondary)
-                    .lineLimit(1)
-                Text(InvoicePaymentService.currency(tally.cents))
-                    .font(.headline)
-                    .foregroundStyle(danger ? Color.red : Color.primary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text("\(tally.count) \(noun)\(tally.count == 1 ? "" : "s")")
-                    .font(.caption2)
-                    .foregroundStyle(danger ? Color.red.opacity(0.8) : Color.secondary)
-            }
+            SBWTileText(
+                title: title,
+                value: InvoicePaymentService.currency(tally.cents),
+                detail: "\(tally.count) \(noun)\(tally.count == 1 ? "" : "s")",
+                titleColor: danger ? .red : .secondary,
+                valueColor: danger ? .red : .primary,
+                detailColor: danger ? .red.opacity(0.8) : .secondary,
+                showsDetailWhenLarge: false
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .background(

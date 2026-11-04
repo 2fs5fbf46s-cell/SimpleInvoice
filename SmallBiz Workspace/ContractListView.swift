@@ -110,7 +110,7 @@ struct ContractListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search title, client, template", text: $searchText)
+                        SBWSearchTextField("Search title, client, template", text: $searchText)
                             .textInputAutocapitalization(.never)
                         Button {
                             showTemplates = true
@@ -128,6 +128,7 @@ struct ContractListView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
+                                .sbwCappedType()
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
@@ -310,28 +311,31 @@ private struct ContractListRow: View {
             Image(systemName: status == .signed ? "checkmark.seal" : "signature")
                 .font(.subheadline)
                 .foregroundStyle(status == .signed ? SBWTheme.success : Color.secondary)
+                .sbwCappedType()
                 .frame(width: 26)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(contract.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled contract" : contract.title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            SBWAdaptiveStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(contract.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled contract" : contract.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .sbwLineLimit(1)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .sbwLineLimit(1)
+                }
+
+                SBWRowSpacer(minLength: 6)
+
+                Text(status.label)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 8)
+                    .background(Capsule().fill(status.foreground.opacity(0.15)))
+                    .foregroundStyle(status.foreground)
+                    .fixedSize()
             }
-
-            Spacer(minLength: 6)
-
-            Text(status.label)
-                .font(.caption2.weight(.semibold))
-                .padding(.vertical, 3)
-                .padding(.horizontal, 8)
-                .background(Capsule().fill(status.foreground.opacity(0.15)))
-                .foregroundStyle(status.foreground)
-                .fixedSize()
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

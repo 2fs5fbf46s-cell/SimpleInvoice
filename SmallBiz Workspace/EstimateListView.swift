@@ -130,7 +130,7 @@ struct EstimateListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search estimates", text: $searchText)
+                        SBWSearchTextField("Search estimates", text: $searchText)
                             .textInputAutocapitalization(.never)
 
                         Button {
@@ -141,6 +141,7 @@ struct EstimateListView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
+                                .sbwCappedType()
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
@@ -427,7 +428,7 @@ struct EstimateListView: View {
         let since = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
         let accepted = estimates.filter { EstimateStage($0) == .accepted && ($0.estimateAcceptedAt ?? .distantPast) >= since }
         let drafts = estimates.filter { EstimateStage($0) == .draft }
-        return HStack(spacing: 8) {
+        return SBWAdaptiveStack(spacing: 8) {
             EstimateTile(title: "Waiting",
                          value: InvoicePaymentService.currency(waiting.reduce(0) { $0 + $1.totalCents }),
                          detail: "\(waiting.count) estimate\(waiting.count == 1 ? "" : "s")") { filter = .open }
@@ -566,21 +567,21 @@ private struct EstimateListRow: View {
 
     var body: some View {
         let stage = EstimateStage(estimate)
-        HStack(spacing: 12) {
+        SBWAdaptiveStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.body.weight(.semibold))
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 4) {
+            SBWRowSpacer(minLength: 8)
+            SBWAdaptiveStack(normally: .vertical, horizontalAlignment: .trailing, spacing: 4) {
                 Text(InvoicePaymentService.currency(estimate.totalCents))
                     .font(.body.weight(.semibold))
-                    .monospacedDigit()
+                    .sbwAmount()
                 Text(stage.label)
                     .font(.caption2.weight(.semibold))
                     .padding(.vertical, 2)
@@ -602,12 +603,8 @@ private struct EstimateTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Text(value).font(.headline).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                Text(detail).font(.caption2).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            SBWTileText(title: title, value: value, detail: detail)
+                .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
         }

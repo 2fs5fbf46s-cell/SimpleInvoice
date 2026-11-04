@@ -13,6 +13,7 @@ import UserNotifications
 struct BusinessSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var typeSize
     @EnvironmentObject private var activeBiz: ActiveBusinessStore
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @EnvironmentObject private var lock: AppLockManager
@@ -209,6 +210,7 @@ struct BusinessSettingsSheet: View {
                 } else {
                     Text(BusinessIdentity.initials(for: profile?.name ?? ""))
                         .font(.headline)
+                        .sbwCappedType()
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(BrandColor.color(BrandColor.readableOnWhite(BrandColor.resolved(profile?.brandColorHex))))
@@ -220,11 +222,23 @@ struct BusinessSettingsSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayName)
                     .font(.headline)
-                    .lineLimit(1)
-                Text(contactLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
+                if typeSize.isAccessibilitySize, !contactParts.isEmpty {
+                    // One per line, never wrapped: wrapping hyphenated the
+                    // email into "office@exam-ple.com".
+                    ForEach(contactParts, id: \.self) { part in
+                        Text(part)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                    }
+                } else {
+                    Text(contactLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
             if businesses.count > 1 {
@@ -244,11 +258,14 @@ struct BusinessSettingsSheet: View {
         .settingsCard()
     }
 
-    private var contactLine: String {
-        let parts = [profile?.email, profile?.phone]
+    private var contactParts: [String] {
+        [profile?.email, profile?.phone]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        return parts.isEmpty ? "No contact details yet" : parts.joined(separator: " · ")
+    }
+
+    private var contactLine: String {
+        contactParts.isEmpty ? "No contact details yet" : contactParts.joined(separator: " · ")
     }
 
     private func nextStepCard(_ step: BusinessSetup.Step) -> some View {
@@ -305,25 +322,28 @@ struct BusinessSettingsSheet: View {
                 Image(systemName: icon)
                     .font(.body)
                     .foregroundStyle(Color.accentColor)
+                    .sbwCappedType()
                     .frame(width: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 8)
-                if let badge {
-                    Text(badge.text)
-                        .font(.caption2.weight(.semibold))
-                        .padding(.vertical, 3)
-                        .padding(.horizontal, 8)
-                        .background(Capsule().fill(badge.color.opacity(0.15)))
-                        .foregroundStyle(badge.color)
-                        .fixedSize()
+                SBWAdaptiveStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .foregroundStyle(.primary)
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .sbwLineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    SBWRowSpacer(minLength: 8)
+                    if let badge {
+                        Text(badge.text)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.vertical, 3)
+                            .padding(.horizontal, 8)
+                            .background(Capsule().fill(badge.color.opacity(0.15)))
+                            .foregroundStyle(badge.color)
+                            .fixedSize()
+                    }
                 }
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))

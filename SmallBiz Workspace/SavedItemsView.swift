@@ -89,7 +89,7 @@ struct SavedItemsView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search items", text: $searchText)
+                        SBWSearchTextField("Search items", text: $searchText)
                             .textInputAutocapitalization(.never)
                             .disableAutocorrection(true)
                     }

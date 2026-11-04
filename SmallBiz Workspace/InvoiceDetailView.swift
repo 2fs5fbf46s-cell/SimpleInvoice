@@ -660,7 +660,7 @@ struct InvoiceDetailView: View {
     
     private var InvoicePinnedHeaderSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
+            SBWAdaptiveStack(verticalAlignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(invoiceDisplayTitle)
                         .font(.headline)
@@ -675,11 +675,12 @@ struct InvoiceDetailView: View {
                     }
                 }
 
-                Spacer()
+                SBWRowSpacer()
 
-                VStack(alignment: .trailing, spacing: 6) {
+                SBWAdaptiveStack(normally: .vertical, horizontalAlignment: .trailing, spacing: 6) {
                     Text(invoice.total, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
                         .font(.title3.weight(.semibold))
+                        .sbwAmount()
 
                     statusPill(text: invoiceStatusText)
 
@@ -692,6 +693,8 @@ struct InvoiceDetailView: View {
                 invoiceStatusTrack
             }
         }
+        // Pinned above the scrolling screen: past this it took half of it.
+        .sbwCappedType(.accessibility1)
         .accessibilityElement(children: .combine)
     }
 
@@ -740,7 +743,7 @@ struct InvoiceDetailView: View {
                         Spacer()
                     }
 
-                    HStack(spacing: 10) {
+                    NextStepButtons {
                         Button("Select Job") { showJobPicker = true }
                             .buttonStyle(.bordered)
 
@@ -879,6 +882,7 @@ struct InvoiceDetailView: View {
                         Spacer()
                         Text(invoice.total, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
                             .font(.headline)
+                            .sbwAmount()
                         Image(systemName: showTotalsBreakdown ? "chevron.up" : "chevron.down")
                             .foregroundStyle(.secondary)
                             .font(.caption)
@@ -1003,7 +1007,7 @@ struct InvoiceDetailView: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            HStack(spacing: 10) {
+                            NextStepButtons {
                                 Button("Approve") {
                                     Task { await resolveManualReport(reportId: report.id, action: "approve") }
                                 }
@@ -1088,6 +1092,7 @@ struct InvoiceDetailView: View {
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
+            .sbwHiddenWhenLarge()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Status: \(invoiceStatusText.capitalized)")
@@ -1261,7 +1266,14 @@ struct InvoiceDetailView: View {
         Button { showRecordPayment = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "banknote")
-                Text("Record Payment").fixedSize()
+                // Unwrapped side by side, so it never reads "Record Pay…";
+                // stacked it may wrap, or at the largest text sizes it
+                // pushed the whole card off both edges of the screen.
+                if fill {
+                    Text("Record Payment")
+                } else {
+                    Text("Record Payment").fixedSize()
+                }
             }
             .frame(maxWidth: fill ? .infinity : nil)
         }
@@ -1449,7 +1461,7 @@ struct InvoiceDetailView: View {
     }
 
     private func paymentRow(title: String, detail: String, amountCents: Int) -> some View {
-        HStack {
+        SBWAdaptiveStack(spacing: 4) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if !detail.isEmpty {
@@ -1458,8 +1470,9 @@ struct InvoiceDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Spacer()
+            SBWRowSpacer()
             Text(currencyString(fromCents: amountCents))
+                .sbwAmount()
         }
         .font(.subheadline)
     }
@@ -1668,6 +1681,7 @@ struct InvoiceDetailView: View {
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
+            .sbwHiddenWhenLarge()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Status: \(invoiceStatusText)")
@@ -2757,11 +2771,12 @@ struct InvoiceDetailView: View {
     }
 
     private func totalRow(_ label: String, _ amount: Double, isEmphasis: Bool = false) -> some View {
-        HStack {
+        SBWAdaptiveStack(spacing: 2) {
             Text(label)
-            Spacer()
+            SBWRowSpacer()
             Text(amount, format: .currency(code: Locale.current.currency?.identifier ?? "USD"))
                 .font(isEmphasis ? .headline : .body)
+                .sbwAmount()
         }
     }
 

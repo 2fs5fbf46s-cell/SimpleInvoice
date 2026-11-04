@@ -109,7 +109,7 @@ struct BookingListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search name, service, email, phone", text: $searchText)
+                        SBWSearchTextField("Search name, service, email, phone", text: $searchText)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                     }
@@ -292,27 +292,30 @@ private struct BookingListRow: View {
                 Text(booking.start.map { $0.formatted(.dateTime.day()) } ?? "")
                     .font(.title3.weight(.semibold))
             }
+            .sbwCappedType()
             .frame(width: 44)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(booking.customerName)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(1)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            SBWAdaptiveStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(booking.customerName)
+                        .font(.body.weight(.semibold))
+                        .sbwLineLimit(1)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .sbwLineLimit(1)
+                }
+
+                SBWRowSpacer(minLength: 6)
+
+                Text(booking.stage.label)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 8)
+                    .background(Capsule().fill(booking.stage.foreground.opacity(0.15)))
+                    .foregroundStyle(booking.stage.foreground)
+                    .fixedSize()
             }
-
-            Spacer(minLength: 6)
-
-            Text(booking.stage.label)
-                .font(.caption2.weight(.semibold))
-                .padding(.vertical, 3)
-                .padding(.horizontal, 8)
-                .background(Capsule().fill(booking.stage.foreground.opacity(0.15)))
-                .foregroundStyle(booking.stage.foreground)
-                .fixedSize()
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

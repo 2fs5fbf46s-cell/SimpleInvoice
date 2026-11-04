@@ -54,7 +54,7 @@ struct PortalDirectoryLauncherView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search clients", text: $searchText)
+                        SBWSearchTextField("Search clients", text: $searchText)
                             .textInputAutocapitalization(.never)
                             .disableAutocorrection(true)
                     }

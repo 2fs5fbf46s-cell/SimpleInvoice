@@ -175,7 +175,7 @@ struct ExpenseListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search expenses", text: $searchText)
+                        SBWSearchTextField("Search expenses", text: $searchText)
                             .textInputAutocapitalization(.never)
 
                         Button {
@@ -184,6 +184,7 @@ struct ExpenseListView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
+                                .sbwCappedType()
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
@@ -311,27 +312,30 @@ struct ExpenseListView: View {
                     .fill(SBWTheme.chipFill(for: "Expenses"))
                 Image(systemName: expense.category.systemImage)
                     .font(.scaledSystem(size: 14, weight: .semibold, relativeTo: .footnote))
+                    .sbwCappedType()
                     .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
+            SBWAdaptiveStack(verticalAlignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .sbwLineLimit(1)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .sbwLineLimit(2)
+                }
+
+                SBWRowSpacer(minLength: 8)
+
+                Text(amount)
+                    .font(.subheadline.weight(.semibold))
+                    .sbwAmount()
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
             }
-
-            Spacer(minLength: 8)
-
-            Text(amount)
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
         }
         .padding(.vertical, 4)
         .frame(minHeight: 56, alignment: .topLeading)

@@ -10,12 +10,12 @@ struct SBWNavigationRow: View {
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
 
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .sbwLineLimit(2)
             }
 
             Spacer(minLength: 8)
@@ -36,7 +36,7 @@ struct SBWNavigationRowNoSubtitle: View {
             Text(title)
                 .font(.headline)
                 .foregroundStyle(.primary)
-                .lineLimit(1)
+                .sbwLineLimit(1)
 
             Spacer(minLength: 8)
 

@@ -124,7 +124,7 @@ struct JobsListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search jobs, clients, places", text: $searchText)
+                        SBWSearchTextField("Search jobs, clients, places", text: $searchText)
                             .textInputAutocapitalization(.never)
 
                         Button {
@@ -133,6 +133,7 @@ struct JobsListView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
+                                .sbwCappedType()
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
@@ -414,27 +415,33 @@ private struct JobListRow: View {
     let job: Job
     let clientName: String?
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     private var status: JobDisplayStatus { JobDisplayStatus(job) }
 
     var body: some View {
-        HStack(spacing: 12) {
-            dateBlock
-                .frame(width: 48)
+        SBWAdaptiveStack(spacing: 12) {
+            if typeSize.isAccessibilitySize {
+                largeDateLine
+            } else {
+                dateBlock
+                    .frame(width: 48)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(job.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled job" : job.title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
                 if !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .sbwLineLimit(1)
                 }
             }
 
-            Spacer(minLength: 6)
+            SBWRowSpacer(minLength: 6)
 
             Text(status.label)
                 .font(.caption2.weight(.semibold))
@@ -452,6 +459,27 @@ private struct JobListRow: View {
     private var subtitle: String {
         let place = job.locationName.trimmingCharacters(in: .whitespacesAndNewlines)
         return [clientName, place.isEmpty ? nil : place].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private var rowDate: Date {
+        status == .completed ? (job.completedAt ?? job.endDate) : job.startDate
+    }
+
+    /// The date block's day, month and time on one line: in its 48-point
+    /// column, large text put "13:30" one character per line.
+    @ViewBuilder
+    private var largeDateLine: some View {
+        switch status {
+        case .needsScheduling, .inProgress:
+            // The status chip says it; the icon alone would take a line.
+            EmptyView()
+        default:
+            Text(Calendar.current.isDateInToday(rowDate) && status == .scheduled
+                 ? rowDate.formatted(date: .omitted, time: .shortened)
+                 : rowDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder

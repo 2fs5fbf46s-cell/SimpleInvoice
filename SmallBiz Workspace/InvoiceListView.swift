@@ -228,7 +228,7 @@ struct InvoiceListView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search invoices, clients, items", text: $searchText)
+                        SBWSearchTextField("Search invoices, clients, items", text: $searchText)
                             .textInputAutocapitalization(.never)
                         Button {
                             Haptics.lightTap()
@@ -236,6 +236,7 @@ struct InvoiceListView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.headline.weight(.semibold))
+                                .sbwCappedType()
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(SBWTheme.brand.opacity(0.2)))
                         }
@@ -524,22 +525,22 @@ private struct InvoiceListRow: View {
     private var stage: InvoiceListStage { InvoiceListStage(invoice) }
 
     var body: some View {
-        HStack(spacing: 12) {
+        SBWAdaptiveStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(stage == .overdue ? Color.red : Color.secondary)
-                    .lineLimit(1)
+                    .sbwLineLimit(1)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 3) {
+            SBWRowSpacer(minLength: 8)
+            SBWAdaptiveStack(normally: .vertical, horizontalAlignment: .trailing, spacing: 3) {
                 Text(InvoicePaymentService.currency(stage == .paid ? invoice.totalCents : invoice.balanceDueCents))
                     .font(.body.weight(.semibold))
-                    .monospacedDigit()
+                    .sbwAmount()
                 Text(stage.label)
                     .font(.caption2.weight(.semibold))
                     .padding(.vertical, 2)
